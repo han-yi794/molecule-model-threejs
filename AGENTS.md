@@ -1,0 +1,53 @@
+# AGENTS.md
+
+## 项目概览
+- 单文件 Three.js 分子建模应用：`球棍模型2.html`（约 200KB，全部逻辑内联，无构建/打包/依赖清单）。几乎所有改动都在这一个文件里。
+- **离域π键专题副本：`球棍模型3.html`（浏览器验证用 `%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B3.html?noauto=1`）**，新增：`findDelocalizedPiSystems()`（光照/芳香体系检测）、`inspectPiSystems()`（`window.__piSystemsSummary`）、`togglePiSystems()`（`window.__togglePiSystems`，按钮 `btn-toggle-pi`/`btn-pi-test`）、overlay（`PI_VIS.group`，`window.__piOverlayGroup()`）、自测 `runPiSystemTests()`（`window.__runPiSystemTests`，22 项全过，结果写 `localStorage.PI_TEST_REPORT`）。检测规则：π 键=order≥1.4（键序见 `PI_ORDER_THR`，苯环型 1.5 键序→芳香）；供体=有 lp 且连 π 中心的杂原子（`lp=(valence-σ)/2≥1`，芳香 1.5 键按 σ=1 计，吡啶型 N 排除）；连通分量含单键桥（丁二烯中键、苯甲酸羰基）；π 电子：环内=环原子数+环内供体+1（吡咯/呋喃/噻吩=6）、环外键 Σ(order-1)*2、环外链供体 +2（苯酚/苯胺环上供体 +0）；芳香判定=环+Hückel(4n+2)。
+- **共轭桥共面（2026-08 新增，已通用化）**：'烯-烯/环-烯/环-环'共面约束。`enforceConjugatedBridgeCoplanarity()`（`__diag.conjCoplanar()` 可单独调）遍历全部单键桥（type<1.6，两端重原子且至少一端有 sp2 平面）：基准侧优先取芳香环（法线），否则取本侧双键伙伴叉积桥轴；旋转侧若在环则整环刚体绕桥轴旋转（含环 H），否则旋转该侧全部邻居（含 H 与下一段烯碳）。目标二面角取 0° 或 180° 中近者，内部 12 轮阻尼迭代（`CONJ_BRIDGE_STRENGTH`，阈值 0.015 rad）。挂在 `optimizeAllAtoms()` 末尾（`isOptimizing=false` 后、`updateBonds(true)` 前），一键优化与全部示例均受盖。实测（扰动 0.4-0.5）：苯乙烯 C=C 与环共面 tilt≈0.02（≈1.3°）、丁二烯两烯平面 cosPlanes=0.99999、联苯双环 cosPlanes=0.07（≈4°）。示例：`CONNECTIVITY_SPECS.styrene`（16 原子：环 6C+5H+CH=CH2）与 `CONNECTIVITY_SPECS.biphenyl`（22 原子：两苯环经单键桥）。注意：桥键必须单键（type<1.6）；`analyzeRings()` 现优先 findAllRings 全量枚举、苯环快捷仅兜底（否则联苯只报 1 条伪环导致共面失效）。
+- 无模块系统，关键函数直接挂在全局/`window` 上（如 `window.runAllExamplesAndTests`、`window.molUtils`、`window.OPT_PARAMS`）。
+- 文件是 UTF-8；文件名是中文，脚本里引用时注意编码。
+
+## 运行与验证
+- 验证脚本访问 `http://127.0.0.1:8000/球棍模型2.html`，需先在仓库根目录起静态服务器：`python -m http.server 8000`。
+- 运行验证：`node playwright-verify.js`。`node_modules` 里已有 playwright 1.62（无 package.json，Node >= 20）；首次需 `npx playwright install chromium`。
+- 页面加载后 900ms 会自动运行全部测试（`AUTO_RUN_ALL_TESTS = true`），无需手动触发；也可通过 UI 按钮或 `runAllExamplesAndTests()` 触发。
+
+## 已知陷阱（必读）
+- `playwright-verify.js` 里的中文文件名是 GBK 字节（混合编码文件），Node 按 UTF-8 读取后 URL 变成乱码 → 请求 404，验证脚本实际从未成功加载页面。修复：把 URL 换成百分号编码 `http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B2.html`，保存为 UTF-8。
+- `playwright-verify.js` 调用 `window.runAutoTests`，但该函数不存在；真正入口是 `window.runAllExamplesAndTests()`（暴露在 window 上）。脚本因此永远走 fallback 分支去读 `#autotest-report` —— 这正是 README 记录的"自动测试结果采集不稳"问题。可靠的读取方式是轮询 `window.__AUTOTEST_DONE__`，或读 `localStorage.LAST_AUTOTEST_REPORT` / `window.lastRunResults`。
+- PowerShell 输出会损坏 JSON：验证输出必须用 `cmd /c "node playwright-verify.js > verifyN.json 2>&1"` 重定向到文件再解析。
+- **33 个自测已全部通过（连续多轮）**，历史上失败均系几何收敛问题，现已修复：ethane/propane 角度、cyclohexane 环拉飞、propanol 链旋转不收敛、以及 isobutane/isobutene/acetone/adenineLike 的生成器原子顺序/连通性与 CONNECTIVITY_SPECS 不符。诊断辅助：`window._INIT_ERRORS`、`window._INIT_LOG`、`window._lastComputeRingDiagnostic`、`window.__diag.ringsInfo()` / `__diag.isArom(id)` / `__diag.hybOf(id)`。
+
+## 几何优化关键函数（全部为全局函数，用函数名 grep 定位）
+- `optimizeAllAtoms()` — 迭代优化主循环（读 OPT_PARAMS：ITERATIONS、阻尼等）。角度阶段：先按模板/分配生成 targetPositions（非芳香环原子对环-环邻居只做径向保持，见下），再阻尼累加位移；键长阶段：|当前-目标|<0.005 跳过、单步上限 `MAX_BOND_ADJUSTMENT`(0.5)、均值漂移扣除已注释关闭。
+- `getIdealDirections()` — sp3 用**精确四面体模板**：axis=锚定方向（最高键级 C 邻居，否则邻居 0），一个方向严格沿 axis，其余三个 `u·sinA·cos(2πk/3)+v·sinA·sin(2πk/3)+axis·cosA`（`cosA=-1/3`，`u⊥axis, v=axis×u`）。注意符号：`axis·cosA` 是**远离**伙伴一侧（H 与键成 109.47°）；误用 `-cosA` 会得到 70.5°。
+- **锚定/框架每轮刷新（不缓存）**：sp3 存 `atom.userData.__sp3Anchor`（每轮无条件=当前锚邻居方向）；非环 sp2 存 `__sp2Axis`（每轮无条件=当前平面）。冻结缓存的滞回策略会导致：链式分子两端模板互相冲突（C-C 停 1.484）、sp2 端与世界系框架互相拉扯产生持续力矩（propanol 整链旋转不收敛，C-C-O 被挤到 93.9°）。改后 ethane~butane aStd ≤0.5°、propanol 0.1°。
+- **非芳香环径向守卫**：角度阶段对 `isAtomInAnyRing && !isAtomInAromaticRing` 的中心，环-环邻居方向只保留当前方向×目标距离——闭合环无法满足理想键角，切向牵引会把环拉飞（环己烷环键曾到 1.98）。注意环己烷 C 因仅 3 个邻居被 `inferHybridization` 判为 sp2，守卫条件不能用 `hybridization==='sp3'`。
+- **环感知键角（本轮新增，2026-08）**：闭合环无法满足杂化理想角，旧"普通方差"指标把物理正确的环判为高 std（5 元环 108° vs sp2 120°）。现在：①角度阶段对环原子（`ringNbs.length===2`）的环外邻居放"外角平分"方向——1 个环外邻居（芳香 H/取代基）放环平面内 `(360-θn)/2` 处；2 个环外邻居（环丙烷/环丁烷每碳 2 H）沿环法线 ±60° 对称出平面（3 元环 C-C-H≈115.7°、H-C-H 恒 120°）。**陷阱**：环外邻居集合必须按"环内邻居索引"收集（`ringNbsSet`），不能用 `!targetPositions[i]` 判断——模板已先填充目标。②`computeBondAngleStd()` 改为"相对环感知理想角的 RMS"：环内对=θn、一内一外=外角平分（双环外时=acos(0.5·cos(180°-θn/2))）、双环外=120°。
+- **环排列（arrange）覆盖三类**：`detectBenzeneRing()` 回退路径现支持 5/6 元含杂原子芳香环（pyridine/pyrrole/furan/thiophene，π 电子 6±1）；`optimizeAllAtoms()` 内新增**饱和环排列**（独立小环 3≤n≤8、无 1.5 键、环原子恰 2 个环内邻居），`arrangeBenzeneRing(ring, side, isAromatic)` 泛化为 n 元（`radius=side/(2·sin(π/n))`），`isAromatic=false` 时**不把环键置 1.5**（否则环丙烷环键被当 1.5 拉成 1.40）。**陷阱**：arrange 必须重排每个环碳的**全部**环外 H（只移 1 个会被优化循环内 `updateBonds()` 删键，实测环丙烷每碳丢 1 个 H）；环外 H 数量 2 个时同样 ±60° 出平面。
+- **环枚举缓存**：`findAllRings()` 结果缓存到 `window.__RINGS_CACHE`（`computeBondAngleStd` 每原子调用会重复 DFS）；`updateBonds()` 与 `clearMolecule()` 都会失效缓存（generateSpec 早期键未建立时调用会缓存空环导致后续环检测全部误判）。
+- `inferHybridization()` — VSEPR：域数 = σ邻居 + 孤对（C: (4-键级和)/2、O: (6-键级和)/2），3 域→sp2 等；芳香环内强制 sp2。
+- 键长基准 `getTargetBondLength()`：单键=rA+rB（C-C 1.54、C-H 1.09、O-H 0.98），双键×0.87（C=C 1.34、C=O 1.244），三键×0.78，1.5 芳香 C-C 强制 1.40；另有芳香键长表（C-N 1.34、C-O 1.36、C-S 1.71、N-N 1.35、C-P 1.78、N-O 1.33，回退×0.91）。烷烃 C-C 容差 ±0.03、环己烷环键 ±0.08。
+- `updateBonds(noAdd)` — 键创建阈值 `BOND_FACTOR=1.24×目标`、删除 `BOND_REMOVE_FACTOR=2.00`；渲染循环 `animate()` 只调 `updateBonds(true)`（永不新增键），新增键只在生成/优化期发生。
+- `enforceTetrahedralForSP3()` — 旧式后处理修正（当前主路径为 getIdealDirections 模板，此函数仅作辅助）
+- `computeBondAngleStd()` / `analyzeRings()` — 测试指标与环分析
+- 测试流程：`runAllExamplesAndTests()` 遍历 33 个示例（`generateMethane()` …），先 `perturbMolecule(0.45)` 加扰动，再优化，断言如 `testAlkaneCC(1.54, 0.03)`。**注意**：部分生成器是"名义示例"——如 propanol 的 C(OH) 端碳只有 2 个邻居（spec 共 6 H，非 8）、cyclohexane 每碳 1 H、adenineLike 糖片段 2 C——生成器必须与 `CONNECTIVITY_SPECS` 的原子顺序/数量完全一致（如 isobutane 甲基 H 在前、中心 H 最后；isobutene 原子 0=CH2、1=C(q)、2/3=甲基；acetone 顺序 CH3/C(=O)/CH3/O）。改动生成器后跑全套验证约需数分钟。
+- 单例复现：`node probe_trace.js <seed> <example>`（如 `node probe_trace.js 12345 propanol`），argv[2]=seed、argv[3]=示例名，输出逐轮键长/角度；分析脚本 `analyze_angle.js`、`analyze_ring.js`；注意 `page.evaluate` 必须单对象传参 `({seed,ex}) => …, {seed,ex}`（双参数报 "Too many arguments"）。
+
+## 基团拖拽版：`球棍模型4.html`
+- 含侧栏基团面板 `#group-sidebar`，可拖拽 9 个预设基团（methyl/ethyl/phenyl/amino/carboxyl/carbonyl/aldehyde/ester/hydroxyl）到分子上吸附成键。`GROUP_SPECS` 约行 2511：每个基团局部坐标（锚在原点、连接轴 +X、放置时整组旋转使 +X 朝外、target 在锚 -X 侧键长处），含 `atoms`（t=类型、p=位置）与 `bonds`（[i,j,键序]）。放置逻辑 `createCompleteGroup()`（约行 2622）：搜索最近可键合原子 → 优先取 target 的向外 H 方向作为连接方向（取代该 H，避免误建第二键）→ 尝试 6 个绕轴旋转角选无碰撞朝向。
+- **基团键角几何要求（2026-08 修复）**：锚原子各键必须满足杂化理想角——sp3 四面体（每键与连接轴 -X 成 109.47°，其余方向 x 分量 = +1/3×键长；曾错把乙基 C3 放 (1.54,0,0) 导致 C-C-C 180°）；sp2 120°（曾把 carbonyl O 放 90°）；苯环 H 必须朝环外（曾 phenyl 的 H6 坐标写错指向环内）；羟基 O-H 在 +X 侧 109.47° 锥（O 连芳香环时被离域 π 供体逻辑按 sp2 处理，苯酚 C-O-H≈120°）。甲基、氨基 109.47°、羧基/醛基/酯基 120° 已验证正确。验证：9 组 × 4 方位 = 36 场景（verify_groups_fix.js，注意环上方方位测试点高 2.5 时短键基团（羟基 1.43）会超出 1.8×键长吸附距离阈值，用 2.2）。
+- **拖拽连接提示（2026-08 新增）**：拖动新原子或已有原子时，`updateDrag()` 末尾调 `updateConnectHint(src)`（基团拖拽跳过，其放置有独立吸附逻辑）实时高亮"松开即可成键"的目标原子（绿色发光环 `connectHintMesh`，尺寸随目标原子半径）。规则：`findConnectTarget(src)`——距离 ≤ `getTargetBondLength×1.35`、已键邻居跳过、双方未饱和（`canAddBond`）时取最近者；新原子预览用 `userData.atomType=currentAtomType` 代理判定。松开时 `endDrag()` 把新原子/被拖原子吸附到高亮目标键长处再 `updateBonds()`（`dir.lengthSq()<1e-6` 兜底防零向量）；落在侧栏/取消拖动走 `clearConnectHint()`；`clearMolecule()` 也会清提示（防悬空引用指向已销毁 atom；若目标被销毁，渲染循环重建键会误删）。debug：`window.__connectHint`{findTarget/update/clear/target/meshVisible/meshPos/setMeshScale}；自测 `window.__runConnectHintTest()`（7 项全过，写 `localStorage.CONNECT_HINT_TEST_REPORT`）。验证：`node verify_groups_fix.js` 36 方位无回归（`/目标` 高亮不干扰基团）。注意：提示网格复用单例 mesh，`clearConnectHint()` 只摘除不改 scale；`connectHintMesh` 变量不置 null（复用）。
+- **孤对电子可视化（水滴电子云，仿 nobook 电子云轮廓图样式）**：按钮 `btn-toggle-lp`（初始默认开，`localStorage.LONE_PAIRS_VIS` 持久化，启动即同步按钮文字）。每对孤对 = 1 朵半透明绿色**水滴形**云（`SphereGeometry(LP_RADIUS)` 缩放 `(LP_TEAR_MINOR, LP_TEAR_MAJOR, LP_TEAR_MINOR)`，`quaternion.setFromUnitVectors(Y→孤对方向)` 使长轴朝外）+ 云内两个黑色亮点（沿孤对方向 ±`LPE_OFFSET` 与云同轴）。方向来源：`getIdealDirections()` 把 VSEPR 电子域模板中"未被键占用的"域写 `atom.userData.__lpDirs`（单邻居分支按 `(valence-键级和)/2` 估 lp：1 个=键轴反侧、2 个=与轴±120°、3 个=绕轴对称；主流程按未分配域）。**空数组是合法值**（H/C 无孤对），补算判断必须用 `!dirs` 而非 `dirs.length`。生命周期：`refreshLonePairVisuals(force)`——force=true 全量重算，由 `generateFromSpec()`、`addMissingHydrogens()`（补氢后 lp 数可能变）、`endDrag()`（放置原子/基团后）调用；`updateLonePairVisuals()` 每帧更新位置/朝向（`animate()` 里）；`clearMolecule()` 显式 remove+dispose 各云 mesh 并清 `__lpDirs`（云是独立挂 scene 的，不随 atomsGroup 移除）。debug：`window.__lpStats`（逐原子 nLP/dirs/网格可见性）、`__toggleLonePairs`、`__lpVisualMode`。验证：水 O=2 对（方向斜对称）、氨 N=1、甲醇 O=2、H/C=0；33 聚合自测全过。
+
+## 已实现功能（2026-08）
+- **一键补氢**：按钮 `btn-toggle-hydro`（初始默认关，localStorage.HYDROGENATE_AUTO 持久化；`window.__setHydrogenate(bool)`/`__hydrogenateAuto()` 可控）。开启后"全局同步优化"统一走公共入口 `optimizeAllWithAutoHydrogen()`（按钮 btn-optimize-all 与 **Shift+O 快捷键** 均经它），先调 `addMissingHydrogens()`（`window.__addMissingHydrogens`）再 `optimizeAllAtoms()`；勿直接调 `optimizeAllAtoms()`（会绕过补氢，历史 bug）。规则：missingH = `HYDROGEN_VALENCE`（C4/N3/O2/S2/F1/Cl1/Br1/I1/P3）− Σ(键级和,含 1.5 芳香键)，clamp [0,4]；H 方向：k=1 用重原子邻居反平均方向（苯环外法线/链/OH 自然朝向），k≥2 球面贪心最大夹角采样，随后优化器校正理想角。调试接口 `window.__createHeavyAtom`/`__manualBond`（搭裸骨架自测）。验证：丙烷+8/乙烯+4/乙炔+2/苯骨架+6/甲醇+4/甲胺+5/完整分子+0，补氢后苯环键角 std=0，33 几何+23 π 无回归。
+- **饱和检测/双键防重（甲酸 C=O 中点放原子 bug 根因已修）**：`updateBonds()` 加键分支调 `canAddBond(a,b,1,newBonds)`，`getAtomBondOrderSum` 的 extraBonds 循环需跳过 `bonds.includes(bond)`（newBonds 含 existing 键，不跳过会把 C 的 σ 计成 6 → 所有新键被误拒；同时旧逻辑无跳过时 H 会同时与 C 和 O 成键）。修复后：甲酸中位 H 只连 C、Cl 只连 C、苯邻位中点 H 1 条、乙烷端 H 0 条（`verify_duplicate_bond.js` 4 场景全过）。
+- **键价计数语义（2026-08 再修，羧基羰基补氢/拖连 H bug 根因）**：`getAtomBondOrderSum()` 曾把**所有键都只计 1 条 σ**（注释声称 maxBond 是"最大 σ 键数"），导致键级和为 2 的双键端点（甲酸/羧基/酮的羰基 C=O）被误判"还有 1 个价余量" → 羰基碳还能再连一个 H、羰基氧也能再连一个 H（拖拽提示/一键补氢均受影响）。修复：**双键/三键按真实键序（2/3）累计，仅芳香 1.5 键仍按 1 计**（若 1.5 也实计，吡咯 N 的 2×1.5+1H=4 > maxBond 3 会被误判超价，苯 C 取代也会被拒）。即 `sum += (t > 1.01 && t < 1.99) ? 1 : t`。波及面：`canAddBond`/`canChangeBond`/拖拽吸附（snapNewAtomToNearestNeighbor）/连接提示（findConnectTarget）/`createCompleteGroup` 锚点搜索/`updateBonds` proximity 分支/连通性断言 5671 全部同源修正。验证：甲酸羰基 C/O、乙醛羰基 O 均拒绝加 H；乙醛羰基 C（键价 3）仍可延伸；乙烯 C（2+2H=4）饱和；苯环 C（1.5×2+1H=3<4）仍可取代；吡咯 N（3）饱和不可加；33 几何自测全过、verify_groups_fix 36 方位无回归。
+
+## 待办需求（用户明确要求，未实现）
+- （无待办；一键补氢已实现）
+
+## 参数调优
+- 默认参数内联在 `DEFAULT_OPT_PARAMS`（HTML 内 ~行 472）。外部注入方式：`window.OPT_PARAMS`、`localStorage.OPT_PARAMS`，或用户加载前写 `localStorage.OPT_PARAMS_OVERRIDE`（初始脚本会自动拷贝为 OPT_PARAMS）。
+- 常用键：`ITERATIONS`、`ANGLE_DAMPING_BASE/RING`、`BOND_DAMPING`、`CENTER_MOVE_DEFAULT/RING`、`NEIGHBOR_WEIGHT_EXPONENT`、`SP3_TETRA_STRENGTH`、`SP2_PLANARITY_STRENGTH`、`SP_LINEARITY_STRENGTH`、`RING_PLANARITY_STRENGTH`、`BOND_ORDER_THRESHOLDS`。

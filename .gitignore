@@ -1,0 +1,18 @@
+# 依赖与工具产物
+node_modules/
+.playwright-mcp/
+
+# 诊断/临时产物（不入库，版本回溯只看代码与文档）
+*.txt
+*.png
+*.json
+probe_*.js
+!probe_trace.js
+sweep_*.js
+gid_*.js
+scan_*.js
+show_*.js
+view_*.js
+move_block.js
+check_module.js
+probe_*.out
