@@ -15,4 +15,5 @@ show_*.js
 view_*.js
 move_block.js
 check_module.js
-probe_*.out
+probe_*.out# GoopSpec 本地工作区
+.goopspec/
