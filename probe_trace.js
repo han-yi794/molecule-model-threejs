@@ -1,6 +1,7 @@
 // 单例追踪：seed 固定 RNG，观察 optimizeAllAtoms 每轮键长/键角演化
 const { chromium } = require('playwright');
 const fs = require('fs');
+const path = require('path');
 (async () => {
   const seed = parseInt(process.argv[2] || '12345', 10);
   const ex = process.argv[3] || 'ethane';
