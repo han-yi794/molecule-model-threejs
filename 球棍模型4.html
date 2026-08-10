@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -247,6 +247,64 @@
             opacity: 0;
             font-family: monospace;
         }
+        #drag-hud {
+            position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+            background: rgba(10, 14, 28, 0.85); border: 1px solid rgba(120, 170, 255, 0.35);
+            border-radius: 22px; padding: 6px 14px; font-size: 13px; z-index: 90;
+            pointer-events: none; font-family: monospace; color: #dde8ff;
+            opacity: 0; transition: opacity 0.15s; display: flex; align-items: center; gap: 8px;
+            backdrop-filter: blur(6px); white-space: nowrap;
+        }
+        #drag-hud .hud-axisdot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        #torsion-hud {
+            position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+            background: rgba(20, 34, 58, 0.9); border: 1px solid rgba(255, 200, 120, 0.45);
+            border-radius: 22px; padding: 6px 14px; font-size: 13px; z-index: 90;
+            pointer-events: none; font-family: monospace; color: #ffe9c9;
+            opacity: 0; transition: opacity 0.15s; white-space: nowrap;
+            backdrop-filter: blur(6px);
+        }
+        #mode-badge {
+            position: fixed; right: 16px; bottom: 16px; z-index: 90;
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(10, 14, 28, 0.85); border: 1px solid rgba(120, 170, 255, 0.35);
+            border-radius: 22px; padding: 7px 14px; color: #dde8ff; font-size: 12px;
+            cursor: pointer; user-select: none; backdrop-filter: blur(6px);
+            transition: border-color 0.2s, box-shadow 0.2s;
+            font-family: monospace;
+        }
+        #mode-badge:hover { border-color: rgba(120, 170, 255, 0.7); box-shadow: 0 0 14px rgba(80,140,255,0.25); }
+        #mode-badge .mode-dot { width: 10px; height: 10px; border-radius: 50%; }
+        #btn-help {
+            position: fixed; right: 16px; top: 16px; z-index: 90;
+            width: 36px; height: 36px; border-radius: 50%;
+            background: rgba(10, 14, 28, 0.85); border: 1px solid rgba(120, 170, 255, 0.35);
+            color: #9fc2ff; font-size: 18px; cursor: pointer; text-align: center; line-height: 34px;
+            backdrop-filter: blur(6px); transition: border-color 0.2s; user-select: none;
+        }
+        #btn-help:hover { border-color: rgba(120, 170, 255, 0.8); color: #ffffff; }
+        #help-overlay {
+            position: fixed; inset: 0; z-index: 200; display: none;
+            background: rgba(0, 0, 6, 0.6); align-items: center; justify-content: center;
+            backdrop-filter: blur(3px);
+        }
+        #help-card {
+            width: min(580px, 92vw); max-height: 82vh; overflow-y: auto;
+            background: rgba(12, 16, 32, 0.97); border: 1px solid rgba(120, 170, 255, 0.4);
+            border-radius: 18px; padding: 26px 28px; color: #dde8ff;
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6); position: relative;
+        }
+        #help-card h2 { margin: 0 0 14px; font-size: 18px; color: #9fc2ff; }
+        #help-card h3 { margin: 18px 0 8px; font-size: 14px; color: #ffb66b; }
+        #help-card table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        #help-card td { padding: 5px 8px; border-bottom: 1px solid rgba(120, 170, 255, 0.12); vertical-align: top; }
+        #help-card td:first-child { color: #8fd0ff; white-space: nowrap; font-family: monospace; }
+        #help-close {
+            position: absolute; top: 12px; right: 16px; width: 30px; height: 30px; line-height: 28px;
+            border-radius: 50%; background: rgba(255, 255, 255, 0.08); border: none; color: #ffffff;
+            font-size: 16px; cursor: pointer; text-align: center;
+        }
+        #help-close:hover { background: rgba(255, 80, 80, 0.35); }
         #sidebar::-webkit-scrollbar {
             width: 4px;
         }
@@ -275,6 +333,10 @@
             background: rgba(255, 170, 68, 0.4);
             border-color: #ffaa66;
             transform: scale(1.02);
+        }
+        /* 隐藏"生成测试分子"相关功能（2026-08：示例下拉/生成按钮/自动测试/π自测入口） */
+        #molecule-select, #btn-generate-molecule, #btn-run-all-tests, #btn-pi-test {
+            display: none !important;
         }
     </style>
     <script type="importmap">
@@ -346,6 +408,16 @@
         <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
         <div class="action-btn" id="btn-toggle-hydro">自动补氢: 关</div>
         <div class="action-btn" id="btn-toggle-lp">显示孤对电子</div>
+        <div class="drag-mode-row">
+            <div style="font-size:12px; color:#9ab; margin-bottom:4px;">拖动方式</div>
+            <select id="drag-mode-select" style="width:100%; border-radius:12px; padding:6px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.06);">
+                <option value="plane">平面自由拖</option>
+                <option value="gizmo">三轴手柄</option>
+                <option value="lockstart">起始轴锁</option>
+                <option value="gizmo-lock">手柄 + 起始轴锁</option>
+            </select>
+        </div>
+        <div class="action-btn" id="btn-toggle-grid">网格吸附: 关</div>
         <div class="action-btn" id="btn-toggle-deloc">离域π键: 开</div>
         <div class="action-btn" id="btn-toggle-pi">显示离域π键</div>
         <div class="action-btn" id="btn-pi-test">离域π键自测</div>
@@ -365,6 +437,7 @@
             <option value="cyclopropane">环丙烷 C3H6 (应力环)</option>
             <option value="cyclobutane">环丁烷 C4H8 (应力环)</option>
             <option value="distortedButane">畸变丁烷 C4H10 (用于角度优化测试)</option>
+            <option value="butene2">2-丁烯 CH3CH=CHCH3 (顺反异构演示)</option>
             <option value="bondtest">键长测试 (多对 C–C)</option>
         </select>
         <div class="action-btn" id="btn-generate-molecule">生成</div>
@@ -379,6 +452,7 @@
         <div class="bond-type-btn" data-bond-type="1.5">芳香</div>
         <div class="bond-type-btn" data-bond-type="2">双</div>
         <div class="bond-type-btn" data-bond-type="3">三</div>
+        <div class="bond-type-btn" id="btn-flip-cistrans" title="绕双键轴旋转一侧 180°，交换顺式/反式" style="display: none; width: auto; min-width: 62px; padding: 0 10px; border-radius: 16px; white-space: nowrap;">⇄ 顺反</div>
     </div>
 
     <div id="hybridization-menu" style="display: none;">
@@ -389,6 +463,48 @@
     </div>
 
     <div id="toast-message"></div>
+
+    <!-- 三维拖动辅助：拖拽 HUD / 模式徽章 / 帮助面板 -->
+    <div id="drag-hud"><span class="hud-axisdot" id="hud-dot"></span><span id="hud-text"></span></div>
+    <div id="torsion-hud"><span id="torsion-hud-text"></span></div>
+    <div id="mode-badge" title="点击切换拖动方式 (Tab)"><span class="mode-dot" id="mode-badge-dot"></span><span id="mode-badge-text">平面拖</span></div>
+    <div id="btn-help" title="操作指南 / 快捷键">?</div>
+    <div id="help-overlay">
+        <div id="help-card">
+            <button id="help-close">✕</button>
+            <h2>操作指南 · 三维拖动辅助</h2>
+            <h3>🖱 鼠标操作</h3>
+            <table>
+                <tr><td>左键拖空白处</td><td>旋转视角</td></tr>
+                <tr><td>滚轮</td><td>缩放</td></tr>
+                <tr><td>右键拖</td><td>平移视角</td></tr>
+                <tr><td>左键点原子</td><td>选中，出现三轴手柄</td></tr>
+                <tr><td>左键拖原子</td><td>按当前拖动方式移动</td></tr>
+                <tr><td>左键点键</td><td>修改键序（单 / 芳香 / 双 / 三）</td></tr>
+                <tr><td>Ctrl / ⌘ + 点原子</td><td>设置杂化（自动 / sp³ / sp² / sp）</td></tr>
+            </table>
+            <h3>⌨ 快捷键</h3>
+            <table>
+                <tr><td>x / y / z</td><td>选中原子沿轴微移 0.1Å（Shift 反向）</td></tr>
+                <tr><td>Tab / Shift+Tab</td><td>循环切换拖动方式</td></tr>
+                <tr><td>G</td><td>网格吸附开 / 关（可对齐 0.25Å 网格）</td></tr>
+                <tr><td>0 / 1 / 2 / 3</td><td>杂化：自动 / sp³ / sp² / sp</td></tr>
+                <tr><td>O / Shift+O</td><td>优化单个原子 / 全局同步优化</td></tr>
+                <tr><td>Delete</td><td>删除选中原子</td></tr>
+            </table>
+            <h3>✋ 拖动方式</h3>
+            <table>
+                <tr><td>平面自由拖</td><td>任意方向自由移动，无辅助</td></tr>
+                <tr><td>三轴手柄</td><td>拖彩色轴=沿轴移动；拖中心白球=平面移动</td></tr>
+                <tr><td>起始轴锁</td><td>拖动时自动锁定最近的 x / y / z 世界轴</td></tr>
+                <tr><td>手柄 + 锁轴</td><td>手柄与轴锁组合，点原子本体拖动也会锁轴</td></tr>
+            </table>
+            <h3>💡 提示</h3>
+            <p style="font-size:13px; margin:6px 0 0; color:#9fb3d8; line-height:1.6;">
+                选中原子后出现三轴手柄；拖彩色轴时屏幕上方显示实时位移；接近可成键的原子时会发光提醒。单击原子=选中，按住拖动=移动。
+            </p>
+        </div>
+    </div>
 
     <script type="module">
         import * as THREE from 'three';
@@ -481,8 +597,15 @@
 
         const axesHelper = new THREE.AxesHelper(10);
         scene.add(axesHelper);
+        // 网格：主线 1.0（亮色）覆盖细分线 0.25（透明深色），细分粒度与吸附步长 SNAP_STEP 一致
+        const gridRoot = new THREE.Group();
+        scene.add(gridRoot);
         const gridHelper = new THREE.GridHelper(20, 20, 0x88ccff, 0x335588);
-        scene.add(gridHelper);
+        const gridFine = new THREE.GridHelper(20, 80, 0x223355, 0x1a2a44);
+        gridFine.material.transparent = true;
+        gridFine.material.opacity = 0.45;
+        gridRoot.add(gridHelper);
+        gridRoot.add(gridFine);
         scene.fog = new THREE.Fog(0x111122, 15, 40);
 
         const atomsGroup = new THREE.Group();
@@ -2407,7 +2530,219 @@ isOptimizing = false;
         let currentGroupKey = null;
         let currentAtomType = 'C';
         let selectedAtom = null;
-        
+
+        // ===== 三维拖动重构（2026-08）：拖动方式选择 + 三轴手柄 + 起始轴锁 + 网格吸附 =====
+        // dragMode：plane=平面自由拖（原行为）；gizmo=三轴手柄；lockstart=起始轴锁；
+        // gizmo-lock=手柄+起始轴锁（组合）。持久化到 localStorage.DRAG_MODE
+        let dragMode = (() => { try { return localStorage.getItem('DRAG_MODE') || 'plane'; } catch (e) { return 'plane'; } })();
+        let showGridSnap = (() => { try { return localStorage.getItem('GRID_SNAP') === '1'; } catch (e) { return false; } })();
+        const SNAP_STEP = 0.25;                 // 网格吸附步长（Å）
+        // 世界网格（复用场景初始化时的 gridHelper，仅控制显示/隐藏与吸附联动）
+        gridRoot.visible = showGridSnap;
+        // 三轴手柄（gizmo）：X 红 / Y 绿 / Z 蓝 箭头 + 中心白球（平面拖）
+        const GIZMO_COLORS = { x: 0xff5555, y: 0x55ff77, z: 0x5599ff };
+        const gizmoGroup = new THREE.Group();
+        gizmoGroup.visible = false;
+        scene.add(gizmoGroup);
+        function buildGizmoAxis(axisChar) {
+            const group = new THREE.Group();
+            group.userData.gizmoAxis = axisChar;
+            const shaft = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.04, 0.04, 0.55, 8),
+                new THREE.MeshBasicMaterial({ color: GIZMO_COLORS[axisChar], transparent: true, opacity: 0.95 })
+            );
+            const head = new THREE.Mesh(
+                new THREE.ConeGeometry(0.1, 0.22, 12),
+                new THREE.MeshBasicMaterial({ color: GIZMO_COLORS[axisChar] })
+            );
+            shaft.userData.isGizmoPart = true;
+            head.userData.isGizmoPart = true;
+            // 保存材质引用供 hover / 拖拽高亮（每轴独立材质，可安全改色）
+            group.userData.shaftMat = shaft.material;
+            group.userData.headMat = head.material;
+            group.add(shaft); group.add(head);
+            // 局部 +Y 轴：杆从 y=0.08 到 0.63，锥从 0.63 到 0.85
+            shaft.position.y = 0.355;
+            head.position.y = 0.74;
+            if (axisChar === 'x') group.rotation.z = -Math.PI / 2;     // +Y → +X
+            else if (axisChar === 'z') group.rotation.x = Math.PI / 2; // +Y → +Z
+            return group;
+        }
+        ['x', 'y', 'z'].forEach(c => gizmoGroup.add(buildGizmoAxis(c)));
+        const gizmoCenter = new THREE.Mesh(
+            new THREE.SphereGeometry(0.16, 16, 12),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
+        );
+        gizmoCenter.userData.isGizmoCenter = true;
+        gizmoGroup.add(gizmoCenter);
+        // 中心球隐形拾取区：可见球仅 0.16，会被轴杆/原子抢走命中，放大拾取半径到 0.45
+        //（Raycaster 不检查 visible，隐形球照常命中；轴杆仍在最近优先的 gis[0] 中胜出）
+        const gizmoCenterPick = new THREE.Mesh(
+            new THREE.SphereGeometry(0.45, 8, 4),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        gizmoCenterPick.userData.isGizmoCenter = true;
+        gizmoGroup.add(gizmoCenterPick);
+        // 轴拖/起始轴锁状态
+        let gizmoAxisDrag = null;        // 'x'|'y'|'z'（gizmo 轴拖拽中）
+        let dragAxisDir = new THREE.Vector3(0, 1, 0);
+        let dragStartClient = null;      // 锁轴判断用的按下点
+        let lockDragAxis = null;         // lockstart 已锁定的世界轴
+        let lockAxisStart = new THREE.Vector3();
+        let gizmoCenterDrag = false;     // 中心球拖拽=平面自由拖，不参与起始轴锁
+        // 辅助可视化状态（hover / 拖拽高亮 / HUD）
+        let activeGizmoAxis = null;      // 拖拽中活动轴（'x'|'y'|'z'|'center'）
+        let hoverGizmoAxis = null;       // 悬停轴（非拖拽时的 pointermove 结果）
+        let dragOrigin = null;           // 本次拖拽开始时的原子位置（HUD 位移基准）
+        const hudEl = document.getElementById('drag-hud');
+        const hudText = document.getElementById('hud-text');
+        const hudDot = document.getElementById('hud-dot');
+        function axisFromVec3(v) { return Math.abs(v.x) > 0.5 ? 'x' : Math.abs(v.y) > 0.5 ? 'y' : 'z'; }
+        // 每帧统一重算 gizmo 视觉（活动轴高亮 / 其余拖拽中半透明 / hover 放大），避免状态残留
+        function applyGizmoVisual() {
+            gizmoGroup.children.forEach(child => {
+                const ax = child.userData.gizmoAxis;
+                if (ax) {
+                    const active = isDragging && activeGizmoAxis === ax;
+                    const hover = !isDragging && hoverGizmoAxis === ax;
+                    const dim = isDragging && !active;
+                    const base = GIZMO_COLORS[ax];
+                    const col = active ? brighten(base, 0.5) : hover ? brighten(base, 0.22) : base;
+                    child.userData.shaftMat.color.setHex(col);
+                    child.userData.headMat.color.setHex(col);
+                    child.userData.shaftMat.opacity = dim ? 0.22 : 0.95;
+                    child.userData.headMat.opacity = dim ? 0.22 : 1;
+                    const s = active ? 1.18 : hover ? 1.12 : 1;
+                    child.scale.set(s, s, s);
+                } else if (child.userData.isGizmoCenter) {
+                    const active = isDragging && activeGizmoAxis === 'center';
+                    const hover = !isDragging && hoverGizmoAxis === 'center';
+                    const dim = isDragging && !active;
+                    child.material.opacity = dim ? 0.22 : (active || hover) ? 1 : 0.85;
+                    const s = active ? 1.5 : hover ? 1.35 : 1;
+                    child.scale.set(s, s, s);
+                }
+            });
+        }
+        function brighten(hex, amt) {
+            const c = new THREE.Color(hex);
+            return c.offsetHSL(0, 0, amt).getHex();
+        }
+        function updateGizmo() {
+            const alive = dragMode !== 'plane' && !torsionActive && !!selectedAtom &&
+                atomsGroup.children.includes(selectedAtom);
+            gizmoGroup.visible = alive;
+            if (alive) gizmoGroup.position.copy(selectedAtom.position);
+            activeGizmoAxis = isDragging
+                ? (gizmoCenterDrag ? 'center' : (gizmoAxisDrag || (lockDragAxis ? axisFromVec3(lockDragAxis) : null)))
+                : null;
+            applyGizmoVisual();
+        }
+        // 拖拽 HUD：轴拖显示单轴位移，平面/中心球拖显示 Δ 三分量
+        function updateDragHUD() {
+            if (!isDragging || !draggedObject || !dragOrigin) { hudEl.style.opacity = '0'; return; }
+            const d = draggedObject.position.clone().sub(dragOrigin);
+            const f = v => (v >= 0 ? '+' : '') + v.toFixed(2);
+            if (activeGizmoAxis && activeGizmoAxis !== 'center') {
+                const comp = { x: d.x, y: d.y, z: d.z }[activeGizmoAxis];
+                hudDot.style.background = '#' + GIZMO_COLORS[activeGizmoAxis].toString(16).padStart(6, '0');
+                hudText.textContent = `沿 ${activeGizmoAxis.toUpperCase()} 轴  ${f(comp)} Å`;
+            } else {
+                hudDot.style.background = '#ffffff';
+                hudText.textContent = `Δ (${f(d.x)}, ${f(d.y)}, ${f(d.z)}) Å`;
+            }
+            hudEl.style.opacity = '1';
+        }
+        function clearDragHUD() { hudEl.style.opacity = '0'; dragOrigin = null; }
+        // 射线到直线上最近点（轴拖/起始轴锁共用）
+        function projectRayToLine(ray, p0, dir) {
+            const w = dir.clone().normalize();
+            const v = ray.direction.clone();
+            const q = ray.origin.clone().sub(p0);
+            const vw = v.dot(w);
+            const denom = 1 - vw * vw;
+            if (Math.abs(denom) < 1e-8) return p0.clone();
+            const s = (q.dot(w) - q.dot(v) * vw) / denom;
+            return p0.clone().add(w.multiplyScalar(s));
+        }
+        // 网格吸附：开启时把位置各分量取整到 SNAP_STEP 网格
+        function applySnap(p) {
+            if (!showGridSnap) return p;
+            const s = SNAP_STEP;
+            p.x = Math.round(p.x / s) * s;
+            p.y = Math.round(p.y / s) * s;
+            p.z = Math.round(p.z / s) * s;
+            return p;
+        }
+        // gizmo 轴拖开始
+        function startGizmoAxisDrag(axisChar, clientX, clientY) {
+            if (isDragging || !selectedAtom) return;
+            controls.enabled = false;
+            gizmoAxisDrag = axisChar;
+            dragAxisDir.set(axisChar === 'x' ? 1 : 0, axisChar === 'y' ? 1 : 0, axisChar === 'z' ? 1 : 0);
+            referencePoint.copy(selectedAtom.position);
+            dragStartClient = { x: clientX, y: clientY };
+            dragOrigin = selectedAtom.position.clone();
+            draggedObject = selectedAtom;
+            isDragging = true;
+            isNewAtomDrag = false;
+            isGroupDrag = false;
+            currentGroupKey = null;
+        }
+        // 拖动方式与网格 UI 接线
+        const MODE_META = {
+            'plane': { label: '平面拖', color: '#8899bb', desc: '任意方向自由移动原子' },
+            'gizmo': { label: '三轴手柄', color: '#55aaff', desc: '拖彩色轴=沿轴移动，拖白球=平面移动' },
+            'lockstart': { label: '起始轴锁', color: '#ffaa44', desc: '拖动后自动锁定最近的 x/y/z 世界轴' },
+            'gizmo-lock': { label: '手柄+锁轴', color: '#55ffcc', desc: '拖轴/白球/原子三种意图，斜拖也锁轴' }
+        };
+        function setDragMode(m, silent) {
+            dragMode = m;
+            try { localStorage.setItem('DRAG_MODE', m); } catch (e) {}
+            const sel = document.getElementById('drag-mode-select');
+            if (sel) sel.value = m;
+            const meta = MODE_META[m] || MODE_META['plane'];
+            const t = document.getElementById('mode-badge-text');
+            if (t) t.textContent = meta.label;
+            const d = document.getElementById('mode-badge-dot');
+            if (d) d.style.background = meta.color;
+            if (!silent) showToast(`${meta.label}：${meta.desc}`, 2200);
+        }
+        function cycleDragMode(dir) {
+            const keys = Object.keys(MODE_META);
+            const i = keys.indexOf(dragMode);
+            setDragMode(keys[(i + dir + keys.length) % keys.length]);
+        }
+        function initDragModeUI() {
+            setDragMode(dragMode, true);
+            const sel = document.getElementById('drag-mode-select');
+            if (sel) {
+                sel.addEventListener('change', () => setDragMode(sel.value));
+            }
+            const badge = document.getElementById('mode-badge');
+            if (badge) {
+                badge.addEventListener('click', (e) => cycleDragMode(e.shiftKey ? -1 : 1));
+            }
+            const helpBtn = document.getElementById('btn-help');
+            const overlay = document.getElementById('help-overlay');
+            if (helpBtn && overlay) {
+                const close = () => { overlay.style.display = 'none'; };
+                helpBtn.addEventListener('click', () => { overlay.style.display = 'flex'; });
+                document.getElementById('help-close').addEventListener('click', close);
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+            }
+            const btn = document.getElementById('btn-toggle-grid');
+            if (btn) {
+                btn.textContent = showGridSnap ? '网格吸附: 开' : '网格吸附: 关';
+                btn.addEventListener('click', () => {
+                    showGridSnap = !showGridSnap;
+                    gridRoot.visible = showGridSnap;
+                    try { localStorage.setItem('GRID_SNAP', showGridSnap ? '1' : '0'); } catch (e) {}
+                    btn.textContent = showGridSnap ? '网格吸附: 开' : '网格吸附: 关';
+                });
+            }
+        }
+
         let dragPlane = new THREE.Plane();
         let referencePoint = new THREE.Vector3();
         const raycaster = new THREE.Raycaster();
@@ -2417,6 +2752,196 @@ isOptimizing = false;
         const bondMenu = document.getElementById('bond-type-menu');
         let selectedBond = null;
         let selectedAtomForHybrid = null;
+
+        // ===== 单键旋转（二面角，2026-08 新增）=====
+        // 语义（参考 ChimeraX Adjust Torsions）：键两端原子 = 二面角 2-3 轴，
+        // 用户点的一端为"移动侧锚"（4），该原子及经它延伸的整侧子图绕键轴旋转；
+        // 另一端为"固定侧"（1 侧）不动。仅单键（type<1.6）可转，环内键拒绝。
+        const TORSION_RAD_PER_PX = 0.012;   // 拖动灵敏度：每像素 0.012 rad ≈ 0.69°
+        let torsionPivot = null;            // 旋转侧锚原子（用户点的键端点）
+        let torsionFixed = null;            // 固定侧原子（键另一端）
+        let torsionSide = [];               // 旋转侧全部原子（pivot 侧连通块，不含 fixed）
+        let torsionActive = false;          // 旋转模式激活
+        let torsionDragging = false;        // 正在拖动旋转
+        let torsionAngle = 0;               // 累计旋转角度（rad）
+        let torsionLastClientX = 0;
+        let torsionAxisMesh = null;         // 旋转轴指示（细棒，静止不动：轴方向不变）
+        const torsionHudEl = document.getElementById('torsion-hud');
+        function torsionNeighbors(atom) {
+            return bonds.filter(b => b.atomA === atom || b.atomB === atom)
+                .map(b => b.atomA === atom ? b.atomB : b.atomA);
+        }
+        function collectTorsionSide(fixed, pivot) {
+            const side = [];
+            const seen = new Set();
+            seen.add(fixed.userData._id);
+            const stack = [pivot];
+            seen.add(pivot.userData._id);
+            while (stack.length) {
+                const cur = stack.pop();
+                side.push(cur);
+                for (const nb of torsionNeighbors(cur)) {
+                    if (!seen.has(nb.userData._id)) { seen.add(nb.userData._id); stack.push(nb); }
+                }
+            }
+            return side;
+        }
+        function setTorsionPivot(atom) {
+            if (!selectedBond) return;
+            const a = selectedBond.atomA, b = selectedBond.atomB;
+            if (atom !== a && atom !== b) return;
+            if (typeof selectedBond.type === 'number' && selectedBond.type >= 1.6) {
+                showToast('仅单键可旋转（双键/芳香键锁死二面角）', 2000);
+                return;
+            }
+            // 共轭桥单键（苯甲酸羧基-苯基、苯乙烯、联苯等）：离域π模式下锁死，
+            // 保持共平面（与 enforceConjugatedBridgeCoplanarity 同规则）
+            if (DELOCAL_PI_ENABLED && isConjugatedBridgeBond(selectedBond)) {
+                showToast('共轭桥键不可旋转（离域π体系需保持共平面）', 2400);
+                return;
+            }
+            // 环内键旋转会断环 → 拒绝（与 ChimeraX 一致）
+            try {
+                const rings = findAllRings();
+                for (const r of rings) {
+                    if (r.includes(a) && r.includes(b)) { showToast('环内键不可旋转（会断环）', 2000); return; }
+                }
+            } catch (e) {}
+            torsionFixed = (atom === a) ? b : a;
+            torsionPivot = atom;
+            torsionSide = collectTorsionSide(torsionFixed, torsionPivot);
+            torsionAngle = 0;
+            torsionActive = true;
+            // 进入旋转模式即关闭键菜单：menu 会挡住键两端原子（换侧/取消点击）
+            bondMenu.style.display = 'none';
+            showTorsionAxis();
+            updateTorsionHUD();
+            showToast(`旋转 ${torsionFixed.userData.atomType}—${torsionPivot.userData.atomType} 键：按住空白处拖动旋转该侧（点另一端原子可换侧）`, 3000);
+        }
+        function clearTorsion() {
+            torsionActive = false;
+            torsionDragging = false;
+            torsionPivot = null;
+            torsionFixed = null;
+            torsionSide = [];
+            if (torsionAxisMesh) { scene.remove(torsionAxisMesh); torsionAxisMesh = null; }
+            hideTorsionHUD();
+        }
+        function showTorsionAxis() {
+            if (torsionAxisMesh) scene.remove(torsionAxisMesh);
+            const p1 = torsionFixed.position, p2 = torsionPivot.position;
+            const len = p1.distanceTo(p2);
+            const mesh = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.05, 0.05, len * 3, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffd28a, transparent: true, opacity: 0.4, depthWrite: false })
+            );
+            mesh.position.copy(p1).add(p2).multiplyScalar(0.5);
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p2.clone().sub(p1).normalize());
+            scene.add(mesh);
+            torsionAxisMesh = mesh;
+        }
+        function updateTorsionHUD() {
+            if (!torsionActive || !selectedBond || !torsionPivot) { hideTorsionHUD(); return; }
+            const deg = torsionAngle * 180 / Math.PI;
+            const t = torsionPivot.userData.atomType, f = torsionFixed.userData.atomType;
+            torsionHudEl.textContent = `旋转 ${f}—${t} 键 · 二面角 ${deg >= 0 ? '+' : ''}${deg.toFixed(1)}° · 按住空白处拖动`;
+            torsionHudEl.style.opacity = '1';
+        }
+        function hideTorsionHUD() { torsionHudEl.style.opacity = '0'; }
+        function rotateTorsion(dAngle) {
+            if (!torsionActive || torsionSide.length === 0) return;
+            const axis = torsionPivot.position.clone().sub(torsionFixed.position).normalize();
+            const q = new THREE.Quaternion().setFromAxisAngle(axis, dAngle);
+            for (const at of torsionSide) {
+                at.position.sub(torsionFixed.position).applyQuaternion(q).add(torsionFixed.position);
+            }
+            torsionAngle += dAngle;
+            updateTorsionHUD();
+        }
+
+        // ===== 顺反异构翻转（2026-08 新增）=====
+        // 语义：C=C 双键两端各连 2 个不同取代基时存在顺式(Z)/反式(E)构型。
+        // "⇄ 顺反"按钮 = 绕双键轴（atomA→atomB）把 atomB 侧整侧子图旋转 180°：
+        // 该侧两个取代基互换位置（刚体旋转，sp2 平面与键长不变），顺反互换。
+        // 顺反判定：两端各取"第一个非双键邻居"，投影到垂直双键轴的平面，
+        // 两点积同侧(cis)/异侧(trans)。
+        const CIS_TRANS_TYPE_MIN = 1.9, CIS_TRANS_TYPE_MAX = 2.1;   // 仅纯双键
+        function isDoubleBondType(t) { return typeof t === 'number' && t >= CIS_TRANS_TYPE_MIN && t <= CIS_TRANS_TYPE_MAX; }
+        function bondOtherNeighbors(atom, except) {
+            return bonds.filter(b => (b.atomA === atom || b.atomB === atom) && b.atomA !== except && b.atomB !== except)
+                .map(b => b.atomA === atom ? b.atomB : b.atomA);
+        }
+        // 返回 'cis' / 'trans' / null（无顺反意义：非双键或取代基不足）
+        function cisTransOf(bond) {
+            if (!bond || !isDoubleBondType(bond.type)) return null;
+            const a = bond.atomA, b = bond.atomB;
+            const nas = bondOtherNeighbors(a, b);
+            const nbs = bondOtherNeighbors(b, a);
+            if (nas.length === 0 || nbs.length === 0) return null;
+            const x1 = nas[0], x2 = nbs[0];
+            const axis = b.position.clone().sub(a.position).normalize();
+            const v1 = x1.position.clone().sub(a.position);
+            const v2 = x2.position.clone().sub(b.position);
+            const p1 = v1.clone().sub(axis.clone().multiplyScalar(v1.dot(axis)));
+            const p2 = v2.clone().sub(axis.clone().multiplyScalar(v2.dot(axis)));
+            if (p1.lengthSq() < 1e-9 || p2.lengthSq() < 1e-9) return null;
+            return p1.dot(p2) >= 0 ? 'cis' : 'trans';
+        }
+        // 翻转顺反；返回翻转后的构型（'cis'/'trans'）或 null（被拒绝）
+        function flipCisTrans(bond) {
+            if (!bond) return null;
+            if (!isDoubleBondType(bond.type)) {
+                showToast('仅双键可翻转顺反（芳香键为离域体系，三键无顺反）', 2000);
+                return null;
+            }
+            const a = bond.atomA, b = bond.atomB;
+            // 环内双键旋转会断环 → 拒绝（与单键旋转同一规则）
+            try {
+                const rings = findAllRings();
+                for (const r of rings) {
+                    if (r.includes(a) && r.includes(b)) { showToast('环内双键不可翻转顺反（会断环）', 2000); return null; }
+                }
+            } catch (e) {}
+            const before = cisTransOf(bond);
+            if (!before) {
+                showToast('该双键取代基不足，无顺反异构', 2000);
+                return null;
+            }
+            const side = collectTorsionSide(a, b);   // 旋转 atomB 侧整侧子图（含环外 H 与延伸链）
+            const axis = b.position.clone().sub(a.position).normalize();
+            const q = new THREE.Quaternion().setFromAxisAngle(axis, Math.PI);
+            for (const at of side) {
+                at.position.sub(a.position).applyQuaternion(q).add(a.position);
+            }
+            const after = cisTransOf(bond);
+            const label = fenfanLabel(after);
+            showToast(`已翻转为${label}`, 2000);
+            return after;
+        }
+        function fenfanLabel(c) { return c === 'cis' ? '顺式 (cis/Z)' : c === 'trans' ? '反式 (trans/E)' : '无顺反'; }
+
+        // ===== 共轭桥判定（2026-08 新增）=====
+        // 化学上共轭π体系（苯甲酸羧基-苯基、苯乙烯双键-苯环、联苯双环、丁二烯中键）
+        // 的桥键两端都具 sp2 平面时,整套体系必须共平面才能维持共轭 → 旋转会破坏共轭。
+        // 判定规则与 enforceConjugatedBridgeCoplanarity 的候选桥完全一致：
+        // 单键(type<1.6) + 两端重原子 + 两端各具 sp2 平面（芳香环内或有双键伙伴）。
+        // 离域π键开启（DELOCAL_PI_ENABLED）时,这类键在单键旋转功能中被锁死。
+        function isConjugatedBridgeBond(bond) {
+            if (!bond || typeof bond.type !== 'number') return false;
+            if (bond.type < 0.99 || bond.type > 1.01) return false;   // 仅纯单键（芳香 1.5 走环内/键级锁，不参与）
+            const u = bond.atomA, v = bond.atomB;
+            if (!u.userData || !v.userData) return false;
+            if (u.userData.atomType === 'H' || v.userData.atomType === 'H') return false;
+            let aromRings = null;
+            function hasPlane(a) {
+                if (aromRings === null) {
+                    try { aromRings = analyzeRings().filter(r => r.aromaticity === 'aromatic'); } catch (e) { aromRings = []; }
+                }
+                for (const r of aromRings) if (r.atoms.includes(a)) return true;
+                return getBondsForAtom(a).some(bb => bb.type >= 1.9);
+            }
+            return hasPlane(u) && hasPlane(v);
+        }
 
         function getNormalizedMouse(clientX, clientY) {
             const rect = canvas.getBoundingClientRect();
@@ -2688,7 +3213,11 @@ isOptimizing = false;
                     { t: 'C', p: [0, 0, 0] },
                     { t: 'O', p: [0.622, 1.077, 0] },
                     { t: 'O', p: [0.715, -1.238, 0] },
-                    { t: 'H', p: [-0.248, -1.417, 0] }
+                    // C-O-H 须为 109.47°（sp3 四面体锥）：O2=(0.715,-1.238)，O→C 方向角 120°，
+                    // H 绕 O 旋转 -109.47° 到方向角 10.53°（朝外、远离 C=O 氧）。
+                    // 曾写 (-0.248,-1.417) 使 O→H 与 O→C 夹角 70.5°（点积 +1/3 而非 -1/3），
+                    // 实测 optimize 后 O 键角从 119.8 偏差、初始键角 70.5° 明显错误。
+                    { t: 'H', p: [1.6785, -1.0588, 0] }
                 ],
                 bonds: [[0, 1, 2], [0, 2, 1], [2, 3, 1]]
             },
@@ -2761,6 +3290,10 @@ isOptimizing = false;
             const meshes = [];
             for (const at of spec.atoms) {
                 const m = createCompleteAtom(at.t, new THREE.Vector3(at.p[0], at.p[1], at.p[2]));
+                // 基团放置后不显示各元素标签（用户要求：删除基团拖出来后的标签）
+                try {
+                    if (m.userData && m.userData.label) { m.remove(m.userData.label); delete m.userData.label; }
+                } catch (e) {}
                 meshes.push(m);
             }
             for (const b of spec.bonds) {
@@ -3063,6 +3596,15 @@ isOptimizing = false;
                         newGlow.visible = true;
                     }
                 }
+                // 首次选中时的引导提示（仅非平面拖模式，localStorage 防重复）
+                if (dragMode !== 'plane') {
+                    let hinted = false;
+                    try { hinted = localStorage.getItem('GIZMO_HINT_SHOWN') === '1'; } catch (e) {}
+                    if (!hinted) {
+                        try { localStorage.setItem('GIZMO_HINT_SHOWN', '1'); } catch (e) {}
+                        showToast('拖动方式：拖彩色轴=沿轴移动 · 拖白球=平面移动 · 拖原子=锁轴（Tab 循环切换）', 4200);
+                    }
+                }
             }
         }
 
@@ -3081,7 +3623,15 @@ isOptimizing = false;
             if (key === 'x' || key === 'X') dx = shift ? -MOVE_STEP : MOVE_STEP;
             else if (key === 'y' || key === 'Y') dy = shift ? -MOVE_STEP : MOVE_STEP;
             else if (key === 'z' || key === 'Z') dz = shift ? -MOVE_STEP : MOVE_STEP;
-            else if (key === '0') {
+            else if (key === 'Tab') {
+                e.preventDefault();
+                cycleDragMode(e.shiftKey ? -1 : 1);
+                return;
+            } else if (key === 'g' || key === 'G') {
+                e.preventDefault();
+                document.getElementById('btn-toggle-grid').click();
+                return;
+            } else if (key === '0') {
                 e.preventDefault();
                 setSelectedAtomHybridization('auto');
                 return;
@@ -3209,6 +3759,8 @@ isOptimizing = false;
 
         // --- 场景操作：清空与生成测试分子 ---
         function clearMolecule() {
+            // 单键旋转状态清理（含旋转轴指示棒）
+            clearTorsion();
             // 兜底：清空场景时强制结束任何残留的优化状态（若 isOptimizing 被
             // 异常遗留为 true，后续 updateBonds() 只更新几何不重建键列表）
             isOptimizing = false;
@@ -3949,6 +4501,25 @@ isOptimizing = false;
             updateBonds();
         }
 
+        function generateButene2() {
+            clearMolecule();
+            // 顺式-2-丁烯：(Z)-CH3-CH=CH-CH3 —— 双键 C2=C3 沿 X 轴（双键平面 = XY），
+            // 两端 CH3 均偏向 +Y 侧（同侧 → 顺式），两端 H 均偏向 -Y 侧。
+            // 可用「⇄ 顺反」翻成反式：C2 侧子图绕 C2→C3 轴转 180°，CH3 换到 -Y。
+            const c1 = createCompleteAtom('C', new THREE.Vector3(-1.3, 1.299, 0));
+            const c2 = createCompleteAtom('C', new THREE.Vector3(-0.55, 0, 0));
+            const c3 = createCompleteAtom('C', new THREE.Vector3(0.55, 0, 0));
+            const c4 = createCompleteAtom('C', new THREE.Vector3(1.3, 1.299, 0));
+            addBondBetween(c1, c2, 1); addBondBetween(c2, c3, 2); addBondBetween(c3, c4, 1);
+            // 双键平面 = XY；两端 H 偏 -Y 侧（与 CH3 异侧）
+            createCompleteAtom('H', c2.position.clone().add(new THREE.Vector3(-0.5, -0.866, 0).multiplyScalar(1.09)));
+            createCompleteAtom('H', c3.position.clone().add(new THREE.Vector3(0.5, -0.866, 0).multiplyScalar(1.09)));
+            // 甲基氢用四面体方向扩张
+            addMethylHs(c1, c2);
+            addMethylHs(c4, c3);
+            updateBonds();
+        }
+
         function generateIsobutene() {
             clearMolecule();
             // 2-甲基丙烯：CH2=C(CH3)2，sp2 中心碳与两个甲基成 120°
@@ -4120,6 +4691,7 @@ isOptimizing = false;
             else if (v === 'ethylene') generateEthylene();
             else if (v === 'acetylene') generateAcetylene();
             else if (v === 'benzene') generateBenzene();
+            else if (v === 'butene2') generateButene2();
             else if (v === 'cyclohexane') generateCyclohexane();
             else if (v === 'bondtest') generateBondDistanceTest();
             else showToast('未实现该分子', 1200);
@@ -4271,8 +4843,10 @@ isOptimizing = false;
         // 是否在页面加载后自动运行所有示例（开发/验证用途）；?noauto=1 可跳过（供 sweep/探针脚本）
         const AUTO_RUN_ALL_TESTS = false;   // 合并版: 自动测试按离域π键开关分流（开→π自测；关→主几何测试，与球棍模型2 行为一致）
 
-        // 自动测试按模式分流：开启离域π键 → 自测；关闭 → 主测试（仅杂化+VSEPR）
-        if (!window.location.search.includes('noauto')) setTimeout(() => {
+        // 自动测试按模式分流：开启离域π键 → 自测；关闭 → 主测试（仅杂化+VSEPR）。
+        // 必须受 AUTO_RUN_ALL_TESTS 约束（2026-08 修复：此前条件漏掉了该开关，页面加载 1.2s 后
+        // 总会自动跑测试，最后一个示例分子会留在场景里成为"初始分子"，用户要求首屏不展示示例）
+        if (AUTO_RUN_ALL_TESTS && !window.location.search.includes('noauto')) setTimeout(() => {
             try {
                 if (DELOCAL_PI_ENABLED) {
                     try { runPiSystemTests(); } catch (e) { try { window.__INIT_ERRORS.push('runPiSystemTests:' + String(e)); } catch(_){} }
@@ -5663,6 +6237,7 @@ isOptimizing = false;
             butane:      { types: ['C','C','C','C','H','H','H','H','H','H','H','H','H','H'], bonds: [[0,1],[1,2],[2,3],[0,4],[0,5],[0,6],[1,7],[1,8],[2,9],[2,10],[3,11],[3,12],[3,13]] },
             isobutane:   { types: ['C','C','C','C','H','H','H','H','H','H','H','H','H','H'], bonds: [[0,1],[0,2],[0,3],[1,4],[1,5],[1,6],[2,7],[2,8],[2,9],[3,10],[3,11],[3,12],[0,13]] },
             butene:      { types: ['C','C','C','C','H','H','H','H','H','H'], bonds: [[0,1,2],[1,2],[2,3],[0,4],[0,5],[1,6],[2,7],[3,8],[3,9]] },
+            butene2:     { types: ['C','C','C','C','H','H','H','H','H','H','H','H'], bonds: [[0,1],[1,2,2],[2,3],[0,4],[0,5],[0,6],[1,7],[2,8],[3,9],[3,10],[3,11]] },
             isobutene:   { types: ['C','C','C','C','H','H','H','H','H','H','H','H'], bonds: [[0,1,2],[1,2],[1,3],[0,4],[0,5],[2,6],[2,7],[2,8],[3,9],[3,10],[3,11]] },
             propanol:    { types: ['C','C','C','O','H','H','H','H','H','H'], bonds: [[0,1],[1,2],[2,3],[3,4],[0,5],[0,6],[0,7],[1,8],[1,9]] },
             ethanol:     { types: ['C','C','O','H','H','H','H','H'], bonds: [[0,1],[1,2],[2,3],[0,4],[0,5],[0,6],[1,7]] },
@@ -5736,6 +6311,7 @@ isOptimizing = false;
                 cyclohexane: generateCyclohexane, cyclopropane: generateCyclopropane, cyclobutane: generateCyclobutane,
                 distortedButane: generateDistortedButane, adenineLike: generateAdenineLike, bondtest: generateBondDistanceTest,
                 butane: generateButane, isobutane: generateIsobutane, butene: generateButene,
+                butene2: generateButene2,
                 isobutene: generateIsobutene, propanol: generatePropanol, ethanol: generateEthanol,
                 methanol: generateMethanol, aceticAcid: generateAceticAcid, acetone: generateAcetone,
                 formaldehyde: generateFormaldehyde, formicAcid: generateFormicAcid, methylamine: generateMethylamine
@@ -5917,6 +6493,7 @@ isOptimizing = false;
             preview.position.copy(referencePoint);
             scene.add(preview);
             draggedObject = preview;
+            dragOrigin = preview.position.clone();
             isNewAtomDrag = true;
             isGroupDrag = false;
             currentGroupKey = null;
@@ -5949,6 +6526,7 @@ isOptimizing = false;
             preview.position.copy(referencePoint);
             scene.add(preview);
             draggedObject = preview;
+            dragOrigin = preview.position.clone();
             isDragging = true;
             isNewAtomDrag = false;
             isGroupDrag = true;
@@ -5966,6 +6544,11 @@ isOptimizing = false;
             isGroupDrag = false;
             currentGroupKey = null;
             isDragging = true;
+            dragOrigin = atomMesh.position.clone();
+            // 三维拖动重构：记录按下点供"起始轴锁"判定，重置锁定状态
+            dragStartClient = { x: clientX, y: clientY };
+            gizmoAxisDrag = null;
+            lockDragAxis = null;
         }
 
         function updateDrag(clientX, clientY) {
@@ -5975,10 +6558,44 @@ isOptimizing = false;
             const ndc = getNormalizedMouse(clientX, clientY);
             if (!ndc) return;
             raycaster.setFromCamera(ndc, camera);
+            // 起始轴锁（lockstart / gizmo-lock）：按下后的第一次移动决定锁定世界轴
+            // 中心球拖拽除外——它是 gizmo 的平面自由拖入口，不参与锁轴
+            if ((dragMode === 'lockstart' || (dragMode === 'gizmo-lock' && !gizmoCenterDrag)) && !lockDragAxis && dragStartClient) {
+                const ddx = clientX - dragStartClient.x, ddy = clientY - dragStartClient.y;
+                if (Math.abs(ddx) + Math.abs(ddy) > 6) {
+                    const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+                    const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+                    const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+                    const screenDir = Math.abs(ddx) >= Math.abs(ddy) ? camRight : camUp;
+                    let best = axes[0], bestDot = -1;
+                    for (const a of axes) {
+                        const d = Math.abs(a.dot(screenDir));
+                        if (d > bestDot) { bestDot = d; best = a; }
+                    }
+                    lockDragAxis = best.clone();
+                    lockAxisStart.copy(draggedObject.position);
+                }
+            }
+            // 轴拖（gizmo 轴柄或已锁定的起始轴）→ 射线到轴线最近点
+            if (gizmoAxisDrag || lockDragAxis) {
+                const axis = gizmoAxisDrag
+                    ? (dragAxisDir.x ? new THREE.Vector3(1, 0, 0) : dragAxisDir.y ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1))
+                    : lockDragAxis;
+                const p = projectRayToLine(raycaster.ray, gizmoAxisDrag ? referencePoint : lockAxisStart, axis);
+                applySnap(p);
+                draggedObject.position.copy(p);
+                if (!isGroupDrag) updateConnectHint(isNewAtomDrag ? null : draggedObject);
+                updateDragHUD();
+                return;
+            }
             const intersection = new THREE.Vector3();
-            if (raycaster.ray.intersectPlane(dragPlane, intersection)) draggedObject.position.copy(intersection);
+            if (raycaster.ray.intersectPlane(dragPlane, intersection)) {
+                applySnap(intersection);
+                draggedObject.position.copy(intersection);
+            }
             // 拖动中实时更新"可连接目标"高亮（基团拖拽除外，其放置有独立吸附逻辑）
             if (!isGroupDrag) updateConnectHint(isNewAtomDrag ? null : draggedObject);
+            updateDragHUD();
         }
 
         function endDrag(clientX, clientY) {
@@ -6025,12 +6642,17 @@ isOptimizing = false;
             }
             clearConnectHint();
             refreshLonePairVisuals();
+            clearDragHUD();
             if ((isNewAtomDrag || isGroupDrag) && draggedObject) scene.remove(draggedObject);
             draggedObject = null;
             isDragging = false;
             isNewAtomDrag = false;
             isGroupDrag = false;
             currentGroupKey = null;
+            gizmoAxisDrag = null;
+            lockDragAxis = null;
+            dragStartClient = null;
+            gizmoCenterDrag = false;
             controls.enabled = true;
         }
 
@@ -6038,19 +6660,67 @@ isOptimizing = false;
             if (!isDragging) return;
             if ((isNewAtomDrag || isGroupDrag) && draggedObject) scene.remove(draggedObject);
             clearConnectHint();
+            clearDragHUD();
             draggedObject = null;
             isDragging = false;
             isNewAtomDrag = false;
             isGroupDrag = false;
             currentGroupKey = null;
+            gizmoAxisDrag = null;
+            lockDragAxis = null;
+            dragStartClient = null;
+            gizmoCenterDrag = false;
             controls.enabled = true;
         }
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (isDragging) return;
+            hoverGizmoAxis = null;
+            const ndc = getNormalizedMouse(e.clientX, e.clientY);
+            if (!ndc) return;
+            raycaster.setFromCamera(ndc, camera);
+            let cursor = 'default';
+            if (dragMode !== 'plane' && gizmoGroup.visible && selectedAtom) {
+                const gis = raycaster.intersectObjects(gizmoGroup.children, true);
+                if (gis.length > 0) {
+                    let node = gis[0].object;
+                    while (node && !node.userData.gizmoAxis && !node.userData.isGizmoCenter) node = node.parent;
+                    if (node) { hoverGizmoAxis = node.userData.gizmoAxis || 'center'; cursor = 'move'; }
+                }
+            }
+            if (!hoverGizmoAxis) {
+                const atoms = atomsGroup.children.filter(child => child.userData?.isAtom);
+                const ai = raycaster.intersectObjects(atoms);
+                cursor = ai.length > 0 ? 'pointer' : (torsionActive ? 'move' : 'default');
+            }
+            canvas.style.cursor = cursor;
+        });
 
         canvas.addEventListener('mousedown', (e) => {
             if (isDragging) return;
             const ndc = getNormalizedMouse(e.clientX, e.clientY);
             if (!ndc) return;
             raycaster.setFromCamera(ndc, camera);
+            // 三维拖动重构：gizmo 手柄优先拾取（三轴箭头/中心球），命中则走轴拖或平面拖
+            if (dragMode !== 'plane' && gizmoGroup.visible && selectedAtom && !isGroupDrag) {
+                const gis = raycaster.intersectObjects(gizmoGroup.children, true);
+                if (gis.length > 0) {
+                    let node = gis[0].object;
+                    while (node && !node.userData.gizmoAxis && !node.userData.isGizmoCenter) node = node.parent;
+                    if (node) {
+                        if (node.userData.isGizmoCenter) {
+                            // 中心球：在过原子的相机平行平面内拖（原"平面自由拖"语义）
+                            startExistingDrag(selectedAtom, e.clientX, e.clientY);
+                            gizmoCenterDrag = true;
+                        } else {
+                            startGizmoAxisDrag(node.userData.gizmoAxis, e.clientX, e.clientY);
+                        }
+                        setSelectedAtom(selectedAtom);
+                        e.preventDefault();
+                        return;
+                    }
+                }
+            }
             const atoms = atomsGroup.children.filter(child => child.userData?.isAtom);
             const atomIntersects = raycaster.intersectObjects(atoms);
             if (atomIntersects.length > 0) {
@@ -6065,6 +6735,9 @@ isOptimizing = false;
                     e.preventDefault();
                     return;
                 }
+                // 单键旋转：点中已选中键的端点原子 → 设为旋转侧锚（点另一端可换侧）
+                if (selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
+                else clearTorsion();
                 startExistingDrag(atom, e.clientX, e.clientY);
                 setSelectedAtom(atom);
                 e.preventDefault();
@@ -6076,14 +6749,36 @@ isOptimizing = false;
                 const cyl = bondIntersects[0].object;
                 const bond = bonds.find(b => b.cylinders.includes(cyl));
                 if (bond) {
-                    selectedBond = bond;
-                    const x = e.clientX, y = e.clientY;
-                    bondMenu.style.display = 'flex';
-                    bondMenu.style.left = x + 'px';
-                    bondMenu.style.top = y + 'px';
+                    if (selectedBond === bond) {
+                        // 再次点击同一键 = 取消选中（连带退出旋转模式）
+                        selectedBond = null;
+                        clearTorsion();
+                        bondMenu.style.display = 'none';
+                    } else {
+                        selectedBond = bond;
+                        // 已选中键的端点原子 → 自动进入旋转模式
+                        if (selectedAtom && (selectedAtom === bond.atomA || selectedAtom === bond.atomB)) setTorsionPivot(selectedAtom);
+                        else clearTorsion();
+                        const x = e.clientX, y = e.clientY;
+                        document.getElementById('btn-flip-cistrans').style.display = isDoubleBondType(bond.type) ? 'flex' : 'none';
+                        bondMenu.style.display = 'flex';
+                        bondMenu.style.left = x + 'px';
+                        bondMenu.style.top = y + 'px';
+                    }
                 }
                 e.preventDefault();
-            } else setSelectedAtom(null);
+            } else {
+                if (torsionActive) {
+                    // 旋转模式：空白处按下 = 拖动旋转该侧（临时禁用视角旋转）
+                    controls.enabled = false;
+                    torsionDragging = true;
+                    torsionLastClientX = e.clientX;
+                    e.preventDefault();
+                    return;
+                }
+                clearTorsion();
+                setSelectedAtom(null);
+            }
         });
 
         canvas.addEventListener('touchstart', (e) => {
@@ -6097,6 +6792,8 @@ isOptimizing = false;
                 const atomIntersects = raycaster.intersectObjects(atoms);
                 if (atomIntersects.length > 0) {
                     const atom = atomIntersects[0].object;
+                    if (selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
+                    else clearTorsion();
                     startExistingDrag(atom, touch.clientX, touch.clientY);
                     setSelectedAtom(atom);
                     e.preventDefault();
@@ -6108,19 +6805,43 @@ isOptimizing = false;
                     const cyl = bondIntersects[0].object;
                     const bond = bonds.find(b => b.cylinders.includes(cyl));
                     if (bond) {
-                        selectedBond = bond;
-                        const x = touch.clientX, y = touch.clientY;
-                        bondMenu.style.display = 'flex';
-                        bondMenu.style.left = x + 'px';
-                        bondMenu.style.top = y + 'px';
+                        if (selectedBond === bond) {
+                            selectedBond = null;
+                            clearTorsion();
+                            bondMenu.style.display = 'none';
+                        } else {
+                            selectedBond = bond;
+                            if (selectedAtom && (selectedAtom === bond.atomA || selectedAtom === bond.atomB)) setTorsionPivot(selectedAtom);
+                            else clearTorsion();
+                            const x = touch.clientX, y = touch.clientY;
+                            document.getElementById('btn-flip-cistrans').style.display = isDoubleBondType(bond.type) ? 'flex' : 'none';
+                            bondMenu.style.display = 'flex';
+                            bondMenu.style.left = x + 'px';
+                            bondMenu.style.top = y + 'px';
+                        }
                     }
                     e.preventDefault();
-                } else setSelectedAtom(null);
+                } else {
+                    if (torsionActive) {
+                        controls.enabled = false;
+                        torsionDragging = true;
+                        torsionLastClientX = touch.clientX;
+                        e.preventDefault();
+                        return;
+                    }
+                    clearTorsion();
+                    setSelectedAtom(null);
+                }
             }
         }, { passive: false });
 
         document.querySelectorAll('.bond-type-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                if (btn.id === 'btn-flip-cistrans') {
+                    // 顺反翻转：绕双键轴旋转一侧 180°（菜单保持打开可连点/换键）
+                    if (selectedBond) flipCisTrans(selectedBond);
+                    return;
+                }
                 const newTypeStr = e.target.dataset.bondType;
                 const newType = parseFloat(newTypeStr);
                 if (selectedBond) {
@@ -6170,10 +6891,35 @@ isOptimizing = false;
             const hybridizationMenu = document.getElementById('hybridization-menu');
             if (!hybridizationMenu.contains(e.target) && e.target !== canvas) hybridizationMenu.style.display = 'none'; 
         });
-        window.addEventListener('mousemove', (e) => updateDrag(e.clientX, e.clientY));
-        window.addEventListener('mouseup', (e) => endDrag(e.clientX, e.clientY));
-        window.addEventListener('touchmove', (e) => { if (isDragging) { e.preventDefault(); if (e.touches.length === 1) updateDrag(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
-        window.addEventListener('touchend', (e) => { if (isDragging) { e.preventDefault(); if (e.changedTouches.length > 0) endDrag(e.changedTouches[0].clientX, e.changedTouches[0].clientY); else cancelDrag(); } });
+        window.addEventListener('mousemove', (e) => {
+            if (torsionDragging) {
+                const dx = e.clientX - torsionLastClientX;
+                torsionLastClientX = e.clientX;
+                if (dx !== 0) rotateTorsion(dx * TORSION_RAD_PER_PX);
+                return;
+            }
+            updateDrag(e.clientX, e.clientY);
+        });
+        window.addEventListener('mouseup', (e) => {
+            if (torsionDragging) { torsionDragging = false; controls.enabled = true; return; }
+            endDrag(e.clientX, e.clientY);
+        });
+        window.addEventListener('touchmove', (e) => {
+            if (torsionDragging) {
+                e.preventDefault();
+                if (e.touches.length === 1) {
+                    const dx = e.touches[0].clientX - torsionLastClientX;
+                    torsionLastClientX = e.touches[0].clientX;
+                    if (dx !== 0) rotateTorsion(dx * TORSION_RAD_PER_PX);
+                }
+                return;
+            }
+            if (isDragging) { e.preventDefault(); if (e.touches.length === 1) updateDrag(e.touches[0].clientX, e.touches[0].clientY); }
+        }, { passive: false });
+        window.addEventListener('touchend', (e) => {
+            if (torsionDragging) { torsionDragging = false; controls.enabled = true; return; }
+            if (isDragging) { e.preventDefault(); if (e.changedTouches.length > 0) endDrag(e.changedTouches[0].clientX, e.changedTouches[0].clientY); else cancelDrag(); }
+        });
         window.addEventListener('touchcancel', (e) => { e.preventDefault(); cancelDrag(); });
         window.addEventListener('dragstart', (e) => e.preventDefault());
         window.addEventListener('selectstart', (e) => e.preventDefault());
@@ -6544,11 +7290,11 @@ isOptimizing = false;
         const LP_OPACITY = 0.30;            // 低透明度，蓬松轻散的云团观感（nobook 云 α≈0.13，本场景加两档便于辨识）
         const LP_RADIUS = 0.42;             // 云基准半径
         const LP_DIST = 0.78;               // 云心距原子中心的距离
-        const LP_TEAR_MAJOR = 1.4;          // 云滴长轴（沿孤对方向），饱满椭圆体
-        const LP_TEAR_MINOR = 0.95;         // 云滴短轴（垂直方向），圆润（"阔端朝外"的云滴轮廓）
+        const LP_TEAR_MAJOR = 1.4;          // 轮廓长轴（沿孤对方向），饱满椭圆体
+        const LP_TEAR_MINOR = 1.08;         // 轮廓短轴（垂直方向）。仿 nobook SO₃²⁻ 页云滴：bbox 长/短=1.5:1.158≈1.295，长1.4→短1.08
         const LPE_COLOR = 0x000000;         // 云内两个小球（代表 2 个电子）的颜色
-        const LPE_RADIUS = 0.085;           // 小球半径
-        const LPE_OFFSET = 0.15;            // 两个小球沿孤对方向相对云心的错开距离（远小于云半径，任何视角都在云轮廓内部）
+        const LPE_RADIUS = 0.1;             // 小球半径（仿 nobook SO₃²⁻ 页黑点尺寸）
+        const LPE_OFFSET = 0.3;             // 两个小球沿主方向相对云心的错开距离（仿 nobook SO₃²⁻ 页黑点间距 ±0.3，仍在云轮廓内部）
         function updateLonePairVisuals() {
             for (const child of atomsGroup.children) {
                 if (!child.userData || !child.userData.isAtom) continue;
@@ -6598,8 +7344,14 @@ isOptimizing = false;
                         m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize());
                         return;
                     }
-                    // 亮点：沿孤对方向在云心两侧错开（与云同轴，突出"一对电子"形貌）
-                    m.position.copy(base).add(d.clone().multiplyScalar((i % 3 === 1 ? -1 : 1) * LPE_OFFSET));
+                    // 亮点：在主方向垂直的对称平面内错开（两电子与中心原子等距，
+                    // 仿 nobook SO₃²⁻ 页黑点绕原子对称排布；若沿用主方向 ±off，两点
+                    // 距原子一端近一端远，不满足等距）
+                    const up = new THREE.Vector3(0, 1, 0);
+                    let v = new THREE.Vector3().crossVectors(up, d);
+                    if (v.lengthSq() < 1e-6) v.set(1, 0, 0).cross(d);
+                    v.normalize();
+                    m.position.copy(base).add(v.multiplyScalar((i % 3 === 1 ? -1 : 1) * LPE_OFFSET));
                 });
             }
         }
@@ -6639,9 +7391,105 @@ isOptimizing = false;
             const _lb = document.getElementById('btn-toggle-lp');
             if (_lb) _lb.textContent = showLonePairs ? '隐藏孤对电子' : '显示孤对电子';
         } catch (e) {}
+        initDragModeUI();
+        // 拖动重构调试接口
+        window.__dragMode = {
+            get: () => dragMode,
+            set: (m) => setDragMode(m, true),
+            gizmoVisible: () => gizmoGroup.visible,
+            gizmoParts: () => gizmoGroup.children.map(c => c.userData.gizmoAxis || c.userData.isGizmoCenter ? c.userData.gizmoAxis || 'center' : '?'),
+            gridSnap: () => showGridSnap,
+            toggleGrid: () => { document.getElementById('btn-toggle-grid').click(); },
+            selectFirstAtom: () => {
+                const a = atomsGroup.children.find(c => c.userData && c.userData.isAtom);
+                if (a) { setSelectedAtom(a); return true; }
+                return false;
+            },
+            atoms: () => atomsGroup.children.filter(c => c.userData && c.userData.isAtom).map(a => ({
+                t: a.userData.atomType, p: [ +a.position.x.toFixed(3), +a.position.y.toFixed(3), +a.position.z.toFixed(3) ]
+            })),
+            project: (x, y, z) => {
+                const v = new THREE.Vector3(x, y, z).project(camera);
+                const r = renderer.domElement.getBoundingClientRect();
+                return { x: (v.x * 0.5 + 0.5) * r.width + r.left, y: (-v.y * 0.5 + 0.5) * r.height + r.top };
+            },
+            raycastGizmo: (x, y) => {
+                const ndc = getNormalizedMouse(x, y);
+                if (!ndc) return 'no-ndc';
+                raycaster.setFromCamera(ndc, camera);
+                const gis = raycaster.intersectObjects(gizmoGroup.children, true);
+                return gis.map(g => ({
+                    t: +g.distance.toFixed(3),
+                    axis: g.object.userData.gizmoAxis || (g.object.userData.isGizmoCenter ? 'center' : null),
+                    vis: g.object.visible
+                }));
+            }
+        };
+        // 单键旋转调试接口
+        window.__torsion = {
+            active: () => torsionActive,
+            dragging: () => torsionDragging,
+            pivot: () => torsionPivot ? { id: torsionPivot.userData._id, t: torsionPivot.userData.atomType } : null,
+            fixed: () => torsionFixed ? { id: torsionFixed.userData._id, t: torsionFixed.userData.atomType } : null,
+            sideIds: () => torsionSide.map(a => a.userData._id),
+            angleDeg: () => +(torsionAngle * 180 / Math.PI).toFixed(2),
+            axisVisible: () => !!torsionAxisMesh,
+            setPivot: (id) => {
+                const atom = atomsGroup.children.find(c => c.userData && c.userData.isAtom && c.userData._id === id);
+                if (atom) setTorsionPivot(atom);
+                return !!atom;
+            },
+            rotate: (deg) => rotateTorsion(deg * Math.PI / 180),
+            clear: () => clearTorsion()
+        };
+        // 顺反异构调试接口
+        window.__cisTrans = {
+            of: (idA, idB) => {
+                const b = bonds.find(b => {
+                    const ia = b.atomA.userData._id, ib = b.atomB.userData._id;
+                    return (ia === idA && ib === idB) || (ia === idB && ib === idA);
+                });
+                return b ? cisTransOf(b) : null;
+            },
+            flip: (idA, idB) => {
+                const b = bonds.find(b => {
+                    const ia = b.atomA.userData._id, ib = b.atomB.userData._id;
+                    return (ia === idA && ib === idB) || (ia === idB && ib === idA);
+                });
+                return b ? flipCisTrans(b) : null;
+            },
+            flipSelected: () => (selectedBond ? flipCisTrans(selectedBond) : null),
+            bond: (idA, idB) => {
+                const b = bonds.find(b => {
+                    const ia = b.atomA.userData._id, ib = b.atomB.userData._id;
+                    return (ia === idA && ib === idB) || (ia === idB && ib === idA);
+                });
+                return b ? { type: b.type, cis: cisTransOf(b) } : null;
+            }
+        };
+        // 共轭桥调试接口（离域π模式下拓扑锁死旋转的单键）
+        window.__conjBridge = {
+            is: (idA, idB) => {
+                const b = bonds.find(b => {
+                    const ia = b.atomA.userData._id, ib = b.atomB.userData._id;
+                    return (ia === idA && ib === idB) || (ia === idB && ib === idA);
+                });
+                return b ? isConjugatedBridgeBond(b) : null;
+            },
+            list: () => bonds.filter(b => isConjugatedBridgeBond(b)).map(b => ({
+                pair: [b.atomA.userData._id, b.atomB.userData._id],
+                types: [b.atomA.userData.atomType, b.atomB.userData.atomType],
+                type: b.type
+            })),
+            tryPivot: (id) => {
+                const atom = atomsGroup.children.find(c => c.userData && c.userData.isAtom && c.userData._id === id);
+                if (!atom || !selectedBond) return null;
+                setTorsionPivot(atom);
+                return { active: torsionActive, pivot: torsionPivot ? torsionPivot.userData._id : null, toast: document.getElementById('toast-message').textContent };
+            }
+        };
         // 调试钩子：收集每个原子孤对电子方向统计
-        function __lpStats() {
-            const info = [];
+        function __lpStats() {            const info = [];
             for (const child of atomsGroup.children) {
                 if (!child.userData || !child.userData.isAtom) continue;
                 const dirs = child.userData.__lpDirs || [];
@@ -6655,6 +7503,7 @@ isOptimizing = false;
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
+            updateGizmo();
             if (showLonePairs) updateLonePairVisuals();
             if (DELOCAL_PI_ENABLED && showPiSystems) { try { ensurePiOverlay(); updatePiOverlayPoses(); } catch (e) {} }
             // noAdd：渲染循环绝不允许新建键（否则 perturb 后环对角原子一旦被挤进
