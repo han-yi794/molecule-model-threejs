@@ -75,6 +75,12 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - `window.__lpStats`(孤对统计)、`window.__connectHint`、`window.__piSystemsSummary`
 - 参数注入:`window.OPT_PARAMS`、`localStorage.OPT_PARAMS_OVERRIDE`(见 HTML 内 `DEFAULT_OPT_PARAMS`)
 
+## 隐私与凭据
+
+- **GitHub 凭据**:仓库不存储任何 token。push 认证由 `gh auth setup-git` 配置的 `gh auth git-credential` helper 提供(仓库 `~/.gitconfig` 中 `credential.https://github.com.helper`)。
+- **本机路径脱敏**:`probe_trace.js` / `analyze_angle.js` / `analyze_ring.js` / `analyze_trace.js` 的 trace 输出路径均用 `process.env.TEMP` 动态解析(退出码/输出文件名不变),不硬编码任何绝对路径或用户名。历史上曾含绝对路径的 commit 已通过 filter-branch 重写清除。
+- 仓库中不含任何密钥、API key 或个人信息;提交作者统一为 `dev <dev@local>`。
+
 ## 技术说明
 
 - 无构建/无模块系统,全部逻辑内联于单 HTML(UTF-8),关键函数挂 `window`。
