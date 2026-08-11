@@ -1,6 +1,29 @@
 # 球棍模型 - Three.js 分子建模与几何优化
 
-单文件 Three.js 分子建模应用:通过键长、杂化推断与迭代几何优化,使有机分子(烷烃、烯烃、芳香环、羧酸等)获得化学合理的键角与键长;并提供基团拖拽、单键旋转、顺反翻转等交互建模能力。
+单文件 Three.js 分子建模应用:通过键长、杂化推断与迭代几何优化,使有机分子(烷烃、烯烃、芳香环、羧酸等)获得化学合理的键角与键长;并提供基团拖拽、单键旋转、顺反翻转、孤对电子可视化等交互建模能力。全部逻辑内联于单个 HTML,无需构建。
+
+## 目录
+
+- [功能特性](#功能特性)
+- [文件说明](#文件说明)
+- [环境要求](#环境要求)
+- [运行](#运行)
+- [验证](#验证)
+- [复现与分析](#复现与分析)
+- [核心几何优化](#核心几何优化)
+- [球棍模型4.html - 交互功能](#球棍模型4html---交互功能)
+- [调试接口(浏览器 Console)](#调试接口浏览器-console)
+- [隐私与凭据](#隐私与凭据)
+- [技术说明](#技术说明)
+- [许可证](#许可证)
+
+## 功能特性
+
+- **几何引擎**:VSEPR 杂化推断 + 迭代优化(sp3 精确四面体模板、sp2 平面、sp 线性、环感知键角),33 例自动自测全绿(键长/键角/连通性)。
+- **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
+- **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转。
+- **可视化**:青色水滴形孤对电子云(NEBOOK 风格)、网格吸附、拖拽 HUD、悬停高亮。
+- **自测体系**:页面内自动测试 + Playwright 回归脚本(33 几何 + 23 π + 36 基团方位)。
 
 ## 文件说明
 
@@ -12,7 +35,15 @@
 | `playwright-verify.js` | 主验证脚本:加载页面、采集 33 例自测结果、输出 JSON |
 | `verify_groups_fix.js` | 基团放置回归:9 组 × 4 方位 = 36 场景 |
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
-| `docs/` | 功能验证记录与 Agent 工作技能文档 |
+| `analyze_angle.js` / `analyze_ring.js` / `analyze_trace.js` | 收敛过程分析脚本 |
+| `docs/` | 功能验证记录(`cistrans-verify.md`)与 Agent 工作技能文档 |
+| `AGENTS.md` | 项目深坑/几何优化关键函数速查(开发者/Agent 向) |
+
+## 环境要求
+
+- 浏览器:任意现代浏览器(Chrome/Edge/Firefox)
+- 验证脚本:Node.js ≥ 20 + Playwright 1.62(`npx playwright install chromium`)
+- 静态服务器:Python(或任意静态服务器)
 
 ## 运行
 
@@ -40,8 +71,8 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 
 ## 复现与分析
 
-- `node probe_trace.js <seed> <example>` —— 单例逐轮键长/角度输出(y 参数:seed、示例名)。
-- `analyze_angle.js` / `analyze_ring.js` —— 收敛过程分析。
+- `node probe_trace.js <seed> <example>` —— 固定 seed 单例逐轮键长/角度输出(argv[2]=seed、argv[3]=示例名,如 `node probe_trace.js 12345 propanol`)。
+- `analyze_angle.js` / `analyze_ring.js` —— 追踪数据的收敛过程分析。
 
 ## 核心几何优化
 
@@ -86,3 +117,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - 无构建/无模块系统,全部逻辑内联于单 HTML(UTF-8),关键函数挂 `window`。
 - 依赖:Three.js(本地内联)、Playwright 1.62(仅验证脚本,Node ≥ 20)。
 - 常见陷阱(深坑记录在 `AGENTS.md`):验证脚本中文文件名为 GBK 字节需百分号编码;`__AUTOTEST_DONE__` 仅当报告 DOM 存在时置位,完成状态一律读 `window.lastRunResults`;PowerShell 输出损坏 JSON 需重定向。
+
+## 许可证
+
+本项目未附带正式许可证文件,保留所有权利 (All Rights Reserved)。如需开源许可(MIT/Apache-2.0 等),请在 issue 中说明。
