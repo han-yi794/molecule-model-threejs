@@ -2534,7 +2534,11 @@ isOptimizing = false;
         // ===== 三维拖动重构（2026-08）：拖动方式选择 + 三轴手柄 + 起始轴锁 + 网格吸附 =====
         // dragMode：plane=平面自由拖（原行为）；gizmo=三轴手柄；lockstart=起始轴锁；
         // gizmo-lock=手柄+起始轴锁（组合）。持久化到 localStorage.DRAG_MODE
-        let dragMode = (() => { try { return localStorage.getItem('DRAG_MODE') || 'plane'; } catch (e) { return 'plane'; } })();
+        let dragMode = (() => {
+            let m = null;
+            try { m = localStorage.getItem('DRAG_MODE'); } catch (e) {}
+            return (['plane', 'gizmo', 'lockstart', 'gizmo-lock'].includes(m)) ? m : 'plane';
+        })();
         let showGridSnap = (() => { try { return localStorage.getItem('GRID_SNAP') === '1'; } catch (e) { return false; } })();
         const SNAP_STEP = 0.25;                 // 网格吸附步长（Å）
         // 世界网格（复用场景初始化时的 gridHelper，仅控制显示/隐藏与吸附联动）
@@ -3992,7 +3996,11 @@ isOptimizing = false;
         window.__hydrogenateAuto = () => HYDROGENATE_AUTO;
         window.__setHydrogenate = (on) => { HYDROGENATE_AUTO = !!on; try { localStorage.setItem('HYDROGENATE_AUTO', HYDROGENATE_AUTO ? '1' : '0'); } catch (e) {} updateHydroUI(); };
         window.__createHeavyAtom = (t, p) => createCompleteAtom(t, p && p.isVector3 ? p : new THREE.Vector3(p.x, p.y, p.z));
-        window.__manualBond = (a, b, o) => addBondBetween(a, b, o || 1);
+        window.__manualBond = (a, b, o) => {
+            const isAtom = x => !!(x && x.userData && x.userData.isAtom) && atomsGroup.children.includes(x);
+            if (!isAtom(a) || !isAtom(b) || a === b) return false;
+            return addBondBetween(a, b, o || 1);
+        };
         // 拖拽连接提示调试/自测接口
         window.__connectHint = {
             findTarget: (src) => findConnectTarget(src || null),

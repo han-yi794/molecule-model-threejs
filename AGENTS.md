@@ -11,6 +11,7 @@
 - 验证脚本访问 `http://127.0.0.1:8000/球棍模型2.html`，需先在仓库根目录起静态服务器：`python -m http.server 8000`。
 - 运行验证：`node playwright-verify.js`。`node_modules` 里已有 playwright 1.62（无 package.json，Node >= 20）；首次需 `npx playwright install chromium`。
 - 页面加载后 900ms 会自动运行全部测试（`AUTO_RUN_ALL_TESTS = true`），无需手动触发；也可通过 UI 按钮或 `runAllExamplesAndTests()` 触发。
+- **防呆测试（2026-08 新增）**：`node verify_foolproof.js`（球棍模型4.html，22 项全过，`verifyF.json`）——A 初始化/参数防呆（非法 URL 参数、localStorage 注入非法 DRAG_MODE/损坏 OPT_PARAMS→回退默认）；B 空状态防呆（空画布优化/补氢/清空不崩）；C 状态机防呆（旋转中清空退出、选中删除后再优化）；D 几何极端（单原子/孤立 H/扰动 0.9/重复生成 8 次/非法连键参数）；E 真实鼠标误操作（连点清空×5、旋转激活后切分子退出、拖到侧栏无 ghost、双击空白、空画布拖出新原子）。**注意**：4 号版「生成」按钮被 CSS `display:none !important` 隐藏（~行 338），UI 连点测试只能点「清空」`#btn-clear-molecule`。
 
 ## 已知陷阱（必读）
 - `playwright-verify.js` 里的中文文件名是 GBK 字节（混合编码文件），Node 按 UTF-8 读取后 URL 变成乱码 → 请求 404，验证脚本实际从未成功加载页面。修复：把 URL 换成百分号编码 `http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B2.html`，保存为 UTF-8。
@@ -53,6 +54,7 @@
 - **键价计数语义（2026-08 再修，羧基羰基补氢/拖连 H bug 根因）**：`getAtomBondOrderSum()` 曾把**所有键都只计 1 条 σ**（注释声称 maxBond 是"最大 σ 键数"），导致键级和为 2 的双键端点（甲酸/羧基/酮的羰基 C=O）被误判"还有 1 个价余量" → 羰基碳还能再连一个 H、羰基氧也能再连一个 H（拖拽提示/一键补氢均受影响）。修复：**双键/三键按真实键序（2/3）累计，仅芳香 1.5 键仍按 1 计**（若 1.5 也实计，吡咯 N 的 2×1.5+1H=4 > maxBond 3 会被误判超价，苯 C 取代也会被拒）。即 `sum += (t > 1.01 && t < 1.99) ? 1 : t`。波及面：`canAddBond`/`canChangeBond`/拖拽吸附（snapNewAtomToNearestNeighbor）/连接提示（findConnectTarget）/`createCompleteGroup` 锚点搜索/`updateBonds` proximity 分支/连通性断言 5671 全部同源修正。验证：甲酸羰基 C/O、乙醛羰基 O 均拒绝加 H；乙醛羰基 C（键价 3）仍可延伸；乙烯 C（2+2H=4）饱和；苯环 C（1.5×2+1H=3<4）仍可取代；吡咯 N（3）饱和不可加；33 几何自测全过、verify_groups_fix 36 方位无回归。
 - **芳香 σ 容量（2026-08 再修，苯环碳可连多余 H/基团 bug 根因，用户报告"苯环也有羧基问题"）**：`effectiveSigmaCapacity(atom)`（~行 731 附近）：对含 ≥1 条 1.5 芳香键的原子，可接受的新键上限取 `min(元素 maxBond, 3)`——苯环 C 只有 3 个 σ 域（2 环键+1 取代位），若沿用 C 的 maxBond=4，带 H 的环碳（σ=3）会被误判"还有 1 个价余量" → 还能再连一个 H/基团。修复后：带 H 环碳全拒、甲苯取代位（无 H 满位）拒、裸位（σ=2）仍可取代；吡咯 N=3/呋喃 O、噻吩 S=2 不变。陷阱1：`createCompleteGroup` 锚点搜索（~行 2788）不能沿用严格 `canAddBond`——基团放置是"替换 target 的 H"语义（该 H 放置时被移除，σ 不变），target 有可替换 H 须放行（`hasReplaceableH`），否则 36 方位全挂（crossBonds=0 回归）。陷阱2：`addMissingHydrogens` 用完整键序（1.5 按 1.5）计缺氢，与 `getAtomBondOrderSum`（1.5 按 1）语义不同，勿混改。验证：`__diag.sigmaProbe()`（benzene/toluene 各域 canAdd 断言）+ 33 自测 + verify_groups_fix 36 方位全过。
 
+- **防呆硬化（2026-08，verify_foolproof.js 22 项引出两处修复）**：①`dragMode` 初始化白名单校验——原逻辑直接取 `localStorage.DRAG_MODE`，注入非法值（如 `hacker-mode`）会让程序停留在非法模式；现在仅接受 plane/gizmo/lockstart/gizmo-lock，否则回退 'plane'（~行 2537）。②`window.__manualBond` 参数守卫——原 `(a,b,o)=>addBondBetween(a,b,o||1)` 对非法参数（null/不存在对象）会在 `updateBondGeometry` 里访问 `.position` 抛 TypeError；现在要求两端都是 `atomsGroup.children` 里的真实原子 mesh（`userData.isAtom`）且非自连，不满足返回 `false` 不抛错（~行 3995，契约仍为 mesh 对象，verify_autoH.js 8 项兼容性已验证）。诊断辅助：`node verify_foolproof.js` 输出 22 项 pass/fail + 全程 console 错误采集。
 ## 待办需求（用户明确要求，未实现）
 - （无待办；一键补氢已实现）
 

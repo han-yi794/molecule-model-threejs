@@ -74,6 +74,7 @@
 | `球棍模型4.html` | 基团拖拽版:交互建模全功能集(见下) |
 | `playwright-verify.js` | 主验证脚本:加载页面、采集 33 例自测结果、输出 JSON |
 | `verify_groups_fix.js` | 基团放置回归:9 组 × 4 方位 = 36 场景 |
+| `verify_foolproof.js` | 防呆测试:22 项边界/误操作场景(空状态、非法参数注入、状态机、极端几何、真实鼠标误操作) |
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
 | `analyze_angle.js` / `analyze_ring.js` / `analyze_trace.js` | 收敛过程分析脚本 |
 | `docs/` | 功能验证记录(`cistrans-verify.md`)与 Agent 工作技能文档 |
