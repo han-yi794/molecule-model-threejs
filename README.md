@@ -120,4 +120,4 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 
 ## 许可证
 
-本项目未附带正式许可证文件,保留所有权利 (All Rights Reserved)。如需开源许可(MIT/Apache-2.0 等),请在 issue 中说明。
+[MIT License](LICENSE) — Copyright (c) 2026 han-yi794
