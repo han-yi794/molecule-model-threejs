@@ -5870,6 +5870,45 @@ isOptimizing = false;
         }
         window.__parseSmiles = parseSmiles;
 
+        // ============ SMILES → spec 转换（parseSmiles 结果 → CONNECTIVITY_SPECS 同构）============
+        // types 仅含重原子（大写元素），显式写出的 H 被过滤（由 addMissingHydrogens 补）；
+        // bonds 直接映射（键序 1/1.5/2/3），连 H 的键跳过（补氢阶段重建）。
+        function smilesToSpec(smiles) {
+            const r = parseSmiles(smiles);
+            if (r.error) return { error: r.error };
+            const idx = [];
+            const types = [];
+            for (let i = 0; i < r.atoms.length; i++) {
+                if (r.atoms[i].type === 'H') { idx.push(-1); continue; }
+                idx.push(types.length);
+                types.push(r.atoms[i].type);
+            }
+            const bonds = [];
+            for (const b of r.bonds) {
+                const a = idx[b[0]], c = idx[b[1]];
+                if (a < 0 || c < 0) continue;
+                bonds.push([a, c, b.length >= 3 ? b[2] : 1]);
+            }
+            return { types, bonds };
+        }
+        window.__smilesToSpec = smilesToSpec;
+
+        // SMILES → 分子完整管线：spec → 粗坐标 → 补氢 + 全局优化
+        // generateFromSpec 内部已 updateBonds + refreshLonePairVisuals(true)；
+        // optimizeAllWithAutoHydrogen 内部 addMissingHydrogens（同样带 lp 重算）+ optimizeAllAtoms。
+        async function generateFromSmiles(smiles) {
+            const spec = smilesToSpec(smiles);
+            if (spec.error) return { ok: false, error: spec.error };
+            generateFromSpec(spec);
+            // SMILES 生成语义总是补氢（不依赖用户 UI 开关）：临时置位后调用公共入口，随后恢复
+            const prevHydro = HYDROGENATE_AUTO;
+            HYDROGENATE_AUTO = true;
+            try { optimizeAllWithAutoHydrogen(); } finally { HYDROGENATE_AUTO = prevHydro; }
+            const atomCount = atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length;
+            return { ok: true, spec, atomCount };
+        }
+        window.__generateFromSmiles = generateFromSmiles;
+
         function specHybridOf(spec, i) {
             let sumBO = 0, sigma = 0;
             for (const b of spec.bonds) {
