@@ -338,6 +338,31 @@
         #molecule-select, #btn-generate-molecule, #btn-run-all-tests, #btn-pi-test {
             display: none !important;
         }
+        /* 名称 / SMILES 输入生成模块（2026-08，Task 4.3） */
+        .molecule-input-row {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .molecule-input-row input {
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 12px;
+            padding: 6px 8px;
+            margin-top: 6px;
+            background: rgba(255, 255, 255, 0.03);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            font-size: 12px;
+            outline: none;
+        }
+        .molecule-input-row input:focus {
+            border-color: rgba(255, 170, 68, 0.6);
+        }
+        .molecule-input-row .action-btn {
+            width: 100%;
+            margin-top: 8px;
+        }
     </style>
     <script type="importmap">
         {
@@ -405,6 +430,13 @@
         <div class="atom-card atom-chlorine" id="drag-chlorine" data-atom="Cl">Cl<small>氯</small></div>
         <div class="atom-card atom-bromine" id="drag-bromine" data-atom="Br">Br<small>溴</small></div>
         <div class="atom-card atom-iodine" id="drag-iodine" data-atom="I">I<small>碘</small></div>
+        <div class="molecule-input-row">
+            <div style="font-size:12px; color:#9ab; margin-bottom:4px;">名称 / SMILES 生成</div>
+            <input type="text" id="name-input" placeholder="输入分子名称，如 ethanol / 乙醇 / 阿司匹林" />
+            <input type="text" id="smiles-input" placeholder="输入 SMILES，如 CCO / c1ccccc1" />
+            <div class="action-btn" id="btn-molecule-from-input">从输入生成</div>
+            <div class="hint"><i>名称或 SMILES 二选一（SMILES 优先）</i></div>
+        </div>
         <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
         <div class="action-btn" id="btn-toggle-hydro">自动补氢: 关</div>
         <div class="action-btn" id="btn-toggle-lp">显示孤对电子</div>
@@ -5908,6 +5940,167 @@ isOptimizing = false;
             return { ok: true, spec, atomCount };
         }
         window.__generateFromSmiles = generateFromSmiles;
+
+        // ============ 名称解析：内置库 NAME_LIBRARY + PubChem/Cactus 在线兜底 ============
+        const NAME_LIBRARY = {
+            'ethanol': 'CCO', '乙醇': 'CCO',
+            'methanol': 'CO', '甲醇': 'CO',
+            'acetic acid': 'CC(=O)O', '乙酸': 'CC(=O)O', '醋酸': 'CC(=O)O',
+            'benzene': 'c1ccccc1', '苯': 'c1ccccc1',
+            'toluene': 'Cc1ccccc1', '甲苯': 'Cc1ccccc1',
+            'methylamine': 'CN', '甲胺': 'CN',
+            'dimethylamine': 'CNC', '二甲胺': 'CNC',
+            'acetaldehyde': 'CC=O', '乙醛': 'CC=O',
+            'acetone': 'CC(=O)C', '丙酮': 'CC(=O)C',
+            'acetonitrile': 'CC#N', '乙腈': 'CC#N',
+            'formaldehyde': 'C=O', '甲醛': 'C=O',
+            'methane': 'C', '甲烷': 'C',
+            'ethane': 'CC', '乙烷': 'CC',
+            'propane': 'CCC', '丙烷': 'CCC',
+            'butane': 'CCCC', '正丁烷': 'CCCC', '丁烷': 'CCCC',
+            'isobutane': 'CC(C)C', '异丁烷': 'CC(C)C',
+            'cyclopropane': 'C1CC1', '环丙烷': 'C1CC1',
+            'cyclohexane': 'C1CCCCC1', '环己烷': 'C1CCCCC1',
+            'phenol': 'Oc1ccccc1', '苯酚': 'Oc1ccccc1',
+            'aniline': 'Nc1ccccc1', '苯胺': 'Nc1ccccc1',
+            'benzoic acid': 'OC(=O)c1ccccc1', '苯甲酸': 'OC(=O)c1ccccc1',
+            'aspirin': 'CC(=O)Oc1ccccc1C(=O)O', '阿司匹林': 'CC(=O)Oc1ccccc1C(=O)O',
+            'diethyl ether': 'CCOCC', '乙醚': 'CCOCC',
+            'ethyl acetate': 'CCOC(=O)C', '乙酸乙酯': 'CCOC(=O)C',
+            'ethene': 'C=C', 'ethylene': 'C=C', '乙烯': 'C=C',
+            'propene': 'C=CC', 'propylene': 'C=CC', '丙烯': 'C=CC',
+            'ethyne': 'C#C', 'acetylene': 'C#C', '乙炔': 'C#C',
+            '1-butene': 'C=CCC', '1-丁烯': 'C=CCC',
+            '(E)-2-butene': 'C/C=C/C', 'trans-2-butene': 'C/C=C/C', '反-2-丁烯': 'C/C=C/C',
+            'furan': 'c1ccoc1', '呋喃': 'c1ccoc1',
+            'thiophene': 'c1ccsc1', '噻吩': 'c1ccsc1',
+            'pyrrole': '[nH]1cccc1', '吡咯': '[nH]1cccc1',
+            'pyridine': 'n1ccccc1', '吡啶': 'n1ccccc1',
+            'glycerol': 'OCC(O)CO', '甘油': 'OCC(O)CO', '丙三醇': 'OCC(O)CO',
+            'glucose': 'OC1C(O)C(O)C(O)C(O)C1O', '葡萄糖': 'OC1C(O)C(O)C(O)C(O)C1O',
+        };
+        function normalizeName(name) {
+            return String(name).trim().toLowerCase().replace(/[\s\-_]+/g, '');
+        }
+        const _NAME_INDEX = {};
+        for (const k in NAME_LIBRARY) _NAME_INDEX[normalizeName(k)] = NAME_LIBRARY[k];
+        function resolveName(name) {
+            const key = normalizeName(name);
+            return key ? (_NAME_INDEX[key] || null) : null;
+        }
+        async function resolveNameOnline(name) {
+            const q = encodeURIComponent(name);
+            const fetchProp = async () => {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(10000) : undefined;
+                return fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/' + q + '/property/IsomericSMILES/JSON', { signal: ctrl });
+            };
+            try {
+                let res = await fetchProp();
+                if (res.status === 503) {
+                    await new Promise(r => setTimeout(r, 2500));
+                    res = await fetchProp();
+                }
+                if (!res.ok) {
+                    if (res.status === 503 || res.status === 500 || res.status === 502 || res.status === 504) return { error: 'network' };
+                    return { error: 'not_found' };
+                }
+                const data = await res.json();
+                const props = data && data.PropertyTable && data.PropertyTable.Properties;
+                if (props && props.length) {
+                    const p = props[0];
+                    const smiles = p.SMILES || p.CanonicalSMILES || p.ConnectivitySMILES || p.IsomericSMILES;
+                    if (smiles) return { smiles: String(smiles) };
+                }
+                return { error: 'not_found' };
+            } catch (e) {
+                return { error: 'network' };
+            }
+        }
+        async function resolveNameOnlineCactus(name) {
+            const q = encodeURIComponent(name);
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(10000) : undefined;
+                const res = await fetch('https://cactus.nci.nih.gov/chemical/structure/' + q + '/smiles', { signal: ctrl });
+                if (!res.ok) {
+                    if (res.status === 503 || res.status === 500 || res.status === 502 || res.status === 504) return { error: 'network' };
+                    return { error: 'not_found' };
+                }
+                const text = (await res.text()).trim();
+                if (!text) return { error: 'not_found' };
+                return { smiles: text };
+            } catch (e) {
+                return { error: 'network' };
+            }
+        }
+        async function resolveNameToSmiles(name) {
+            const local = resolveName(name);
+            if (local) return { smiles: local };
+            const online = await resolveNameOnline(name);
+            if (online.smiles) return { smiles: online.smiles };
+            const cactus = await resolveNameOnlineCactus(name);
+            if (cactus.smiles) return { smiles: cactus.smiles };
+            if (online.error === 'network' || cactus.error === 'network') return { error: 'network' };
+            return { error: 'not_found' };
+        }
+        window.__NAME_LIBRARY = NAME_LIBRARY;
+        window.__resolveName = resolveName;
+        window.__resolveNameOnline = resolveNameOnline;
+        window.__resolveNameToSmiles = resolveNameToSmiles;
+
+        // ============ 名称 / SMILES 双输入 UI（Task 4.3）============
+        // 优先级：SMILES 输入框非空 → 直接解析；否则名称输入框 → 名称解析（内置库 → PubChem → Cactus）
+        let _inputBusy = false;
+        async function generateFromInput() {
+            const nameInput = document.getElementById('name-input');
+            const smilesInput = document.getElementById('smiles-input');
+            const btn = document.getElementById('btn-molecule-from-input');
+            const name = (nameInput ? nameInput.value : '').trim();
+            const smiles = (smilesInput ? smilesInput.value : '').trim();
+            if (!name && !smiles) { showToast('请输入分子名称或 SMILES', 2200); return false; }
+            if (_inputBusy) return false;
+            _inputBusy = true;
+            const prevText = btn ? btn.textContent : '';
+            if (btn) { btn.textContent = '解析中…'; btn.style.opacity = '0.6'; }
+            try {
+                let smilesToUse = '';
+                let usedName = false;
+                if (!smiles) {
+                    usedName = true;
+                    showToast('正在解析名称…', 1500);
+                    const r = await window.__resolveNameToSmiles(name);
+                    if (r && r.error === 'not_found') { showToast('未找到该分子，请检查名称或改用 SMILES', 2800); return false; }
+                    if (r && r.error === 'network') { showToast('网络错误，请检查连接', 2800); return false; }
+                    if (!r || !r.smiles) { showToast('未找到该分子，请检查名称或改用 SMILES', 2800); return false; }
+                    smilesToUse = r.smiles;
+                } else {
+                    smilesToUse = smiles;
+                }
+                const res = await window.__generateFromSmiles(smilesToUse);
+                if (!res || !res.ok) {
+                    showToast('SMILES 解析失败: ' + (res && res.error ? res.error : '未知错误'), 2800);
+                    return false;
+                }
+                if (smilesInput) smilesInput.value = smilesToUse;
+                if (usedName) showToast(`已从名称生成: ${name} (${res.atomCount} 原子)`, 2800);
+                else showToast(`已生成: ${res.atomCount} 原子`, 2200);
+                return true;
+            } catch (e) {
+                showToast('生成失败: ' + (e && e.message ? e.message : String(e)), 2800);
+                return false;
+            } finally {
+                _inputBusy = false;
+                if (btn) { btn.textContent = prevText; btn.style.opacity = '1'; }
+            }
+        }
+        window.__generateFromInput = generateFromInput;
+
+        document.getElementById('btn-molecule-from-input').addEventListener('click', () => { generateFromInput(); });
+        for (const inputId of ['name-input', 'smiles-input']) {
+            const inputEl = document.getElementById(inputId);
+            if (inputEl) inputEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); generateFromInput(); }
+            });
+        }
 
         function specHybridOf(spec, i) {
             let sumBO = 0, sigma = 0;
