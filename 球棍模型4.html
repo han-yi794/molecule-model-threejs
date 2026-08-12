@@ -5731,6 +5731,145 @@ isOptimizing = false;
             return cycles;
         }
 
+        // ============ 手写轻量 SMILES 解析器（语法子集 → CONNECTIVITY_SPECS 同构 spec）============
+        // 支持：元素 C/N/O/S/P/F/Cl/Br/I/H 与小写芳香 c/n/o/s；方括号原子（元素+显式H计数+电荷，电荷忽略）；
+        // 键 - = #（默认单键）；分支 ()；环闭合数字 1-9 与 %nn。输出重原子骨架（H 由 addMissingHydrogens 补），
+        // 芳香原子间的连接（含环闭合）输出 1.5；语法错误返回 {error:{pos,msg}}，绝不抛异常。
+        function parseSmiles(smiles) {
+            const fail = (pos, msg) => ({ atoms: [], bonds: [], error: { pos, msg } });
+            if (typeof smiles !== 'string') return fail(0, '输入必须是字符串');
+            const s = smiles.trim();
+            if (!s) return fail(0, 'SMILES 为空');
+
+            const ELEMENTS = { C: 'C', N: 'N', O: 'O', S: 'S', P: 'P', F: 'F', Cl: 'Cl', Br: 'Br', I: 'I', H: 'H' };
+            const AROMATIC = { c: 'C', n: 'N', o: 'O', s: 'S' };
+            const atoms = [];
+            const bonds = [];
+            const ringMap = new Map();   // 环号 -> { idx, pending }（pending = 记录该环时挂在其闭合上的键序）
+            const stack = [];
+            let cur = -1;
+            let pending = 0;             // 0=按芳香规则，1/2/3=显式键序
+            let i = 0;
+            const n = s.length;
+
+            const isArom = idx => idx >= 0 && atoms[idx].aromatic === true;
+            const bondOrderOf = (a, b, explicit) => {
+                if (explicit) return explicit;
+                return (isArom(a) && isArom(b)) ? 1.5 : 1;
+            };
+            const addAtom = (type, aromatic, explicitH) => {
+                const idx = atoms.length;
+                atoms.push({ type, aromatic: aromatic === true, ...(explicitH ? { explicitH } : {}) });
+                if (cur >= 0) bonds.push([cur, idx, bondOrderOf(cur, idx, pending)]);
+                pending = 0;
+                cur = idx;
+                return idx;
+            };
+            const closeRing = (id, pos) => {
+                const rec = ringMap.get(id);
+                if (!rec) { ringMap.set(id, { idx: cur, pending: pending }); pending = 0; return null; }
+                if (rec.idx === cur) return fail(pos, '环闭合自连（环号 ' + id + '）');
+                const order = pending || rec.pending || (isArom(rec.idx) && isArom(cur) ? 1.5 : 1);
+                bonds.push([rec.idx, cur, order]);
+                pending = 0;
+                ringMap.delete(id);
+                return null;
+            };
+
+            while (i < n) {
+                const ch = s[i];
+                if (ch === ' ' || ch === '\t') { i++; continue; }
+                if (ch === '(') { stack.push(cur); i++; continue; }
+                if (ch === ')') {
+                    if (!stack.length) return fail(i, '多余的右括号 )');
+                    cur = stack.pop();
+                    i++;
+                    continue;
+                }
+                if (ch === '-' || ch === '=' || ch === '#') {
+                    if (pending) return fail(i, '连续键符号');
+                    pending = ch === '=' ? 2 : ch === '#' ? 3 : 1;
+                    i++;
+                    continue;
+                }
+                if (ch === '[') {
+                    const j = s.indexOf(']', i);
+                    if (j < 0) return fail(i, '方括号原子缺少右括号 ]');
+                    const inner = s.slice(i + 1, j);
+                    let k = 0;
+                    const m = inner.length;
+                    let type = null, aromatic = false, explicitH = 0;
+                    const c0 = inner[k];
+                    if (!c0) return fail(i, '空方括号原子 []');
+                    if (c0 >= 'a' && c0 <= 'z') {
+                        if (!AROMATIC[c0]) return fail(i + 1 + k, '不支持的芳香原子 [' + c0 + ']');
+                        type = AROMATIC[c0]; aromatic = true; k++;
+                    } else {
+                        const sym2 = inner.slice(k, k + 2);
+                        const sym = ELEMENTS[sym2] ? sym2 : inner[k];
+                        if (!ELEMENTS[sym]) return fail(i + 1 + k, '不支持的原子符号 ' + sym);
+                        type = ELEMENTS[sym]; k += sym.length;
+                    }
+                    // 显式 H 计数（[NH2] 等：提示价态，不输出 H 节点）
+                    if (inner[k] === 'H') {
+                        k++;
+                        let cnt = 0;
+                        while (k < m && inner[k] >= '0' && inner[k] <= '9') { cnt = cnt * 10 + (inner[k] - '0'); k++; }
+                        explicitH = cnt || 1;
+                    }
+                    // 电荷：解析但忽略（+/-,可带数字或重复符号）
+                    while (k < m) {
+                        const cc = inner[k];
+                        if (cc === '+' || cc === '-') {
+                            k++;
+                            if (k < m && inner[k] >= '0' && inner[k] <= '9') k++;
+                            else if (k < m && (inner[k] === '+' || inner[k] === '-')) k++;
+                        } else {
+                            return fail(i + 1 + k, '方括号原子内无法识别的字符 ' + cc);
+                        }
+                    }
+                    addAtom(type, aromatic, explicitH);
+                    i = j + 1;
+                    continue;
+                }
+                if (ch === '%') {
+                    const d1 = s[i + 1], d2 = s[i + 2];
+                    if (!(d1 >= '0' && d1 <= '9') || !(d2 >= '0' && d2 <= '9')) return fail(i, '% 后需要两位环号（如 %12）');
+                    const e = closeRing(d1 * 10 + (d2 - '0'), i);
+                    if (e) return e;
+                    i += 3;
+                    continue;
+                }
+                if (ch >= '0' && ch <= '9') {
+                    if (ch === '0') return fail(i, '环闭合号从 1 开始（0 不合法）');
+                    const e = closeRing(ch - '0', i);
+                    if (e) return e;
+                    i++;
+                    continue;
+                }
+                if (ch >= 'a' && ch <= 'z') {
+                    if (!AROMATIC[ch]) return fail(i, '不支持的芳香原子 ' + ch);
+                    addAtom(AROMATIC[ch], true, 0);
+                    i++;
+                    continue;
+                }
+                if (ch >= 'A' && ch <= 'Z') {
+                    const sym2 = s.slice(i, i + 2);
+                    const sym = ELEMENTS[sym2] ? sym2 : ch;
+                    if (!ELEMENTS[sym]) return fail(i, '不支持的原子符号 ' + sym);
+                    addAtom(ELEMENTS[sym], false, 0);
+                    i += sym.length;
+                    continue;
+                }
+                return fail(i, '无法识别的字符 ' + ch);
+            }
+            if (stack.length) return fail(n, '未闭合的括号 (');
+            if (ringMap.size) return fail(n, '未闭合的环编号（如 C1C 缺少闭合）');
+            if (!atoms.length) return fail(n, 'SMILES 不含任何原子');
+            return { atoms, bonds };
+        }
+        window.__parseSmiles = parseSmiles;
+
         function specHybridOf(spec, i) {
             let sumBO = 0, sigma = 0;
             for (const b of spec.bonds) {
