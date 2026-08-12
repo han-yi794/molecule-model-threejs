@@ -6101,17 +6101,44 @@ isOptimizing = false;
                 return { error: 'network' };
             }
         }
+        // 在线返回的 IsomericSMILES 含手性标记 @/@@ 与顺反 / \（轻量解析器不支持），
+        // 统一剥除为拓扑 SMILES（立体信息舍弃，原子/键序不变）。
+        function stripStereoMarkers(smiles) {
+            return String(smiles).replace(/@+/g, '').replace(/[\\/]/g, '');
+        }
         async function resolveNameToSmiles(name) {
             const local = resolveName(name);
             if (local) return { smiles: local };
-            const online = await resolveNameOnline(name);
-            if (online.smiles) return { smiles: online.smiles };
+            // 中文名兜底：翻译为英文后再走在线路径（PubChem 只认英文名）
+            let onlineName = name;
+            if (/[\u4e00-\u9fff]/.test(name)) {
+                const en = await translateZhToEn(name);
+                if (en) onlineName = en;
+            }
+            const online = await resolveNameOnline(onlineName);
+            if (online.smiles) return { smiles: stripStereoMarkers(online.smiles) };
             if (online.error === 'ambiguous') return { error: 'ambiguous', candidates: online.candidates };
-            const cactus = await resolveNameOnlineCactus(name);
-            if (cactus.smiles) return { smiles: cactus.smiles };
+            const cactus = await resolveNameOnlineCactus(onlineName);
+            if (cactus.smiles) return { smiles: stripStereoMarkers(cactus.smiles) };
             if (online.error === 'network' || cactus.error === 'network') return { error: 'network' };
             return { error: 'not_found' };
         }
+        // 中文→英文翻译：MyMemory 免费 API（无 key、CORS 开放），失败返回 null 不阻断主流程。
+        // 翻译命中后再走 PubChem，让"三硝基甲苯/咖啡因"等不在内置库的中文名也能在线解析。
+        async function translateZhToEn(name) {
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
+                const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(name) + '&langpair=zh|en', { signal: ctrl });
+                if (!res.ok) return null;
+                const d = await res.json();
+                const en = d && d.responseData && d.responseData.translatedText;
+                if (!en) return null;
+                const clean = String(en).trim();
+                return /[\u4e00-\u9fff]/.test(clean) ? null : clean;
+            } catch (e) { return null; }
+        }
+        window.__translateZhToEn = translateZhToEn;
+        window.__stripStereoMarkers = stripStereoMarkers;
         // 名称前端预检（MH6 辅助，避免明显乱串打网络）：整体不含中文且命中 SMILES 特征
         // （键符号 / 环闭合数字 / 小写芳香原子）→ 疑似 SMILES 引导到 SMILES 框；
         // 不含任何中英文字母 → 提前 not_found。真实英文名（如 EthylAcetate）无数字/符号不拦截。
