@@ -141,10 +141,12 @@ class AssertionCollector {
         report.online = online;
         run('resolveNameOnline water', (a) => {
             if (online['water'].smiles) a.eq(online['water'].smiles, 'O', 'water → O');
+            else if (online['water'].error === 'ambiguous') a.ok(online['water'].candidates && online['water'].candidates.length > 0, 'water 歧义 → 候选列表非空');
             else a.eq(online['water'].error, 'network', '网络不可达 → {error:network} 且不抛异常');
         });
         run('resolveNameOnline methane', (a) => {
             if (online['methane'].smiles) a.ok(online['methane'].smiles === 'C' || online['methane'].smiles.includes('C'), `methane → ${online['methane'].smiles}`);
+            else if (online['methane'].error === 'ambiguous') a.ok(online['methane'].candidates && online['methane'].candidates.length > 0, 'methane 歧义 → 候选列表非空');
             else a.eq(online['methane'].error, 'network', '网络不可达 → {error:network}');
         });
         run('resolveNameOnline 未知名', (a) => {
@@ -165,7 +167,60 @@ class AssertionCollector {
         report.unifiedOnline = unifiedOnline;
         run('resolveNameToSmiles water 在线兜底', (a) => {
             if (unifiedOnline.r.smiles) a.eq(unifiedOnline.r.smiles, 'O', 'water → O（在线兜底）');
+            else if (unifiedOnline.r.error === 'ambiguous') a.ok(unifiedOnline.r.candidates && unifiedOnline.r.candidates.length > 0, 'water 歧义 → 候选列表非空');
             else a.eq(unifiedOnline.r.error, 'network', '网络不可达 → {error:network}');
+        });
+
+        // ---- 6. 歧义候选路径（防御性：直接构造多候选调用面板；resolveNameCandidates 结构断言） ----
+        const candFn = await page.evaluate(async () => {
+            return {
+                hasFn: typeof window.__resolveNameCandidates === 'function',
+                hasPanelFn: typeof window.__showAmbiguousCandidates === 'function',
+                hasPrecheck: typeof window.__precheckNameInput === 'function',
+                precheckSmiles: window.__precheckNameInput('c1ccccc1'),
+                precheckName: window.__precheckNameInput('乙醇'),
+                precheckJunk: window.__precheckNameInput('12345'),
+            };
+        });
+        run('歧义候选/预检调试接口', (a) => {
+            a.ok(candFn.hasFn, '__resolveNameCandidates 已暴露');
+            a.ok(candFn.hasPanelFn, '__showAmbiguousCandidates 已暴露');
+            a.ok(candFn.hasPrecheck, '__precheckNameInput 已暴露');
+            a.eq(candFn.precheckSmiles && candFn.precheckSmiles.kind, 'looks_smiles', 'c1ccccc1 → looks_smiles');
+            a.eq(candFn.precheckName, null, '乙醇 → 不拦截');
+            a.eq(candFn.precheckJunk && candFn.precheckJunk.kind, 'not_found', '12345 → not_found');
+        });
+        const panelTest = await page.evaluate(async () => {
+            const panel = document.getElementById('candidate-panel');
+            const before = getComputedStyle(panel).display;
+            window.__showAmbiguousCandidates([{ smiles: 'CCO', cid: 1 }, { smiles: 'CO', cid: 2 }], 'testmol');
+            const afterOpen = getComputedStyle(panel).display;
+            const items = document.querySelectorAll('#candidate-panel-list .cand-item').length;
+            const title = document.getElementById('candidate-panel-title').textContent;
+            window.__hideCandidatePanel();
+            const afterClose = getComputedStyle(panel).display;
+            return { before, afterOpen, items, title, afterClose };
+        });
+        run('歧义候选面板展示/关闭', (a) => {
+            a.eq(panelTest.before, 'none', '初始隐藏');
+            a.eq(panelTest.afterOpen, 'block', '展示候选面板');
+            a.eq(panelTest.items, 2, '渲染 2 个候选条目');
+            a.ok(panelTest.title.indexOf('2 个候选') >= 0, '标题含候选数（实际: ' + panelTest.title + '）');
+            a.eq(panelTest.afterClose, 'none', '关闭后隐藏');
+        });
+        const candClick = await page.evaluate(async () => {
+            window.__showAmbiguousCandidates([{ smiles: 'CC', cid: 1 }], 'candtest');
+            document.querySelector('#candidate-panel-list .cand-item').click();
+            await new Promise(r => setTimeout(r, 4000));
+            const panelGone = document.getElementById('candidate-panel').style.display === 'none';
+            const atomN = window.__diag.atomPositions().length;
+            const refilled = document.getElementById('smiles-input').value;
+            return { panelGone, atomN, refilled };
+        });
+        run('歧义候选点击生成', (a) => {
+            a.eq(candClick.panelGone, true, '点击候选后面板关闭');
+            a.eq(candClick.atomN, 8, '点击候选 CC 生成 8 原子（含 H）');
+            a.eq(candClick.refilled, 'CC', 'SMILES 输入框回填 CC');
         });
     } catch (e) {
         report.failed = report.total = 1;

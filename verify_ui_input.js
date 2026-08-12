@@ -166,9 +166,9 @@ class AssertionCollector {
             await page.click('#btn-molecule-from-input');
             const toast = await waitFor(async () => {
                 const t = await toastText();
-                return /SMILES 解析失败/.test(t) ? t : null;
+                return /SMILES 语法错误/.test(t) ? t : null;
             }, 30000, 'SMILES 错误 toast');
-            ac.ok(!!toast, 'SMILES 解析失败 toast 出现（实际: ' + (toast || '(无)') + '）');
+            ac.ok(!!toast, 'SMILES 语法错误 toast 出现（实际: ' + (toast || '(无)') + '）');
             const after = await atomCount();
             ac.eq(after, before, '原子数不变（' + before + ' → ' + after + '）');
             const pass = ac.failed === 0;

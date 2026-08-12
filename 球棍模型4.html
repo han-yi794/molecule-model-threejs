@@ -247,6 +247,43 @@
             opacity: 0;
             font-family: monospace;
         }
+        #candidate-panel {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 14, 28, 0.94);
+            border: 1px solid rgba(120, 170, 255, 0.35);
+            border-radius: 14px;
+            padding: 12px 16px;
+            font-size: 13px;
+            z-index: 101;
+            color: #dde8ff;
+            backdrop-filter: blur(6px);
+            max-width: 440px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+            display: none;
+        }
+        #candidate-panel .cand-title { margin-bottom: 8px; color: #ffaa66; padding-right: 18px; }
+        #candidate-panel .cand-list { display: flex; flex-direction: column; gap: 6px; }
+        #candidate-panel .cand-item {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-family: monospace;
+            color: #dde8ff;
+            text-align: left;
+            transition: background 0.15s;
+            word-break: break-all;
+        }
+        #candidate-panel .cand-item:hover { background: rgba(120,170,255,0.2); }
+        #candidate-panel .cand-close {
+            position: absolute; top: 8px; right: 12px;
+            cursor: pointer; color: #9ab; font-size: 14px;
+        }
+        #candidate-panel .cand-close:hover { color: #fff; }
         #drag-hud {
             position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
             background: rgba(10, 14, 28, 0.85); border: 1px solid rgba(120, 170, 255, 0.35);
@@ -495,6 +532,13 @@
     </div>
 
     <div id="toast-message"></div>
+
+    <!-- 歧义名称候选选择面板（MH6：多候选时展示列表供选择） -->
+    <div id="candidate-panel">
+        <span class="cand-close" id="candidate-panel-close" title="关闭">✕</span>
+        <div class="cand-title" id="candidate-panel-title"></div>
+        <div class="cand-list" id="candidate-panel-list"></div>
+    </div>
 
     <!-- 三维拖动辅助：拖拽 HUD / 模式徽章 / 帮助面板 -->
     <div id="drag-hud"><span class="hud-axisdot" id="hud-dot"></span><span id="hud-text"></span></div>
@@ -5988,33 +6032,56 @@ isOptimizing = false;
             const key = normalizeName(name);
             return key ? (_NAME_INDEX[key] || null) : null;
         }
-        async function resolveNameOnline(name) {
+        // 歧义候选（MH6）：PubChem name→cids 可能返回多个 CID（如某些名称），
+        // 逐个取 SMILES 组成候选列表供用户选择；单 CID 时直接返回 {smiles}（保持旧结构）。
+        async function resolveNameCandidates(name) {
             const q = encodeURIComponent(name);
-            const fetchProp = async () => {
+            const fetchJson = async (url) => {
                 const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(10000) : undefined;
-                return fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/' + q + '/property/IsomericSMILES/JSON', { signal: ctrl });
-            };
-            try {
-                let res = await fetchProp();
+                let res = await fetch(url, { signal: ctrl });
                 if (res.status === 503) {
                     await new Promise(r => setTimeout(r, 2500));
-                    res = await fetchProp();
+                    res = await fetch(url, { signal: ctrl });
                 }
+                return res;
+            };
+            const smilesOf = async (cid) => {
+                const prop = await fetchJson('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/' + cid + '/property/IsomericSMILES/JSON');
+                if (!prop.ok) return null;
+                const pd = await prop.json();
+                const p = pd && pd.PropertyTable && pd.PropertyTable.Properties && pd.PropertyTable.Properties[0];
+                const sm = p && (p.SMILES || p.CanonicalSMILES || p.ConnectivitySMILES || p.IsomericSMILES);
+                return sm ? String(sm) : null;
+            };
+            try {
+                const res = await fetchJson('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/' + q + '/cids/JSON');
                 if (!res.ok) {
                     if (res.status === 503 || res.status === 500 || res.status === 502 || res.status === 504) return { error: 'network' };
                     return { error: 'not_found' };
                 }
                 const data = await res.json();
-                const props = data && data.PropertyTable && data.PropertyTable.Properties;
-                if (props && props.length) {
-                    const p = props[0];
-                    const smiles = p.SMILES || p.CanonicalSMILES || p.ConnectivitySMILES || p.IsomericSMILES;
-                    if (smiles) return { smiles: String(smiles) };
+                const cids = data && data.IdentifierList && data.IdentifierList.CID;
+                if (!cids || !cids.length) return { error: 'not_found' };
+                if (cids.length === 1) {
+                    const smiles = await smilesOf(cids[0]);
+                    if (smiles) return { smiles };
+                    return { error: 'not_found' };
                 }
-                return { error: 'not_found' };
+                const candidates = [];
+                for (const cid of cids.slice(0, 3)) {
+                    try {
+                        const smiles = await smilesOf(cid);
+                        if (smiles) candidates.push({ smiles, cid: Number(cid) });
+                    } catch (e) { /* 单个候选失败跳过 */ }
+                }
+                if (!candidates.length) return { error: 'network' };
+                return { error: 'ambiguous', candidates };
             } catch (e) {
                 return { error: 'network' };
             }
+        }
+        async function resolveNameOnline(name) {
+            return resolveNameCandidates(name);
         }
         async function resolveNameOnlineCactus(name) {
             const q = encodeURIComponent(name);
@@ -6037,11 +6104,62 @@ isOptimizing = false;
             if (local) return { smiles: local };
             const online = await resolveNameOnline(name);
             if (online.smiles) return { smiles: online.smiles };
+            if (online.error === 'ambiguous') return { error: 'ambiguous', candidates: online.candidates };
             const cactus = await resolveNameOnlineCactus(name);
             if (cactus.smiles) return { smiles: cactus.smiles };
             if (online.error === 'network' || cactus.error === 'network') return { error: 'network' };
             return { error: 'not_found' };
         }
+        // 名称前端预检（MH6 辅助，避免明显乱串打网络）：整体不含中文且命中 SMILES 特征
+        // （键符号 / 环闭合数字 / 小写芳香原子）→ 疑似 SMILES 引导到 SMILES 框；
+        // 不含任何中英文字母 → 提前 not_found。真实英文名（如 EthylAcetate）无数字/符号不拦截。
+        function precheckNameInput(name) {
+            if (!name) return null;
+            const hasCJK = /[\u4e00-\u9fff]/.test(name);
+            const looksSmiles = !hasCJK && (
+                /[=#()]/.test(name) ||
+                (/[a-z]/.test(name) && /%?\d/.test(name)) ||
+                (/[A-Z][a-z]/.test(name) && /[a-z0-9]*\d/.test(name))
+            );
+            if (looksSmiles) return { kind: 'looks_smiles' };
+            if (!/[\u4e00-\u9fffA-Za-z]/.test(name)) return { kind: 'not_found' };
+            return null;
+        }
+        // 歧义候选面板：列出候选（SMILES + CID），点击即用该 SMILES 生成（NH4 简化版）
+        function showAmbiguousCandidates(candidates, name) {
+            const panel = document.getElementById('candidate-panel');
+            const title = document.getElementById('candidate-panel-title');
+            const list = document.getElementById('candidate-panel-list');
+            if (!panel || !title || !list) return;
+            title.textContent = '「' + name + '」有 ' + candidates.length + ' 个候选，点击选择：';
+            list.innerHTML = '';
+            candidates.forEach((c, i) => {
+                const item = document.createElement('div');
+                item.className = 'cand-item';
+                item.textContent = (i + 1) + '. ' + c.smiles + (c.cid ? '  (CID ' + c.cid + ')' : '');
+                item.addEventListener('click', async () => {
+                    hideCandidatePanel();
+                    const res = await window.__generateFromSmiles(c.smiles);
+                    if (res && res.ok) {
+                        const si = document.getElementById('smiles-input');
+                        if (si) si.value = c.smiles;
+                        showToast('已生成候选 ' + (i + 1) + '：' + res.atomCount + ' 原子', 2800);
+                    } else {
+                        showToast('候选生成失败: ' + (res && res.error ? (res.error.msg || JSON.stringify(res.error)) : '未知错误'), 2800);
+                    }
+                });
+                list.appendChild(item);
+            });
+            panel.style.display = 'block';
+        }
+        function hideCandidatePanel() {
+            const panel = document.getElementById('candidate-panel');
+            if (panel) panel.style.display = 'none';
+        }
+        window.__resolveNameCandidates = resolveNameCandidates;
+        window.__precheckNameInput = precheckNameInput;
+        window.__showAmbiguousCandidates = showAmbiguousCandidates;
+        window.__hideCandidatePanel = hideCandidatePanel;
         window.__NAME_LIBRARY = NAME_LIBRARY;
         window.__resolveName = resolveName;
         window.__resolveNameOnline = resolveNameOnline;
@@ -6066,18 +6184,25 @@ isOptimizing = false;
                 let usedName = false;
                 if (!smiles) {
                     usedName = true;
+                    const pre = precheckNameInput(name);
+                    if (pre && pre.kind === 'looks_smiles') { showToast('输入看起来像 SMILES，请填入 SMILES 输入框', 2800); return false; }
+                    if (pre && pre.kind === 'not_found') { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
                     showToast('正在解析名称…', 1500);
                     const r = await window.__resolveNameToSmiles(name);
-                    if (r && r.error === 'not_found') { showToast('未找到该分子，请检查名称或改用 SMILES', 2800); return false; }
-                    if (r && r.error === 'network') { showToast('网络错误，请检查连接', 2800); return false; }
-                    if (!r || !r.smiles) { showToast('未找到该分子，请检查名称或改用 SMILES', 2800); return false; }
+                    if (r && r.error === 'ambiguous') { showAmbiguousCandidates(r.candidates, name); return false; }
+                    if (r && r.error === 'not_found') { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
+                    if (r && r.error === 'network') { showToast('网络错误，已尝试内置库，请检查连接后重试', 2800); return false; }
+                    if (!r || !r.smiles) { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
                     smilesToUse = r.smiles;
                 } else {
                     smilesToUse = smiles;
                 }
                 const res = await window.__generateFromSmiles(smilesToUse);
                 if (!res || !res.ok) {
-                    showToast('SMILES 解析失败: ' + (res && res.error ? res.error : '未知错误'), 2800);
+                    const err = res && res.error ? res.error : {};
+                    const pos = err.pos !== undefined ? err.pos : '?';
+                    const msg = err.msg || '未知错误';
+                    showToast('SMILES 语法错误：位置 ' + pos + '，原因 ' + msg, 3200);
                     return false;
                 }
                 if (smilesInput) smilesInput.value = smilesToUse;
@@ -6101,6 +6226,8 @@ isOptimizing = false;
                 if (e.key === 'Enter') { e.preventDefault(); generateFromInput(); }
             });
         }
+        const candClose = document.getElementById('candidate-panel-close');
+        if (candClose) candClose.addEventListener('click', hideCandidatePanel);
 
         function specHybridOf(spec, i) {
             let sumBO = 0, sigma = 0;
@@ -6151,9 +6278,15 @@ isOptimizing = false;
                     const ringBO = specBondOrderOf(spec, cyc[0], cyc[1]);
                     const L = ringBO >= 1.5 ? 1.40 : 1.54;
                     const r = L / (2 * Math.sin(Math.PI / m));
+                    // 环中心偏移：全新环默认以原点为中心，而链起点原子 0 也被放在原点。
+                    // 当环不含原子 0 时（如阿司匹林 CC(=O)Oc1ccccc1C(=O)O 的苯环从原子 4 开始），
+                    // 环会直接套在链起点上（实测环碳与甲基碳仅 1.4Å → 假键，补氢失败只剩 15 原子）。
+                    // 将环沿 +Z 推离原点（偏移量 r+2.1：环原子距原子 0 ≥ 2.1 > 假键阈值 1.24×1.54≈1.91），
+                    // 链原子由 BFS 按键长放置，优化器负责收敛。
+                    const cz = cyc.includes(0) ? 0 : r + 2.1;
                     for (let k = 0; k < m; k++) {
                         const th = -Math.PI / 2 + k * (2 * Math.PI / m);
-                        pos[cyc[k]].set(r * Math.cos(th), r * Math.sin(th), 0);
+                        pos[cyc[k]].set(r * Math.cos(th), r * Math.sin(th), cz);
                         placed[cyc[k]] = true;
                     }
                 } else {
@@ -6311,6 +6444,8 @@ isOptimizing = false;
             updateBonds();
             refreshLonePairVisuals(true);
         }
+        // 诊断接口：raw spec 直接生成（含粗坐标阶段），供验证脚本复现假键/补氢问题
+        window.__generateFromSpecRaw = (spec) => generateFromSpec(spec);
 
 
 
