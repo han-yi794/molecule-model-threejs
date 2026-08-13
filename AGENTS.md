@@ -20,6 +20,7 @@
 - **长验证命令超时规范**：所有 playwright 验证 bash 命令 timeout 恒设 15 分钟（900000ms），超时即自动停止并排查原因（先查探针判定条件/页面 console），不无限延长。
 - PowerShell 输出会损坏 JSON：验证输出必须用 `cmd /c "node playwright-verify.js > verifyN.json 2>&1"` 重定向到文件再解析。
 - **33 个自测已全部通过（连续多轮）**，历史上失败均系几何收敛问题，现已修复：ethane/propane 角度、cyclohexane 环拉飞、propanol 链旋转不收敛、以及 isobutane/isobutene/acetone/adenineLike 的生成器原子顺序/连通性与 CONNECTIVITY_SPECS 不符。诊断辅助：`window._INIT_ERRORS`、`window._INIT_LOG`、`window._lastComputeRingDiagnostic`、`window.__diag.ringsInfo()` / `__diag.isArom(id)` / `__diag.hybOf(id)`。
+- **子 agent 429 限流（2026-08-13 诊断，共享会话 opncd.ai/share/ChROoU6a）**：Zen 免费档按 RPM/TPM 限流。GoopSpec 并行拉起多个 subagent（每会话 thinkingBudget 32000 + 全新上下文）→ 瞬时请求率/token 量击穿免费档 → `AI_APICallError: Rate limit exceeded` 连续多次；多终端同时用同模型也互相抢额度。主 agent 能跑是因串行、请求节奏慢。**已修复**：①`~/.config/opencode/opencode.jsonc` 加 `"model"`/`"small_model": "opencode/deepseek-v4-flash-free"`（修 `agent=title small=true` 默认走付费 gpt-5.4-nano 被拒）；②`.goopspec/config.json` orchestrator `thinkingBudget` 32000→8000（降每请求 token，waveExecution 已是 sequential）。**注意**：配置改动需重启 opencode 生效；当前会话内仍应以主 agent 直做为主，避免再并行拉起子 agent 撞 429。
 
 ## 几何优化关键函数（全部为全局函数，用函数名 grep 定位）
 - `optimizeAllAtoms()` — 迭代优化主循环（读 OPT_PARAMS：ITERATIONS、阻尼等）。角度阶段：先按模板/分配生成 targetPositions（非芳香环原子对环-环邻居只做径向保持，见下），再阻尼累加位移；键长阶段：|当前-目标|<0.005 跳过、单步上限 `MAX_BOND_ADJUSTMENT`(0.5)、均值漂移扣除已注释关闭。
