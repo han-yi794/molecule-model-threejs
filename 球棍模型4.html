@@ -6000,6 +6000,103 @@ isOptimizing = false;
         }
         window.__generateFromSmiles = generateFromSmiles;
 
+        // ============ PubChem 3D 坐标直接生成（2026-08 新增）============
+        // 名称/SMILES 在线解析拿到 CID 后，直接拉 record_type=3d 的 SDF：
+        // 含全部原子（含 H）的真实 3D 坐标，绕开本地"SMILES→粗坐标→补氢"管线
+        // （该管线对复杂分子会丢 H，实测青蒿素 C15H22O5 应 42 原子只剩 36）。
+        function parseSDF3D(text) {
+            const lines = String(text).split(/\r?\n/);
+            if (lines.length < 5) return null;
+            const counts = lines[3];
+            const nAtoms = parseInt(counts.slice(0, 3), 10);
+            const nBonds = parseInt(counts.slice(3, 6), 10);
+            if (!(nAtoms > 0 && nAtoms < 10000) || !(nBonds >= 0 && nBonds < 100000)) return null;
+            const atoms = [];
+            for (let i = 0; i < nAtoms; i++) {
+                const ln = lines[4 + i] || '';
+                const x = parseFloat(ln.slice(0, 10));
+                const y = parseFloat(ln.slice(10, 20));
+                const z = parseFloat(ln.slice(20, 30));
+                const type = ln.slice(31, 34).trim();
+                if (!type || isNaN(x) || isNaN(y) || isNaN(z)) return null;
+                atoms.push({ type, pos: new THREE.Vector3(x, y, z) });
+            }
+            const bonds = [];
+            for (let i = 0; i < nBonds; i++) {
+                const ln = lines[4 + nAtoms + i] || '';
+                const a = parseInt(ln.slice(0, 3), 10) - 1;
+                const b = parseInt(ln.slice(3, 6), 10) - 1;
+                let order = parseInt(ln.slice(6, 9), 10);
+                if (isNaN(order) || order < 1) continue;
+                if (order === 4) order = 1.5; // SDF 芳香键 = 4 → 1.5
+                if (a >= 0 && b >= 0 && a < nAtoms && b < nAtoms && a !== b) bonds.push([a, b, order]);
+            }
+            return { atoms, bonds };
+        }
+        async function fetchPubChem3D(key, value) {
+            const q = encodeURIComponent(value);
+            const url = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/' + key + '/' + q + '/record/SDF?record_type=3d';
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(12000) : undefined;
+                const res = await fetch(url, { signal: ctrl });
+                if (!res.ok) return null;
+                const text = await res.text();
+                return parseSDF3D(text);
+            } catch (e) { return null; }
+        }
+        // 凯库勒式环 → 芳香 1.5 键归一（PubChem 3D SDF 用单双交替表示苯环）。
+        // 判定：环键长均匀（全部 1.36-1.44，与苯 1.40 一致；环己二烯 1.34/1.50 不均一被排除）
+        // + 环原子可杂化 + 平面 + π 电子 4n+2（复用 analyzeRings 同款分类）。青蒿素等无芳香环不受影响。
+        function aromatize3DRings() {
+            let count = 0;
+            try {
+                const rings = findAllRings();
+                const bondOf = (a, b) => (getBondsForAtom(a) || []).find(x => { const o = x.atomA === a ? x.atomB : x.atomA; return o === b; });
+                for (const ring of rings) {
+                    if (ring.length !== 6 && ring.length !== 5) continue;
+                    if (!ring.every(a => a.userData?.isAtom)) continue;
+                    if (!ring.every(a => atomTypes[a.userData.atomType]?.hybridizable)) continue;
+                    const lens = [];
+                    let ok = true;
+                    for (let i = 0; i < ring.length; i++) {
+                        const b = bondOf(ring[i], ring[(i + 1) % ring.length]);
+                        if (!b) { ok = false; break; }
+                        lens.push(b.atomA.position.distanceTo(b.atomB.position));
+                    }
+                    if (!ok) continue;
+                    if (!lens.every(l => l >= 1.36 && l <= 1.44)) continue;
+                    const pi = computeRingPiElectrons(ring);
+                    const aromatic = pi > 0 && (() => {
+                        for (let k = 0; k < 8; k++) {
+                            if (Math.abs(pi - (4 * k + 2)) <= 0.6) return true;
+                            if (Math.abs(pi - (4 * k)) <= 0.6) return false;
+                        }
+                        return false;
+                    })();
+                    if (!aromatic) continue;
+                    for (let i = 0; i < ring.length; i++) {
+                        const b = bondOf(ring[i], ring[(i + 1) % ring.length]);
+                        if (b && b.type !== 1.5) { b.type = 1.5; count++; }
+                    }
+                }
+            } catch (e) { /* 归一失败保持 SDF 键序 */ }
+            return count;
+        }
+        // 按 SDF 3D 结构直接生成：clearMolecule → 逐原子按真实坐标放置 → 逐键建立 → updateBonds + lp 重算。
+        // 坐标已是优化构象，不再跑优化器（避免扰动真实几何）；返回原子总数。
+        function generateFrom3D(struct) {
+            clearMolecule();
+            const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
+            for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
+            aromatize3DRings();
+            updateBonds();
+            refreshLonePairVisuals(true);
+            return meshes.length;
+        }
+        window.__parseSDF3D = parseSDF3D;
+        window.__fetchPubChem3D = fetchPubChem3D;
+        window.__generateFrom3D = generateFrom3D;
+
         // ============ 名称解析：内置库 NAME_LIBRARY + PubChem/Cactus 在线兜底 ============
         const NAME_LIBRARY = {
             'ethanol': 'CCO', '乙醇': 'CCO',
@@ -6083,7 +6180,7 @@ isOptimizing = false;
                 if (!cids || !cids.length) return { error: 'not_found' };
                 if (cids.length === 1) {
                     const smiles = await smilesOf(cids[0]);
-                    if (smiles) return { smiles };
+                    if (smiles) return { smiles, cid: Number(cids[0]) };
                     return { error: 'not_found' };
                 }
                 const candidates = [];
@@ -6135,7 +6232,7 @@ isOptimizing = false;
                 if (en) onlineName = en;
             }
             const online = await resolveNameOnline(onlineName);
-            if (online.smiles) return { smiles: stripStereoMarkers(online.smiles) };
+            if (online.smiles) return { smiles: stripStereoMarkers(online.smiles), cid: online.cid };
             if (online.error === 'ambiguous') return { error: 'ambiguous', candidates: online.candidates };
             const cactus = await resolveNameOnlineCactus(onlineName);
             if (cactus.smiles) return { smiles: stripStereoMarkers(cactus.smiles) };
@@ -6230,6 +6327,8 @@ isOptimizing = false;
             try {
                 let smilesToUse = '';
                 let usedName = false;
+                let used3D = false;
+                let finalCount = 0;
                 if (!smiles) {
                     usedName = true;
                     const pre = precheckNameInput(name);
@@ -6242,20 +6341,38 @@ isOptimizing = false;
                     if (r && r.error === 'network') { showToast('网络错误，已尝试内置库，请检查连接后重试', 2800); return false; }
                     if (!r || !r.smiles) { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
                     smilesToUse = r.smiles;
+                    // 名称路径优先 PubChem 3D 坐标（含全部原子，绕开本地补氢丢 H 问题）；
+                    // 网络失败/解析失败静默回退本地 SMILES 管线。
+                    if (r.cid) {
+                        const struct = await fetchPubChem3D('cid', r.cid);
+                        if (struct) {
+                            finalCount = generateFrom3D(struct);
+                            used3D = true;
+                        }
+                    }
                 } else {
                     smilesToUse = smiles;
+                    // SMILES 输入路径同样优先 PubChem 3D（网络可用时），失败回退本地解析
+                    const struct = await fetchPubChem3D('smiles', smiles);
+                    if (struct) {
+                        finalCount = generateFrom3D(struct);
+                        used3D = true;
+                    }
                 }
-                const res = await window.__generateFromSmiles(smilesToUse);
-                if (!res || !res.ok) {
-                    const err = res && res.error ? res.error : {};
-                    const pos = err.pos !== undefined ? err.pos : '?';
-                    const msg = err.msg || '未知错误';
-                    showToast('SMILES 语法错误：位置 ' + pos + '，原因 ' + msg, 3200);
-                    return false;
+                if (!used3D) {
+                    const res = await window.__generateFromSmiles(smilesToUse);
+                    if (!res || !res.ok) {
+                        const err = res && res.error ? res.error : {};
+                        const pos = err.pos !== undefined ? err.pos : '?';
+                        const msg = err.msg || '未知错误';
+                        showToast('SMILES 语法错误：位置 ' + pos + '，原因 ' + msg, 3200);
+                        return false;
+                    }
+                    finalCount = res.atomCount;
                 }
                 if (smilesInput) smilesInput.value = smilesToUse;
-                if (usedName) showToast(`已从名称生成: ${name} (${res.atomCount} 原子)`, 2800);
-                else showToast(`已生成: ${res.atomCount} 原子`, 2200);
+                if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子${used3D ? ' · 3D 坐标' : ''})`, 2800);
+                else showToast(`已生成: ${finalCount} 原子${used3D ? ' · 3D 坐标' : ''}`, 2200);
                 return true;
             } catch (e) {
                 showToast('生成失败: ' + (e && e.message ? e.message : String(e)), 2800);
