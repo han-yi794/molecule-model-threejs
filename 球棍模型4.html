@@ -3697,6 +3697,9 @@ isOptimizing = false;
         }
 
         window.addEventListener('keydown', (e) => {
+            // 输入框/文本域/可编辑元素内按键不进入分子快捷键（否则打字触发移动/删除/杂化）
+            const _tg = e.target;
+            if (_tg && (_tg.tagName === 'INPUT' || _tg.tagName === 'TEXTAREA' || _tg.isContentEditable)) return;
             const key = e.key;
             const shift = e.shiftKey;
             let dx = 0, dy = 0, dz = 0;
@@ -3747,6 +3750,8 @@ isOptimizing = false;
 
         // 支持 Delete / Backspace 删除选中原子
         window.addEventListener('keydown', (e) => {
+            const _tg = e.target;
+            if (_tg && (_tg.tagName === 'INPUT' || _tg.tagName === 'TEXTAREA' || _tg.isContentEditable)) return;
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (!selectedAtom) { showToast('请先选中一个原子', 1000); return; }
                 const type = selectedAtom.userData?.atomType || '';
