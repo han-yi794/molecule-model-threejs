@@ -6413,6 +6413,25 @@ isOptimizing = false;
                     }
                 }
                 if (!used3D) {
+                    // 本地解析器不支持立体标记（@/@@/顺反 / \），剥除后重试；
+                    // 剥除后仍失败才报错（用户手动输入的 SMILES 也可能带标记）
+                    let parsed = null;
+                    try { parsed = parseSmiles(smilesToUse); } catch (e) { parsed = null; }
+                    if (parsed && !parsed.error && !parsed.atoms.length) parsed = null;
+                    if (!parsed || parsed.error) {
+                        const stripped = stripStereoMarkers(smilesToUse);
+                        if (stripped !== smilesToUse) {
+                            const r2 = await window.__generateFromSmiles(stripped);
+                            if (r2 && r2.ok) {
+                                smilesToUse = stripped;
+                                finalCount = r2.atomCount;
+                                if (smilesInput) smilesInput.value = smilesToUse;
+                                if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子)`, 2800);
+                                else showToast(`已生成: ${finalCount} 原子`, 2200);
+                                return true;
+                            }
+                        }
+                    }
                     const res = await window.__generateFromSmiles(smilesToUse);
                     if (!res || !res.ok) {
                         const err = res && res.error ? res.error : {};
