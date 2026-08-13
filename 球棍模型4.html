@@ -2056,6 +2056,14 @@
             isOptimizing = true;
 
             const ITERATIONS = (window.OPT_PARAMS && window.OPT_PARAMS.ITERATIONS) || 80;      // 迭代次数
+            // 大分子自适应轮数（2026-08 鞘磷脂实测）：长链尾部的角度/键长误差沿链
+            // 传播，40 轮对 128 原子收敛不完（尾部键停在 2.07-2.44，P 侧整段拉散）。
+            // 按原子数线性补足：每原子 +1 轮（128 原子 → 40+128=168，截到 160 上限；
+            // 实测 144 轮已无 >2.0 键，104 轮仍留 2.0-2.16 的 P 侧键）。小分子保持
+            // 默认 40 轮基线。
+            // 上限 160：320 轮实测出现整体漂移（均值 1.25、bbox 拉到 -10），多轮
+            // 累加位移的均值漂移在长链分子上不可忽略。
+            const effIterations = Math.min(160, Math.max(ITERATIONS, ITERATIONS + atoms.length));
             const ANGLE_DAMPING_BASE = (window.OPT_PARAMS && window.OPT_PARAMS.ANGLE_DAMPING_BASE) || 0.60;   // 角度调整阻尼基准
             const ANGLE_DAMPING_RING = (window.OPT_PARAMS && window.OPT_PARAMS.ANGLE_DAMPING_RING) || 0.30;   // 环中角度阻尼（更保守）
             const BOND_DAMPING = (window.OPT_PARAMS && window.OPT_PARAMS.BOND_DAMPING) || 0.55;   // 键长调整阻尼
@@ -2138,7 +2146,7 @@
                 } catch (e) {}
             } catch (e) {}
 
-            for (let iter = 0; iter < ITERATIONS; iter++) {
+            for (let iter = 0; iter < effIterations; iter++) {
                 const displacementMap = new Map(); // 存储每个原子累积位移
 
                 // 每次迭代重新推断并写回自动杂化（如果用户未手动覆盖）
@@ -2530,6 +2538,19 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
             // 共轭桥共面（苯乙烯型）：芳香环×外接双键（乙烯基/C=O）整体平面化
             // （离域π键专属，合并开关关闭时跳过 → 旧逻辑无此约束）
             if (DELOCAL_PI_ENABLED) { try { enforceConjugatedBridgeCoplanarity(); } catch (e) {} }
+            // 优化收尾：整体质心回正（长链分子多轮迭代会产生均值漂移，实测鞘磷脂
+            // 160 轮后质心被推到 z≈-9.4、bbox -20.3~+12）。纯平移不影响键长/角度/
+            // 环检测/共面约束，只保证分子落在坐标系中心。
+            try {
+                const atomsAll = atomsGroup.children.filter(c => c.userData?.isAtom);
+                let cx = 0, cy = 0, cz = 0, cnt = 0;
+                for (const a of atomsAll) { cx += a.position.x; cy += a.position.y; cz += a.position.z; cnt++; }
+                if (cnt > 0) { cx /= cnt; cy /= cnt; cz /= cnt; }
+                if (cnt > 0 && (cx !== 0 || cy !== 0 || cz !== 0)) {
+                    const off = new THREE.Vector3(-cx, -cy, -cz);
+                    for (const a of atomsAll) a.position.add(off);
+                }
+            } catch (e) {}
             updateBonds(true); // 清理键：此刻 isOptimizing 已恢复 false，绝不允许新增键
             // （否则优化结束瞬间几何稍有重叠就会误建键，实测吡咯 7-9/7-10 由此产生）
             // 刷新所有标签以显示推断/用户设置的杂化
@@ -6651,10 +6672,36 @@ isOptimizing = false;
                     if (a0.lengthSq() < 1e-6) a0.set(1, 0, 0);
                     a0.normalize();
                     if (gpCnt >= 2) {
-                        // 多父邻居（链中段 sp3 中心、环取代基）：剩余子节点直接沿
-                        // 外角平分线（ref）放置，不再绕锥旋转——旋转会把子节点甩回
-                        // 已放置邻居旁成假键（bondtest C9 被甩到 C1 旁 1.11）。
-                        pos[next].copy(pos[parent]).add(ref.clone().multiplyScalar(L));
+                        // 多父邻居（链中段 sp3 中心、环取代基）：
+                        // - 仅剩 1 个子节点：直接沿外角平分线（ref）放置（bondtest C9
+                        //   曾绕锥旋转被甩回 C1 旁 1.11 成假键，故单个不旋转）。
+                        // - 剩余多个子节点（2026-08 鞘磷脂：磷酸酯 P 连 4 个 O，已放置
+                        //   2 个后还剩 2 个）：全部沿同一 ref 会完全重叠（实测 P 的
+                        //   O23/O24 距离 0）→ 优化器被重叠原子干扰，P 侧整段键被拉散
+                        //   （N-CH2-CH2-O-P 断成 2.7-3.9）。剩余多个改为沿 ref 锥面
+                        //   展开：锥角 = spreadAngle/2（sp3 时 54.74°，保证与已放置
+                        //   父邻居成 109.47°），相位绕 ref 交替 ±（perp = ref×u，
+                        //   u = 已放置父邻居方向差），子节点两两对称分布不重叠。
+                        if (mNb >= 2) {
+                            const gpcList = adj[parent].filter(v => placed[v] && v !== next);
+                            let u = null;
+                            if (gpcList.length >= 2) {
+                                const d = pos[gpcList[1]].clone().sub(pos[gpcList[0]]);
+                                if (d.lengthSq() > 1e-9) u = d.normalize();
+                            }
+                            let perp = null;
+                            if (u) { perp = ref.clone().cross(u); if (perp.lengthSq() > 1e-9) perp.normalize(); }
+                            if (!perp) {
+                                const ax = ref.clone().cross(new THREE.Vector3(0, 0, 1));
+                                perp = (ax.lengthSq() > 1e-9 ? ax : new THREE.Vector3(1, 0, 0)).normalize();
+                            }
+                            const cone = spreadAngle / 2;
+                            const sign = (ph % 2 === 0) ? 1 : -1;
+                            const dir = ref.clone().multiplyScalar(Math.cos(cone)).add(perp.clone().multiplyScalar(Math.sin(cone) * sign));
+                            pos[next].copy(pos[parent]).add(dir.multiplyScalar(L));
+                        } else {
+                            pos[next].copy(pos[parent]).add(ref.clone().multiplyScalar(L));
+                        }
                     } else {
                         // 0/1 个已放置父邻居：锥面展开。
                         // 1 个父邻居时，子节点应与"父键方向"成 spreadAngle（正四面体
@@ -6681,6 +6728,18 @@ isOptimizing = false;
             // 4) 按 spec 成键
             for (const b of spec.bonds) {
                 addBondBetween(atoms[b[0]], atoms[b[1]], b.length >= 3 ? b[2] : 1);
+            }
+            // 5) 整体居中：链式 BFS 沿 +Z 逐步延伸（长链分子尾部可达 26Å 外），
+            // 优化器的 CENTER_MOVE 只是防整体平移的小幅补偿，不会把分子拉回原点。
+            // 生成后按质心平移回原点，保证长链分子（如鞘磷脂 C39）落在坐标系中心。
+            // 注意：纯平移不影响键长/角度/环检测，居中放在 updateBonds 之前即可。
+            {
+                let cx = 0, cy = 0, cz = 0, cnt = 0;
+                for (const a of atoms) { cx += a.position.x; cy += a.position.y; cz += a.position.z; cnt++; }
+                if (cnt > 0) { cx /= cnt; cy /= cnt; cz /= cnt; }
+                if (cnt > 0 && (cx !== 0 || cy !== 0 || cz !== 0)) {
+                    for (const a of atoms) a.position.add(new THREE.Vector3(-cx, -cy, -cz));
+                }
             }
             updateBonds();
             refreshLonePairVisuals(true);
