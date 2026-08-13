@@ -397,9 +397,11 @@
             position: relative;
             width: 100%;
             box-sizing: border-box;
+            margin-top: 6px;
         }
         .molecule-input-row .input-wrap input {
             padding-right: 26px;
+            margin-top: 0;
         }
         .molecule-input-row .clear-btn {
             position: absolute;
@@ -431,6 +433,9 @@
             padding-top: 8px;
             margin-top: 6px;
         }
+        .molecule-input-row {
+            flex-shrink: 0; /* 侧栏 flex 列容器会压缩该块 → 帮助展开被压扁显示不全 */
+        }
         .molecule-input-row .hint i {
             display: inline-block;
             line-height: 1.7;
@@ -456,6 +461,10 @@
             font-size: 11px;
             line-height: 1.9;
             color: #abc;
+            flex-shrink: 0;
+            overflow-wrap: anywhere; /* 长 SMILES 示例在窄侧栏折行，防横向溢出 */
+            max-height: 46vh; /* 内容较长时帮助框自身滚动，不撑爆侧栏 */
+            overflow-y: auto;
         }
         .smiles-help.open { display: block; }
         .smiles-help b { color: #ffd78c; font-weight: 600; }
@@ -468,6 +477,8 @@
             color: #fff;
             font-family: Consolas, Menlo, monospace;
             font-size: 11px;
+            overflow-wrap: anywhere;
+            word-break: break-all;
         }
         .molecule-input-row .action-btn {
             width: 100%;
