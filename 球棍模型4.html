@@ -393,6 +393,36 @@
             font-size: 12px;
             outline: none;
         }
+        .molecule-input-row .input-wrap {
+            position: relative;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .molecule-input-row .input-wrap input {
+            padding-right: 26px;
+        }
+        .molecule-input-row .clear-btn {
+            position: absolute;
+            right: 7px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            line-height: 14px;
+            text-align: center;
+            font-size: 12px;
+            color: #89a;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 50%;
+            cursor: pointer;
+            user-select: none;
+            display: none;
+            font-style: normal;
+        }
+        .molecule-input-row .clear-btn:hover {
+            background: rgba(255, 170, 68, 0.5);
+            color: #fff;
+        }
         .molecule-input-row input:focus {
             border-color: rgba(255, 170, 68, 0.6);
         }
@@ -405,6 +435,39 @@
             display: inline-block;
             line-height: 1.7;
             padding: 2px 8px;
+        }
+        /* SMILES 输入方法介绍（2026-08） */
+        .smiles-help-toggle {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #7ab;
+            cursor: pointer;
+            user-select: none;
+            padding: 2px 4px;
+        }
+        .smiles-help-toggle:hover { color: #8ce; }
+        .smiles-help {
+            display: none;
+            margin-top: 4px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 11px;
+            line-height: 1.9;
+            color: #abc;
+        }
+        .smiles-help.open { display: block; }
+        .smiles-help b { color: #ffd78c; font-weight: 600; }
+        .smiles-help code {
+            display: inline-block;
+            padding: 0 5px;
+            margin: 0 2px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-family: Consolas, Menlo, monospace;
+            font-size: 11px;
         }
         .molecule-input-row .action-btn {
             width: 100%;
@@ -479,10 +542,27 @@
         <div class="atom-card atom-iodine" id="drag-iodine" data-atom="I">I<small>碘</small></div>
         <div class="molecule-input-row">
             <div style="font-size:12px; color:#9ab; margin-bottom:4px;">名称 / SMILES 生成</div>
-            <input type="text" id="name-input" placeholder="输入分子名称，如 ethanol / 乙醇 / 阿司匹林" />
-            <input type="text" id="smiles-input" placeholder="输入 SMILES，如 CCO / c1ccccc1" />
+            <div class="input-wrap">
+                <input type="text" id="name-input" placeholder="输入分子名称，如 ethanol / 乙醇 / 阿司匹林" />
+                <i class="clear-btn" data-clear="name-input" title="清空">×</i>
+            </div>
+            <div class="input-wrap">
+                <input type="text" id="smiles-input" placeholder="输入 SMILES，如 CCO / c1ccccc1" />
+                <i class="clear-btn" data-clear="smiles-input" title="清空">×</i>
+            </div>
             <div class="action-btn" id="btn-molecule-from-input">从输入生成</div>
             <div class="hint"><i>名称或 SMILES 二选一（SMILES 优先）</i></div>
+            <div class="smiles-help-toggle" id="smiles-help-toggle">❔ SMILES 输入方法介绍</div>
+            <div class="smiles-help" id="smiles-help">
+                <b>原子</b>：直接用元素符号，如 <code>C</code> 碳、<code>O</code> 氧、<code>N</code> 氮、<code>S</code> 硫、<code>P</code> 磷、<code>Cl</code> 氯。<br/>
+                <b>单键</b>：直接连写，如 <code>CCO</code> = 乙醇（C-C-O）。<br/>
+                <b>双键 / 三键</b>：用 <code>=</code> 和 <code>#</code>，如 <code>C=C</code> 乙烯、<code>C#N</code> 氢氰酸。<br/>
+                <b>分支（括号）</b>：侧链写在 <code>( )</code> 里，如 <code>CC(C)C</code> = 异丁烷、<code>CC(=O)O</code> = 乙酸。<br/>
+                <b>环</b>：用数字标记首尾原子，如 <code>c1ccccc1</code> = 苯（小写 c 表示芳香环碳）。<br/>
+                <b>电荷 / 离子</b>：写在方括号里，如 <code>[N+]</code> 带正电的氮、<code>[O-]</code> 带负电的氧。<br/>
+                <b>其他写法</b>：芳香环也可大写（自动判环）；立体标记（如 <code>@</code>、<code>/</code>）会被自动忽略后重试。<br/>
+                <b>例子</b>：<code>CCO</code> 乙醇、<code>c1ccccc1</code> 苯、<code>CC(=O)Oc1ccccc1C(=O)O</code> 阿司匹林、<code>CCCCCCCCCCCCCC(=O)N[C@@H](COP(=O)(O)OCC[N+](C)(C)C)[C@@H](O)/C=C/CCCCCCCCCCCCCC</code> 鞘磷脂
+            </div>
         </div>
         <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
         <div class="action-btn" id="btn-toggle-hydro">自动补氢: 关</div>
@@ -6446,7 +6526,8 @@ isOptimizing = false;
                             if (r2 && r2.ok) {
                                 smilesToUse = stripped;
                                 finalCount = r2.atomCount;
-                                if (smilesInput) smilesInput.value = smilesToUse;
+if (smilesInput) smilesInput.value = smilesToUse;
+                                syncInputClearButtons();
                                 if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子)`, 2800);
                                 else showToast(`已生成: ${finalCount} 原子`, 2200);
                                 return true;
@@ -6463,7 +6544,8 @@ isOptimizing = false;
                     }
                     finalCount = res.atomCount;
                 }
-                if (smilesInput) smilesInput.value = smilesToUse;
+if (smilesInput) smilesInput.value = smilesToUse;
+                syncInputClearButtons();
                 if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子${used3D ? ' · 3D 坐标' : ''})`, 2800);
                 else showToast(`已生成: ${finalCount} 原子${used3D ? ' · 3D 坐标' : ''}`, 2200);
                 return true;
@@ -6484,6 +6566,46 @@ isOptimizing = false;
                 if (e.key === 'Enter') { e.preventDefault(); generateFromInput(); }
             });
         }
+        // 输入框内 × 清空按钮（2026-08）：有内容才显示，点击清空并聚焦
+        function syncInputClearButtons() {
+            for (const inputId of ['name-input', 'smiles-input']) {
+                const inputEl = document.getElementById(inputId);
+                const btn = document.querySelector(`.clear-btn[data-clear="${inputId}"]`);
+                if (inputEl && btn) btn.style.display = inputEl.value ? 'block' : 'none';
+            }
+        }
+        window.__syncInputClearButtons = syncInputClearButtons;
+        for (const inputId of ['name-input', 'smiles-input']) {
+            const inputEl = document.getElementById(inputId);
+            if (!inputEl) continue;
+            const btn = document.querySelector(`.clear-btn[data-clear="${inputId}"]`);
+            if (!btn) continue;
+            const sync = () => { btn.style.display = inputEl.value ? 'block' : 'none'; };
+            inputEl.addEventListener('input', sync);
+            inputEl.addEventListener('focus', sync);
+            inputEl.addEventListener('blur', () => {
+                setTimeout(() => { btn.style.display = inputEl.value ? 'block' : 'none'; }, 150);
+            });
+            btn.addEventListener('mousedown', (e) => e.preventDefault()); // 防止输入框失焦
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                inputEl.value = '';
+                sync();
+                inputEl.focus();
+                inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            sync();
+        }
+        // SMILES 输入方法介绍折叠（2026-08）
+        (function () {
+            const tgl = document.getElementById('smiles-help-toggle');
+            const box = document.getElementById('smiles-help');
+            if (!tgl || !box) return;
+            tgl.addEventListener('click', () => {
+                const open = box.classList.toggle('open');
+                tgl.textContent = open ? '❔ SMILES 输入方法介绍（收起）' : '❔ SMILES 输入方法介绍';
+            });
+        })();
         const candClose = document.getElementById('candidate-panel-close');
         if (candClose) candClose.addEventListener('click', hideCandidatePanel);
 
