@@ -8,7 +8,7 @@
         body {
             margin: 0;
             overflow: hidden;
-            background: #d6d6d6;
+            background: #343941;
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
             touch-action: pan-y pinch-zoom;
         }
@@ -744,7 +744,7 @@
         try {
         // --- 初始化场景 ---
         const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xd6d6d6);
+            scene.background = new THREE.Color(0x343941);
 
         const ambientLight = new THREE.AmbientLight(0x404060);
         scene.add(ambientLight);
@@ -796,7 +796,7 @@
         gridFine.material.opacity = 0.45;
         gridRoot.add(gridHelper);
         gridRoot.add(gridFine);
-        scene.fog = new THREE.Fog(0xd6d6d6, 15, 40);
+        scene.fog = new THREE.Fog(0x343941, 15, 40);
 
         const atomsGroup = new THREE.Group();
         scene.add(atomsGroup);
