@@ -3514,8 +3514,21 @@ isOptimizing = false;
             const grp = new THREE.Group();
             const s = createPreviewSphere(spec.atoms[spec.anchor].t);
             grp.add(s);
-            // 2026-08 用户要求：拖拽预览不再显示基团名称独立标签（如 COOR/CH₃），
-            // 只保留锚点预览球；基团名称在侧栏卡片上已有
+            // 2026-08 用户要求：拖拽过程中显示基团名称标签（如 COOR），提示正在
+            // 拖动的基团；拖拽结束/取消时整个 preview 组被 scene.remove，标签随之
+            // 立即消失，落点原子只显示纯元素符号标签（createCompleteGroup 不带它）
+            const div = document.createElement('div');
+            div.textContent = spec.label;
+            div.style.color = 'white';
+            div.style.fontSize = '15px';
+            div.style.background = 'rgba(0,0,0,0.65)';
+            div.style.padding = '2px 8px';
+            div.style.borderRadius = '10px';
+            div.style.pointerEvents = 'none';
+            div.style.border = '1px solid rgba(255,255,255,0.4)';
+            const lbl = new CSS2DObject(div);
+            lbl.position.set(0, 0.9, 0);
+            grp.add(lbl);
             return grp;
         }
 
@@ -7613,7 +7626,19 @@ if (smilesInput) smilesInput.value = smilesToUse;
             clearConnectHint();
             refreshLonePairVisuals();
             clearDragHUD();
-            if ((isNewAtomDrag || isGroupDrag) && draggedObject) scene.remove(draggedObject);
+            if ((isNewAtomDrag || isGroupDrag) && draggedObject) {
+                if (isGroupDrag) {
+                    // CSS2DRenderer.render 只遍历仍在场景中的对象:preview 组被
+                    // scene.remove 后,其基团名称标签(如 COOR)的 DOM 元素不会被
+                    // 自动清除,会在画布上残留为幽灵标签 → 移除前手动摘除 DOM
+                    draggedObject.traverse(o => {
+                        if (o.isCSS2DObject && o.element && o.element.parentNode) {
+                            try { o.element.parentNode.removeChild(o.element); } catch (e) {}
+                        }
+                    });
+                }
+                scene.remove(draggedObject);
+            }
             draggedObject = null;
             isDragging = false;
             isNewAtomDrag = false;
@@ -7628,7 +7653,19 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         function cancelDrag() {
             if (!isDragging) return;
-            if ((isNewAtomDrag || isGroupDrag) && draggedObject) scene.remove(draggedObject);
+            if ((isNewAtomDrag || isGroupDrag) && draggedObject) {
+                if (isGroupDrag) {
+                    // CSS2DRenderer.render 只遍历仍在场景中的对象:preview 组被
+                    // scene.remove 后,其基团名称标签(如 COOR)的 DOM 元素不会被
+                    // 自动清除,会在画布上残留为幽灵标签 → 移除前手动摘除 DOM
+                    draggedObject.traverse(o => {
+                        if (o.isCSS2DObject && o.element && o.element.parentNode) {
+                            try { o.element.parentNode.removeChild(o.element); } catch (e) {}
+                        }
+                    });
+                }
+                scene.remove(draggedObject);
+            }
             clearConnectHint();
             clearDragHUD();
             draggedObject = null;
