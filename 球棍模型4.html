@@ -3691,12 +3691,13 @@ isOptimizing = false;
                     const shift = newAnchor.clone().sub(oldAnchor);
                     meshes.forEach(m => m.position.add(shift));
                     if (chosenMarked && chosenMarked.length) {
-                        chosenMarked.forEach(h => atomsGroup.remove(h));
+                        // 必须走 removeAtom 统一清理（键 cylinder 几何 + bonds 过滤 +
+                        // label/glow + selectedAtom 重置）。若只 atomsGroup.remove(h) +
+                        // bonds.splice，键对象虽出数组、其 cylinders 仍挂在 scene 上，
+                        // clearMolecule（遍历 bonds 清几何）永远看不到它 →
+                        // 清空场景后幽灵键残留（实测 bug）
                         chosenMarked.forEach(h => {
-                            const idx = others.indexOf(h);
-                            if (idx > -1) others.splice(idx, 1);
-                            const bidx = bonds.findIndex(s => (s.atomA === h) || (s.atomB === h));
-                            if (bidx > -1) bonds.splice(bidx, 1);
+                            try { removeAtom(h, true); } catch (e) { try { atomsGroup.remove(h); } catch (e2) {} }
                         });
                     }
                 }
@@ -7333,6 +7334,16 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 specNames() { return Object.keys(CONNECTIVITY_SPECS); },
                 specOf(name) { return CONNECTIVITY_SPECS[name] || null; },
                 runOpt() { optimizeAllAtoms(); },
+                // 场景残留诊断（2026-08）：键 cylinder 直接挂在 scene 上，清空场景后
+                // children 总数应回到基线；幽灵键/原子残留会表现为 total 偏高
+                sceneStats() {
+                    const kinds = {};
+                    scene.children.forEach(c => {
+                        const k = c.type + (c.name ? ':' + c.name : '');
+                        kinds[k] = (kinds[k] || 0) + 1;
+                    });
+                    return { total: scene.children.length, kinds };
+                },
                 getCarbonStds() {
                     return atomsGroup.children.filter(a => a.userData?.isAtom && a.userData.atomType === 'C').map(a => +computeBondAngleStd(a).toFixed(1));
                 },
