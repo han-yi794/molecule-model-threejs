@@ -12,23 +12,55 @@
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
             touch-action: pan-y pinch-zoom;
         }
-        #info {
+        /* 左上角使用说明面板（2026-08 界面重构：原顶部 #info 长横幅移除，
+           快捷键/操作介绍收纳于此，默认收起不挡画布） */
+        #guide-panel {
             position: absolute;
-            /* 便于自动化脚本直接读取 — 请将 JS 放在 <script> 中执行 */
             top: 20px;
             left: 20px;
-            color: rgba(255, 255, 255, 0.9);
-            background: rgba(10, 10, 20, 0.6);
-            padding: 8px 18px;
-            border-radius: 30px;
-            backdrop-filter: blur(8px);
-            font-size: 14px;
-            z-index: 10;
-            border: 1px solid rgba(255,255,255,0.2);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            pointer-events: none;
+            width: 130px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(12px);
+            border-radius: 18px;
+            padding: 10px 10px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            z-index: 25;
+            color: white;
+            user-select: none;
         }
-        #info .key-hint {
+        #guide-panel .guide-toggle {
+            font-size: 13px;
+            text-align: center;
+            cursor: pointer;
+            padding: 2px 0;
+            color: #fff;
+        }
+        #guide-panel .guide-toggle:hover { color: #ffd78c; }
+        #guide-panel .guide-body {
+            display: none;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            font-size: 11px;
+            line-height: 1.9;
+            color: #cdd7e8;
+            overflow-wrap: anywhere;
+        }
+        #guide-panel .guide-body.open { display: block; }
+        #guide-panel .guide-body b {
+            display: block;
+            margin-top: 6px;
+            color: #ffd78c;
+            font-weight: 600;
+        }
+        #guide-panel .guide-body b:first-child { margin-top: 0; }
+        #guide-panel .guide-body .key-hint {
+            display: inline-block;
+            padding: 0 5px;
+            margin: 1px 1px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
             color: #ffaa44;
             font-weight: bold;
         }
@@ -532,13 +564,24 @@
     </script>
 </head>
 <body>
-    <div id="info">
-        <strong>原子拖拽 (全局同步优化 - 支持环状分子)</strong> 
-        <span style="color:#aaa;">C</span> · <span style="color:#ddd;">H</span> · <span style="color:#f66;">O</span> · <span style="color:#6af;">N</span>
-        · <span style="color:#9bcd6c;">F</span> · <span style="color:#1f8a4c;">Cl</span> · <span style="color:#b54c3c;">Br</span> · <span style="color:#8b5a8c;">I</span>
-        | 网格平面 (XZ) | 点击原子选中 | 键盘 <span class="key-hint">X/Shift+X</span> <span class="key-hint">Y/Shift+Y</span> <span class="key-hint">Z/Shift+Z</span> 移动
-        | <span class="key-hint">O</span> 优化选中 | <span class="key-hint">Shift+O</span> 全局同步优化所有原子
-        | <span class="key-hint">Ctrl+点击</span> 设置杂化 | 点击键设置类型
+    <div id="guide-panel">
+        <div class="guide-toggle" id="guide-toggle">📖 使用说明 ▾</div>
+        <div class="guide-body" id="guide-body">
+            <b>基本操作</b>
+            点击原子选中<br/>
+            点击键设置类型<br/>
+            <span class="key-hint">Ctrl+点击</span> 设置杂化<br/>
+            <b>移动选中原子</b>
+            <span class="key-hint">X/Shift+X</span>
+            <span class="key-hint">Y/Shift+Y</span>
+            <span class="key-hint">Z/Shift+Z</span><br/>
+            <b>优化</b>
+            <span class="key-hint">O</span> 优化选中<br/>
+            <span class="key-hint">Shift+O</span> 全局同步优化<br/>
+            <b>其他</b>
+            网格平面 (XZ)：<span class="key-hint">G</span> 开关<br/>
+            拖原子靠近即成键
+        </div>
     </div>
     <!-- 自测报告 DOM 已移除（结果仍写 window/lastRunResults/localStorage，供自动化读取）-->
     <div id="group-sidebar">
@@ -6640,6 +6683,16 @@ if (smilesInput) smilesInput.value = smilesToUse;
             });
             sync();
         }
+        // 左上角使用说明折叠（2026-08 界面重构）
+        (function () {
+            const tgl = document.getElementById('guide-toggle');
+            const body = document.getElementById('guide-body');
+            if (!tgl || !body) return;
+            tgl.addEventListener('click', () => {
+                const open = body.classList.toggle('open');
+                tgl.textContent = open ? '📖 使用说明 ▴' : '📖 使用说明 ▾';
+            });
+        })();
         // SMILES 输入方法介绍折叠（2026-08）
         (function () {
             const tgl = document.getElementById('smiles-help-toggle');
