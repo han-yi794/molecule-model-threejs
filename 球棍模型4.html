@@ -8,7 +8,7 @@
         body {
             margin: 0;
             overflow: hidden;
-            background: #262b32;
+            background: #000; /* 兜底色：模块脚本执行后被 SCENE_BG_COLOR 覆盖 */
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
             touch-action: pan-y pinch-zoom;
         }
@@ -743,8 +743,14 @@
         // 捕获模块初始化错误，方便自动化诊断
         try {
         // --- 初始化场景 ---
+        // 全局背景色常量（2026-08 用户要求集中管理）：body / scene.background /
+        // scene.fog 三处共用，改这一处即可整体换色。CSS 里 body 的 #000 只是
+        // 加载瞬间的兜底色（模块脚本执行后被下面一行覆盖）。当前 #1a1e24 =
+        // 深炭黑蓝（较 nobook 底色 #343941 更深一档）。
+        const SCENE_BG_COLOR = 0x1a1e24;
+        document.body.style.background = '#' + SCENE_BG_COLOR.toString(16).padStart(6, '0');
         const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x262b32);
+            scene.background = new THREE.Color(SCENE_BG_COLOR);
 
         const ambientLight = new THREE.AmbientLight(0x404060);
         scene.add(ambientLight);
@@ -796,7 +802,7 @@
         gridFine.material.opacity = 0.45;
         gridRoot.add(gridHelper);
         gridRoot.add(gridFine);
-        scene.fog = new THREE.Fog(0x262b32, 15, 40);
+        scene.fog = new THREE.Fog(SCENE_BG_COLOR, 15, 40);
 
         const atomsGroup = new THREE.Group();
         scene.add(atomsGroup);
