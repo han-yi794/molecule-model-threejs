@@ -3559,18 +3559,28 @@ isOptimizing = false;
             meshes.forEach(m => m.position.add(offset));
             // 寻找最近可键合原子并对准（连接轴 +X 指向目标）
             // 候选需满足：锚点放到 target 外侧键长距离处后，不与其它已有原子明显重叠
-            let target = null, bestScore = Infinity;
-            let chosenQ = null, chosenMarked = null;
             const others = atomsGroup.children.filter(c => c.userData?.isAtom && !meshes.includes(c));
             function isBonded(a, b) {
                 return bonds.some(bb => (bb.atomA === a && bb.atomB === b) || (bb.atomA === b && bb.atomB === a));
             }
+            // 锚点选择两阶段（2026-08）：附近存在未饱和原子时优先直接成键；
+            // 仅当附近全部饱和（阶段一无 direct 候选）时，才回退为
+            // "选取最近的带 H 中心原子，取代其一个氢"。
+            function scanCandidates(mode) {
+            let target = null, bestScore = Infinity;
+            let chosenQ = null, chosenMarked = null;
             for (const other of others) {
-                if (!canAddBond(anchor, other, 1)) {
-                    // 基团放置≠新增键：target 若连有将被替换的 H（常见于芳香环碳/饱和碳），
-                    // 移除该 H 后 σ 不变，属于合法的"取代"语义——放行，放置时该 H 会被删除。
-                    // 无 H 可替换且已满价（如苯环带 H 的碳，effectiveSigmaCapacity=3）的候选必须拒绝，
-                    // 否则会超价（拖拽/连接提示场景不走本分支，仍受 canAddBond 严格限制）。
+                if (mode === 'direct') {
+                    // 阶段一：只收未饱和候选（canAddBond 直接通过）
+                    if (!canAddBond(anchor, other, 1)) continue;
+                } else {
+                    // 阶段二（取代模式）：基团放置≠新增键——target 若连有将被替换的 H
+                    // （常见于芳香环碳/饱和碳），移除该 H 后 σ 不变，属于合法的"取代"
+                    // 语义——放行，放置时该 H 会被删除。
+                    // 无 H 可替换且已满价（如苯环带 H 的碳，effectiveSigmaCapacity=3）
+                    // 的候选必须拒绝，否则会超价（拖拽/连接提示场景不走本分支，
+                    // 仍受 canAddBond 严格限制）。未饱和候选属 direct 阶段，此处跳过。
+                    if (canAddBond(anchor, other, 1)) continue;
                     const hasReplaceableH = others.some(c => c.userData?.atomType === 'H' && isBonded(c, other));
                     if (!hasReplaceableH) continue;
                 }
@@ -3644,6 +3654,12 @@ isOptimizing = false;
                 const score = Math.abs(dist - tLen);
                 if (score < bestScore) { bestScore = score; target = other; chosenQ = bestQ; chosenMarked = bestMarked; }
             }
+            return { target, chosenQ, chosenMarked };
+            }
+            // 阶段一优先；阶段二仅当附近无未饱和原子时启用
+            let picked = scanCandidates('direct');
+            if (!picked.target) picked = scanCandidates('replace');
+            const target = picked.target, chosenQ = picked.chosenQ, chosenMarked = picked.chosenMarked;
             if (target) {
                 const tLen = getTargetBondLength(anchor, target);
                 // 连接方向：逻辑在候选循环中已确定（优先 target 的 H 方向，否则拖拽方向），
