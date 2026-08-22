@@ -11,6 +11,7 @@
 - 验证脚本访问 `http://127.0.0.1:8000/球棍模型2.html`，需先在仓库根目录起静态服务器：`python -m http.server 8000`。
 - 运行验证：`node playwright-verify.js`。`node_modules` 里已有 playwright 1.62（无 package.json，Node >= 20）；首次需 `npx playwright install chromium`。
 - 页面加载后 900ms 会自动运行全部测试（`AUTO_RUN_ALL_TESTS = true`），无需手动触发；也可通过 UI 按钮或 `runAllExamplesAndTests()` 触发。
+- **Three.js 已内联（2026-08-13）**：球棍模型4.html 的 importmap 改为 `data:text/javascript;base64` 内联 three@0.148.0 三模块（three.module.js/OrbitControls/CSS2DRenderer，~2MB），**双击 file:// 打开完全离线可用**（Playwright 断网拦截实测 0 个 http 请求）。根因：unpkg CDN + 浏览器缓存损坏（ERR_CACHE_READ_FAILURE）导致打不开。OrbitControls/CSS2DRenderer 内部仅 `import 'three'` bare specifier → importmap 二次解析回同一 data:URL 模块实例。还原 CDN 版的原始配置保留在 importmap 上方 HTML 注释里；重建流程：`node download_three.js`（下载到 vendor_tmp/，不入库）→ `node build_inline.js`。注意 2/3 号文件仍是 unpkg CDN 加载。
 - **防呆测试（2026-08 新增）**：`node verify_foolproof.js`（球棍模型4.html，22 项全过，`verifyF.json`）——A 初始化/参数防呆（非法 URL 参数、localStorage 注入非法 DRAG_MODE/损坏 OPT_PARAMS→回退默认）；B 空状态防呆（空画布优化/补氢/清空不崩）；C 状态机防呆（旋转中清空退出、选中删除后再优化）；D 几何极端（单原子/孤立 H/扰动 0.9/重复生成 8 次/非法连键参数）；E 真实鼠标误操作（连点清空×5、旋转激活后切分子退出、拖到侧栏无 ghost、双击空白、空画布拖出新原子）。**注意**：4 号版「生成」按钮被 CSS `display:none !important` 隐藏（~行 338），UI 连点测试只能点「清空」`#btn-clear-molecule`。
 
 ## 已知陷阱（必读）
