@@ -101,7 +101,9 @@ class AssertionCollector {
         // ---------- 1. 名称 'ethanol' → 9 原子 ----------
         {
             const ac = mk('1 名称 ethanol 生成');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', 'ethanol');
             await clickAndWait(60000);
             const n = await waitFor(async () => { const c = await atomCount(); return c === 9 ? c : null; }, 30000, 'ethanol 原子数');
@@ -116,7 +118,9 @@ class AssertionCollector {
         // ---------- 2. 中文名称 '乙醇' → 9 原子 ----------
         {
             const ac = mk('2 中文名称 乙醇 生成');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', ''); // 场景 1 生成后 HTML 会把 SMILES 回填为 CCO，必须先清空走名称分支
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '乙醇');
             await clickAndWait(60000);
             const n = await waitFor(async () => { const c = await atomCount(); return c === 9 ? c : null; }, 30000, '乙醇 原子数');
@@ -129,7 +133,9 @@ class AssertionCollector {
         // ---------- 3. SMILES 'CCO' → 9 原子 ----------
         {
             const ac = mk('3 SMILES CCO 生成');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'CCO');
             await clickAndWait(60000);
             const n = await waitFor(async () => { const c = await atomCount(); return c === 9 ? c : null; }, 30000, 'CCO 原子数');
@@ -142,6 +148,7 @@ class AssertionCollector {
         // ---------- 4. 苯 'c1ccccc1' → 12 原子 ----------
         {
             const ac = mk('4 苯 c1ccccc1 生成');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'c1ccccc1');
             await clickAndWait(60000);
             const n = await waitFor(async () => { const c = await atomCount(); return c === 12 ? c : null; }, 30000, '苯 原子数');
@@ -155,6 +162,7 @@ class AssertionCollector {
         // ---------- 5. 阿司匹林 'CC(=O)Oc1ccccc1C(=O)O' → 21 原子 ----------
         {
             const ac = mk('5 阿司匹林 SMILES 生成');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'CC(=O)Oc1ccccc1C(=O)O');
             await clickAndWait(60000);
             const n = await waitFor(async () => { const c = await atomCount(); return c === 21 ? c : null; }, 30000, '阿司匹林 原子数');
@@ -170,6 +178,7 @@ class AssertionCollector {
         {
             const ac = mk('6 SMILES 语法错误 CC(');
             const before = await atomCount();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'CC(');
             await clickAndWait(60000);
             const toast = await waitFor(async () => {
@@ -187,7 +196,9 @@ class AssertionCollector {
         {
             const ac = mk('7 未知名称 not_found');
             const before = await atomCount();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', 'XQZWZZ99');
             await clickAndWait(60000);
             const toast = await waitFor(async () => {
@@ -205,6 +216,7 @@ class AssertionCollector {
         {
             const ac = mk('8 疑似 SMILES 引导');
             const before = await atomCount();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', 'zzzqqq999');
             await clickAndWait(60000);
             const toast = await waitFor(async () => {
@@ -230,6 +242,7 @@ class AssertionCollector {
         // ---------- 10. 生成后现有功能可用（diag 可取数 + 一键优化按钮可跑 + 交互接口在） ----------
         {
             const ac = mk('10 生成后现有功能可用');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'CCO');
             await clickAndWait(60000);
             const n = await waitFor(async () => { const c = await atomCount(); return c === 9 ? c : null; }, 30000, 'CCO 原子数');

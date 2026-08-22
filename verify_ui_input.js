@@ -103,6 +103,7 @@ class AssertionCollector {
         // ---------- 场景 2：SMILES 'CCO' → 9 原子 + toast ----------
         {
             const ac = new AssertionCollector();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'CCO');
             await page.click('#btn-molecule-from-input');
             const n = await waitFor(async () => { const c = await atomCount(); return c === 9 ? c : null; }, 30000, 'CCO 原子数');
@@ -121,7 +122,9 @@ class AssertionCollector {
         // ---------- 场景 3：名称 'ethanol' → 9 原子 + toast ----------
         {
             const ac = new AssertionCollector();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', 'ethanol');
             await page.click('#btn-molecule-from-input');
             const n = await waitFor(async () => { const c = await atomCount(); return c === 9 ? c : null; }, 30000, 'ethanol 原子数');
@@ -138,7 +141,9 @@ class AssertionCollector {
         // ---------- 场景 4：未知名称 → not_found toast + 按钮恢复 ----------
         {
             const ac = new AssertionCollector();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '不存在的分子xyz123');
             await page.click('#btn-molecule-from-input');
             const toast = await waitFor(async () => {
@@ -161,7 +166,9 @@ class AssertionCollector {
         {
             const ac = new AssertionCollector();
             const before = await atomCount();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'C(');
             await page.click('#btn-molecule-from-input');
             const toast = await waitFor(async () => {
@@ -180,7 +187,9 @@ class AssertionCollector {
         {
             const ac = new AssertionCollector();
             const before = await atomCount();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', '');
             await page.click('#btn-molecule-from-input');
             const toast = await waitFor(async () => {
@@ -198,6 +207,7 @@ class AssertionCollector {
         // ---------- 场景 7（附加）：Enter 键触发生成 ----------
         {
             const ac = new AssertionCollector();
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', 'CC');
             await page.press('#smiles-input', 'Enter');
             const n = await waitFor(async () => { const c = await atomCount(); return c === 8 ? c : null; }, 30000, 'Enter 生成乙烷');

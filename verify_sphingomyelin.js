@@ -67,7 +67,9 @@ const SM_SPH_SIMPLE = 'CCCCCCCCCCCCCCCC(=O)NCC(O)COP(=O)(O)OCC[N+](C)(C)C';
         // 4) UI 名称输入点按钮
         {
             const out = {};
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '鞘磷脂');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', '');
             const btn = '#btn-molecule-from-input';
             const before = await page.evaluate(() => document.getElementById('btn-molecule-from-input').textContent);
@@ -84,7 +86,9 @@ const SM_SPH_SIMPLE = 'CCCCCCCCCCCCCCCC(=O)NCC(O)COP(=O)(O)OCC[N+](C)(C)C';
         // 5) UI SMILES 输入(简化)点按钮
         {
             const out = {};
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', SM_SPH_SIMPLE);
             await page.click('#btn-molecule-from-input');
             await page.waitForTimeout(8000);
@@ -96,7 +100,9 @@ const SM_SPH_SIMPLE = 'CCCCCCCCCCCCCCCC(=O)NCC(O)COP(=O)(O)OCC[N+](C)(C)C';
         // 6) UI SMILES 输入(完整,含手性/顺反)点按钮 —— 应剥除立体标记后生成
         {
             const out = {};
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', '');
+            await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#smiles-input', SM_SPH);
             await page.click('#btn-molecule-from-input');
             await page.waitForTimeout(12000);

@@ -20,6 +20,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         const step = (name, ok, detail) => out.steps.push({ name, ok: !!ok, detail });
 
         // 1. × 按钮垂直居中：先填内容让按钮显示，按钮中心 y 应约等于 input 中心 y（误差 < 4px）
+        await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
         await page.fill('#smiles-input', 'CCO');
         await page.waitForTimeout(100);
         const geom = await page.evaluate(() => {

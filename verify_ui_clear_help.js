@@ -25,6 +25,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         step('初始空输入框 × 隐藏', visName === 'none' && visSmiles === 'none', { visName, visSmiles });
 
         // 2. 输入内容后 × 显示
+        await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
         await page.fill('#smiles-input', 'CCO');
         visSmiles = await page.evaluate(() => document.querySelector('.clear-btn[data-clear="smiles-input"]').style.display);
         step('输入后 × 显示', visSmiles === 'block', { visSmiles });
@@ -37,6 +38,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         step('点击 × 清空内容并聚焦', val === '' && focused && visSmiles === 'none', { val, focused, visSmiles });
 
         // 4. 生成后回填同步：名称生成回填 SMILES → × 应显示
+        await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
         await page.fill('#name-input', '乙醇');
         await page.click('#btn-molecule-from-input');
         await page.waitForFunction(() => document.getElementById('smiles-input').value === 'CCO', null, { timeout: 30000 });
@@ -44,6 +46,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         step('名称生成回填后 × 同步显示', visSmiles === 'block', { visSmiles, refilled: await page.evaluate(() => document.getElementById('smiles-input').value) });
 
         // 5. name-input 的 × 也工作
+        await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
         await page.fill('#name-input', 'abc');
         visName = await page.evaluate(() => document.querySelector('.clear-btn[data-clear="name-input"]').style.display);
         await page.click('.clear-btn[data-clear="name-input"]');
@@ -64,6 +67,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         step('帮助含双键/环/电荷/例子', ['C=C', 'c1ccccc1', '[N+]', '阿司匹林', '鞘磷脂'].every(k => html.includes(k)), {});
 
         // 8. × 不触发生成
+        await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
         await page.fill('#smiles-input', 'CC');
         await page.click('.clear-btn[data-clear="smiles-input"]');
         const stillEmpty = await page.evaluate(() => document.getElementById('smiles-input').value === '');
