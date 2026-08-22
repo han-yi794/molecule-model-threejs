@@ -3290,15 +3290,11 @@ isOptimizing = false;
             if (!lbl) return;
             const el = lbl.element || lbl.element || null;
             const type = atom.userData.atomType;
-            // 端基原子（仅 1 个 σ 邻居：H、C=O 的 O、腈端 N、卤素等）没有键角几何，
-            // 杂化对它们无意义，标签不显示杂化后缀（内部仍按 VSEPR 推断用于几何）。
-            let terminal = false;
-            try {
-                const bb = getBondsForAtom(atom);
-                terminal = bb.length <= 1;
-            } catch (e) { terminal = false; }
-            const inferred = (terminal ? '' : (atom.userData.hybridization || inferHybridization(atom) || ''));
-            const text = atomTypes[type]?.symbol + (inferred ? ('(' + inferred + ')') : '');
+            // 2026-08 用户要求：标签只显示原子名称（元素符号），不再追加杂化后缀
+            // （此前为 C(sp3)/C(sp2) 格式）。杂化仍在内部推断并用于几何优化
+            // （userData.hybridization / inferHybridization / __diag.hybOf 均不受影响），
+            // 端基判断（原 terminal 逻辑）随之移除。
+            const text = atomTypes[type]?.symbol;
             try {
                 if (el && el.textContent !== undefined) el.textContent = text;
             } catch (e) {}
@@ -3518,18 +3514,8 @@ isOptimizing = false;
             const grp = new THREE.Group();
             const s = createPreviewSphere(spec.atoms[spec.anchor].t);
             grp.add(s);
-            const div = document.createElement('div');
-            div.textContent = spec.label;
-            div.style.color = 'white';
-            div.style.fontSize = '15px';
-            div.style.background = 'rgba(0,0,0,0.65)';
-            div.style.padding = '2px 8px';
-            div.style.borderRadius = '10px';
-            div.style.pointerEvents = 'none';
-            div.style.border = '1px solid rgba(255,255,255,0.4)';
-            const lbl = new CSS2DObject(div);
-            lbl.position.set(0, 0.9, 0);
-            grp.add(lbl);
+            // 2026-08 用户要求：拖拽预览不再显示基团名称独立标签（如 COOR/CH₃），
+            // 只保留锚点预览球；基团名称在侧栏卡片上已有
             return grp;
         }
 
@@ -3541,10 +3527,8 @@ isOptimizing = false;
             const meshes = [];
             for (const at of spec.atoms) {
                 const m = createCompleteAtom(at.t, new THREE.Vector3(at.p[0], at.p[1], at.p[2]));
-                // 基团放置后不显示各元素标签（用户要求：删除基团拖出来后的标签）
-                try {
-                    if (m.userData && m.userData.label) { m.remove(m.userData.label); delete m.userData.label; }
-                } catch (e) {}
+                // 标签与其他原子一致（2026-08 用户要求：撤销此前"基团无标签"特例，
+                // 元素名称由 createLabel 创建、updateAtomLabel 统一刷新，如 C(sp3)/H）
                 meshes.push(m);
             }
             for (const b of spec.bonds) {
