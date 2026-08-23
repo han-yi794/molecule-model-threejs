@@ -97,6 +97,64 @@
             color: #ffaa44;
             font-weight: bold;
         }
+        /* 设置面板（2026-08）：收纳功能开关，参考 nobook 齿轮图标展开样式 */
+        #settings-panel {
+            position: absolute;
+            top: 20px;
+            left: 170px; /* 紧贴 guide-panel 右侧 */
+            width: 130px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(12px);
+            border-radius: 18px;
+            padding: 10px 10px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            z-index: 25;
+            color: white;
+        }
+        #settings-panel .settings-toggle {
+            font-size: 13px;
+            text-align: center;
+            cursor: pointer;
+            padding: 2px 0;
+            color: #fff;
+            white-space: nowrap;
+        }
+        #settings-panel .settings-toggle:hover { color: #ffd78c; }
+        #settings-panel .settings-body {
+            display: none;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        #settings-panel .settings-body.open { display: flex; flex-direction: column; gap: 6px; }
+        #settings-panel .settings-body .action-btn {
+            width: 100%;
+            font-size: 11px;
+            padding: 5px 6px;
+            border-radius: 10px;
+        }
+        /* 左上角清空按钮（2026-08） */
+#btn-clear-molecule {
+            position: absolute;
+            top: 20px;
+            left: 320px;
+            width: 50px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(12px);
+            border-radius: 14px;
+            padding: 6px 8px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            z-index: 25;
+            color: white;
+            font-size: 12px;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            line-height: 1.2;
+        }
+        #btn-clear-molecule:hover { border-color: rgba(255, 100, 100, 0.6); color: #ff6b6b; }
         #sidebar {
             position: absolute;
             right: 20px;
@@ -616,6 +674,16 @@
             拖原子靠近即成键
         </div>
     </div>
+    <div id="settings-panel">
+        <div class="settings-toggle" id="settings-toggle">⚙️ 设置</div>
+        <div class="settings-body" id="settings-body">
+            <div class="action-btn" id="btn-toggle-hydro">自动补氢: 关</div>
+            <div class="action-btn" id="btn-toggle-lp">显示孤对电子</div>
+            <div class="action-btn" id="btn-toggle-grid">网格吸附: 关</div>
+            <div class="action-btn" id="btn-toggle-deloc">离域π键: 开</div>
+        </div>
+    </div>
+    <div class="action-btn" id="btn-clear-molecule">🗑️ 清空</div>
     <!-- 自测报告 DOM 已移除（结果仍写 window/lastRunResults/localStorage，供自动化读取）-->
     <div id="input-panel">
         <div class="input-panel-toggle" id="input-panel-toggle">🧪 名称 / SMILES 生成</div>
@@ -668,8 +736,6 @@
         <div class="atom-card atom-bromine" id="drag-bromine" data-atom="Br">Br<small>溴</small></div>
         <div class="atom-card atom-iodine" id="drag-iodine" data-atom="I">I<small>碘</small></div>
         <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
-        <div class="action-btn" id="btn-toggle-hydro">自动补氢: 关</div>
-        <div class="action-btn" id="btn-toggle-lp">显示孤对电子</div>
         <div class="drag-mode-row">
             <div style="font-size:12px; color:#9ab; margin-bottom:4px;">拖动方式</div>
             <select id="drag-mode-select" style="width:100%; border-radius:12px; padding:6px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.06);">
@@ -679,8 +745,6 @@
                 <option value="gizmo-lock">手柄 + 起始轴锁</option>
             </select>
         </div>
-        <div class="action-btn" id="btn-toggle-grid">网格吸附: 关</div>
-        <div class="action-btn" id="btn-toggle-deloc">离域π键: 开</div>
         <div class="action-btn" id="btn-toggle-pi">显示离域π键</div>
         <div class="action-btn" id="btn-pi-test">离域π键自测</div>
         <div class="action-btn" id="btn-set-hybrid-auto">杂化: 自动</div>
@@ -703,7 +767,6 @@
             <option value="bondtest">键长测试 (多对 C–C)</option>
         </select>
         <div class="action-btn" id="btn-generate-molecule">生成</div>
-        <div class="action-btn" id="btn-clear-molecule">清空</div>
         <div class="action-btn" id="btn-delete-atom">删除选中</div>
         <div class="action-btn" id="btn-run-all-tests">自动测试全部</div>
         <div class="hint"><i>按住拖至空间释放</i></div>
@@ -6755,6 +6818,16 @@ if (smilesInput) smilesInput.value = smilesToUse;
             tgl.addEventListener('click', () => {
                 const open = body.classList.toggle('open');
                 tgl.textContent = open ? '📖 使用说明 ▴' : '📖 使用说明 ▾';
+            });
+        })();
+        // 设置面板折叠（2026-08）
+        (function () {
+            const tgl = document.getElementById('settings-toggle');
+            const body = document.getElementById('settings-body');
+            if (!tgl || !body) return;
+            tgl.addEventListener('click', () => {
+                body.classList.toggle('open');
+                tgl.textContent = body.classList.contains('open') ? '⚙️ 设置 ▴' : '⚙️ 设置';
             });
         })();
         // SMILES 输入方法介绍折叠（2026-08）
