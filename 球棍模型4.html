@@ -3204,11 +3204,6 @@ isOptimizing = false;
                     btn.textContent = showGridSnap ? '网格吸附: 开' : '网格吸附: 关';
                     if (chk) chk.checked = showGridSnap;
                 });
-                    showGridSnap = !showGridSnap;
-                    gridRoot.visible = showGridSnap;
-                    try { localStorage.setItem('GRID_SNAP', showGridSnap ? '1' : '0'); } catch (e) {}
-                    btn.textContent = showGridSnap ? '网格吸附: 开' : '网格吸附: 关';
-                });
             }
         }
 
