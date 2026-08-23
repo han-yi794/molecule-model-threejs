@@ -121,24 +121,62 @@
             white-space: nowrap;
         }
         #settings-panel .settings-toggle:hover { color: #ffd78c; }
-        #settings-panel .settings-body {
+#settings-panel .settings-body {
             display: none;
             margin-top: 6px;
             padding-top: 6px;
             border-top: 1px solid rgba(255, 255, 255, 0.12);
         }
         #settings-panel .settings-body.open { display: flex; flex-direction: column; gap: 6px; }
-        #settings-panel .settings-body .action-btn {
-            width: 100%;
-            font-size: 11px;
-            padding: 5px 6px;
-            border-radius: 10px;
+        #settings-panel .settings-body .setting-item {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 11px; color: #cdd7e8; cursor: pointer;
+            padding: 3px 4px; border-radius: 8px; user-select: none;
         }
-        /* 左上角清空按钮（2026-08） */
-#btn-clear-molecule {
+        #settings-panel .settings-body .setting-item:hover { background: rgba(255,255,255,0.06); }
+        #settings-panel .settings-body .setting-item input[type="checkbox"] {
+            display: none;
+        }
+        #settings-panel .settings-body .setting-item .check-box {
+            width: 14px; height: 14px; border-radius: 4px;
+            border: 1.5px solid rgba(255,255,255,0.3);
+            background: transparent; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        #settings-panel .settings-body .setting-item input:checked + .check-box {
+            background: rgba(100, 180, 255, 0.3);
+            border-color: #6af;
+        }
+        #settings-panel .settings-body .setting-item input:checked + .check-box::after {
+            content: '✓'; color: #8cf; font-size: 11px; font-weight: bold;
+        }
+        /* 左上角全局同步优化按钮（2026-08） */
+        #btn-optimize-all {
             position: absolute;
             top: 20px;
             left: 320px;
+            width: 90px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(12px);
+            border-radius: 14px;
+            padding: 6px 8px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            z-index: 25;
+            color: white;
+            font-size: 11px;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            line-height: 1.2;
+        }
+        #btn-optimize-all:hover { border-color: rgba(255, 170, 68, 0.6); color: #ffd78c; }
+        /* 左上角清空按钮（2026-08） */
+        #btn-clear-molecule {
+            position: absolute;
+            top: 20px;
+            left: 430px;
             width: 50px;
             background: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(12px);
@@ -677,12 +715,34 @@
     <div id="settings-panel">
         <div class="settings-toggle" id="settings-toggle">⚙️ 设置</div>
         <div class="settings-body" id="settings-body">
-            <div class="action-btn" id="btn-toggle-hydro">自动补氢: 关</div>
-            <div class="action-btn" id="btn-toggle-lp">显示孤对电子</div>
-            <div class="action-btn" id="btn-toggle-grid">网格吸附: 关</div>
-            <div class="action-btn" id="btn-toggle-deloc">离域π键: 开</div>
+            <label class="setting-item">
+                <input type="checkbox" id="chk-hydro" />
+                <span class="check-box"></span>
+                <span id="btn-toggle-hydro">自动补氢</span>
+            </label>
+            <label class="setting-item">
+                <input type="checkbox" id="chk-lp" />
+                <span class="check-box"></span>
+                <span id="btn-toggle-lp">显示孤对电子</span>
+            </label>
+            <label class="setting-item">
+                <input type="checkbox" id="chk-grid" />
+                <span class="check-box"></span>
+                <span id="btn-toggle-grid">网格吸附</span>
+            </label>
+            <label class="setting-item">
+                <input type="checkbox" id="chk-deloc" />
+                <span class="check-box"></span>
+                <span id="btn-toggle-deloc">离域π键</span>
+            </label>
+            <label class="setting-item">
+                <input type="checkbox" id="chk-pi" />
+                <span class="check-box"></span>
+                <span id="btn-toggle-pi">显示离域π键</span>
+            </label>
         </div>
     </div>
+    <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
     <div class="action-btn" id="btn-clear-molecule">🗑️ 清空</div>
     <!-- 自测报告 DOM 已移除（结果仍写 window/lastRunResults/localStorage，供自动化读取）-->
     <div id="input-panel">
@@ -735,7 +795,6 @@
         <div class="atom-card atom-chlorine" id="drag-chlorine" data-atom="Cl">Cl<small>氯</small></div>
         <div class="atom-card atom-bromine" id="drag-bromine" data-atom="Br">Br<small>溴</small></div>
         <div class="atom-card atom-iodine" id="drag-iodine" data-atom="I">I<small>碘</small></div>
-        <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
         <div class="drag-mode-row">
             <div style="font-size:12px; color:#9ab; margin-bottom:4px;">拖动方式</div>
             <select id="drag-mode-select" style="width:100%; border-radius:12px; padding:6px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.06);">
@@ -747,10 +806,6 @@
         </div>
         <div class="action-btn" id="btn-toggle-pi">显示离域π键</div>
         <div class="action-btn" id="btn-pi-test">离域π键自测</div>
-        <div class="action-btn" id="btn-set-hybrid-auto">杂化: 自动</div>
-        <div class="action-btn" id="btn-set-hybrid-sp3">杂化: sp³</div>
-        <div class="action-btn" id="btn-set-hybrid-sp2">杂化: sp²</div>
-        <div class="action-btn" id="btn-set-hybrid-sp">杂化: sp</div>
         <select id="molecule-select" style="width:100%; border-radius:12px; padding:6px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.06);">
             <option value="">生成测试分子</option>
             <option value="methane">甲烷 CH4</option>
@@ -855,12 +910,18 @@
         function updateHydroUI() {
             const b = document.getElementById('btn-toggle-hydro');
             if (b) b.textContent = '自动补氢: ' + (HYDROGENATE_AUTO ? '开' : '关');
+            const c = document.getElementById('chk-hydro');
+            if (c) c.checked = HYDROGENATE_AUTO;
         }
         function updateDelocPiUI() {
             const b = document.getElementById('btn-toggle-deloc');
             if (b) b.textContent = '离域π键: ' + (DELOCAL_PI_ENABLED ? '开' : '关');
+            const c1 = document.getElementById('chk-deloc');
+            if (c1) c1.checked = DELOCAL_PI_ENABLED;
             const b1 = document.getElementById('btn-toggle-pi');
             if (b1) b1.style.opacity = DELOCAL_PI_ENABLED ? '1' : '0.35';
+            const c2 = document.getElementById('chk-pi');
+            if (c2) c2.checked = DELOCAL_PI_ENABLED && showPiSystems;
             const b2 = document.getElementById('btn-pi-test');
             if (b2) b2.style.opacity = DELOCAL_PI_ENABLED ? '1' : '0.35';
         }
@@ -3134,7 +3195,15 @@ isOptimizing = false;
             const btn = document.getElementById('btn-toggle-grid');
             if (btn) {
                 btn.textContent = showGridSnap ? '网格吸附: 开' : '网格吸附: 关';
+                const chk = document.getElementById('chk-grid');
+                if (chk) chk.checked = showGridSnap;
                 btn.addEventListener('click', () => {
+                    showGridSnap = !showGridSnap;
+                    gridRoot.visible = showGridSnap;
+                    try { localStorage.setItem('GRID_SNAP', showGridSnap ? '1' : '0'); } catch (e) {}
+                    btn.textContent = showGridSnap ? '网格吸附: 开' : '网格吸附: 关';
+                    if (chk) chk.checked = showGridSnap;
+                });
                     showGridSnap = !showGridSnap;
                     gridRoot.visible = showGridSnap;
                     try { localStorage.setItem('GRID_SNAP', showGridSnap ? '1' : '0'); } catch (e) {}
@@ -4140,10 +4209,29 @@ isOptimizing = false;
         document.getElementById('btn-toggle-pi').addEventListener('click', () => { try { togglePiSystems(); showToast(showPiSystems ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); } catch (e) { showToast('离域π检测失败: ' + e, 2500); } });
         document.getElementById('btn-pi-test').addEventListener('click', () => { const rs = runPiSystemTests(); showToast(`离域π自测: ${rs.filter(r => r.pass).length}/${rs.length} 通过`, 2500); });
 
-        document.getElementById('btn-set-hybrid-auto').addEventListener('click', () => setSelectedAtomHybridization('auto'));
-        document.getElementById('btn-set-hybrid-sp3').addEventListener('click', () => setSelectedAtomHybridization('sp3'));
-        document.getElementById('btn-set-hybrid-sp2').addEventListener('click', () => setSelectedAtomHybridization('sp2'));
-        document.getElementById('btn-set-hybrid-sp').addEventListener('click', () => setSelectedAtomHybridization('sp'));
+        // 勾选框同步：点击勾选框触发对应切换逻辑
+        document.getElementById('chk-hydro').addEventListener('change', function() {
+            const want = this.checked;
+            if (HYDROGENATE_AUTO !== want) { HYDROGENATE_AUTO = want; try { localStorage.setItem('HYDROGENATE_AUTO', HYDROGENATE_AUTO ? '1' : '0'); } catch (e) {} updateHydroUI(); showToast(HYDROGENATE_AUTO ? '自动补氢已开启' : '自动补氢已关闭', 1200); }
+        });
+        document.getElementById('chk-lp').addEventListener('change', function() {
+            const want = this.checked;
+            if (showLonePairs !== want) showLonePairs = !showLonePairs; // 用 toggleLonePairs 翻转
+            toggleLonePairs();
+        });
+        document.getElementById('chk-grid').addEventListener('change', function() {
+            const want = this.checked;
+            if (showGridSnap !== want) { showGridSnap = want; gridRoot.visible = showGridSnap; try { localStorage.setItem('GRID_SNAP', showGridSnap ? '1' : '0'); } catch (e) {} const btn = document.getElementById('btn-toggle-grid'); if (btn) btn.textContent = showGridSnap ? '网格吸附: 开' : '网格吸附: 关'; }
+        });
+        document.getElementById('chk-deloc').addEventListener('change', function() {
+            const want = this.checked;
+            if (DELOCAL_PI_ENABLED !== want) { DELOCAL_PI_ENABLED = want; updateDelocPiUI(); showToast(DELOCAL_PI_ENABLED ? '离域π键: 已开启' : '离域π键: 已关闭', 1200); window.__setDelocPiMode(DELOCAL_PI_ENABLED); }
+        });
+        document.getElementById('chk-pi').addEventListener('change', function() {
+            const want = this.checked;
+            if (DELOCAL_PI_ENABLED) { try { togglePiSystems(); } catch (e) {} showToast(want ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); }
+            else { this.checked = false; showToast('请先开启离域π键', 1200); }
+        });
 
         // --- 卡片事件绑定（与之前相同）---
         const carbonCard = document.getElementById('drag-carbon');
@@ -8398,6 +8486,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
             showPiSystems = !showPiSystems;
             const btn = document.getElementById('btn-toggle-pi');
             if (btn) btn.textContent = showPiSystems ? '隐藏离域π键' : '显示离域π键';
+            const c = document.getElementById('chk-pi');
+            if (c) c.checked = showPiSystems;
             if (showPiSystems) { ensurePiOverlay(); PI_VIS.group.visible = true; }
             else if (PI_VIS.group) PI_VIS.group.visible = false;
             return inspectPiSystems();
@@ -8583,6 +8673,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
             try { localStorage.setItem('LONE_PAIRS_VIS', showLonePairs ? '1' : '0'); } catch (e) {}
             const btn = document.getElementById('btn-toggle-lp');
             if (btn) btn.textContent = showLonePairs ? '隐藏孤对电子' : '显示孤对电子';
+            const c = document.getElementById('chk-lp');
+            if (c) c.checked = showLonePairs;
             // 若还没有计算，先触发一次，让 __lpDirs 初始化
             if (showLonePairs) refreshLonePairVisuals();
             updateLonePairVisuals();
