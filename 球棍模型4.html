@@ -5988,6 +5988,50 @@ isOptimizing = false;
                 if (!hasPlane(u) || !hasPlane(v)) continue;
                 candidateBonds.push(bd);
             }
+            // 桥轴压平（2026-08）：共面含两个自由度——绕桥轴二面角 + 桥轴本身在环平面内。
+            // 仅修二面角无法压回"桥轴翘出环平面"（实测苯甲酸 -0.49Å、苯乙烯 -0.70Å，
+            // 环C 的 sp2 角度模板只保局部键角，不约束二面角）→ 对环-外接基团，
+            // 先把旋转侧第一个原子绕 base 刚体摆回环平面，再进入二面角迭代。
+            for (const bd of candidateBonds) {
+                const fu = bd.atomA, fv = bd.atomB;
+                let fbase, frot;
+                if (ringOf.has(fu) && !ringOf.has(fv)) { fbase = fu; frot = fv; }
+                else if (ringOf.has(fv) && !ringOf.has(fu)) { fbase = fv; frot = fu; }
+                else continue;
+                if (!ringOf.has(fbase)) continue;
+                const fNormal = ringOf.get(fbase);
+                const freldir = frot.position.clone().sub(fbase.position);
+                const dev = freldir.dot(fNormal);
+                if (Math.abs(dev) < 0.02) continue;
+                const faxis = freldir.clone().cross(fNormal);
+                if (faxis.lengthSq() < 1e-8) continue;
+                faxis.normalize();
+                const fLen = freldir.length();
+                if (fLen < 1e-8) continue;
+                const cosA = Math.sqrt(Math.max(0, fLen * fLen - dev * dev)) / fLen;
+                const ftheta = Math.atan2(Math.abs(dev) / fLen, cosA) * (dev > 0 ? -1 : 1);
+                if (Math.abs(ftheta) < 0.01) continue;
+const fSide = new Set();
+                fSide.add(frot);   // 关键：rot 本体必须一起压平，否则只转邻居无效
+                for (const bb of getBondsForAtom(frot)) {
+                    const x = bb.atomA === frot ? bb.atomB : bb.atomA;
+                    if (x === fbase) continue;
+                    fSide.add(x);
+                }
+                const fleaves = [];
+                for (const x of fSide) {
+                    for (const bb2 of getBondsForAtom(x)) {
+                        const y = bb2.atomA === x ? bb2.atomB : bb2.atomA;
+                        if (y === frot || fSide.has(y)) continue;
+                        if (y.userData && y.userData.atomType === 'H') fleaves.push(y);
+                    }
+                }
+                for (const y of fleaves) fSide.add(y);
+                for (const a of fSide) {
+                    const rv = a.position.clone().sub(fbase.position);
+                    a.position.copy(fbase.position.clone().add(rv.applyAxisAngle(faxis, ftheta)));
+                }
+            }
             // 迭代旋转直至收敛
             for (let pass = 0; pass < 12; pass++) {
                 let moved = false;
@@ -6797,9 +6841,10 @@ isOptimizing = false;
                                 finalCount = r2.atomCount;
 if (smilesInput) smilesInput.value = smilesToUse;
                                 syncInputClearButtons();
-                                setInputPanelOpen(false); // 生成成功后自动折叠输入面板
+setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                                 if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子)`, 2800);
                                 else showToast(`已生成: ${finalCount} 原子`, 2200);
+                                console.log(`[分子来源] 本地管线 · SMILES=${stripped} · ${finalCount} 原子（剥除立体标记重试）`);
                                 return true;
                             }
                         }
@@ -6819,6 +6864,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                 if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子${used3D ? ' · 3D 坐标' : ''})`, 2800);
                 else showToast(`已生成: ${finalCount} 原子${used3D ? ' · 3D 坐标' : ''}`, 2200);
+                console.log(`[分子来源] ${used3D ? 'PubChem 3D' : '本地管线'} · ${usedName ? '名称=' + name : 'SMILES=' + smilesToUse} · ${finalCount} 原子`);
                 return true;
             } catch (e) {
                 showToast('生成失败: ' + (e && e.message ? e.message : String(e)), 2800);
