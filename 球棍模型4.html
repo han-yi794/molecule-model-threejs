@@ -6764,23 +6764,23 @@ isOptimizing = false;
                     if (r && r.error === 'network') { showToast('网络错误，已尝试内置库，请检查连接后重试', 2800); return false; }
                     if (!r || !r.smiles) { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
                     smilesToUse = r.smiles;
-                    // 名称路径优先 PubChem 3D 坐标（含全部原子，绕开本地补氢丢 H 问题）；
-                    // 网络失败/解析失败静默回退本地 SMILES 管线。
-                    if (r.cid) {
-                        const struct = await fetchPubChem3D('cid', r.cid);
+                    // 名称路径统一在下方按 smilesToUse 优先 PubChem 3D（不依赖
+                    // 名称在线查询是否返回 cid；内置库命中同样优先 3D）。
+} else {
+                    smilesToUse = smiles;
+                    // SMILES 输入路径统一在下方优先 PubChem 3D。
+                }
+                // 统一优先 PubChem 3D（2026-08 用户要求）：名称/内置库/SMILES 输入
+                // 一律先按 smilesToUse 请求 3D 坐标（含全部原子，几何好、共面），
+                // 网络失败/解析失败静默回退下方本地 SMILES 管线。
+                if (smilesToUse && !used3D) {
+                    try {
+                        const struct = await fetchPubChem3D('smiles', smilesToUse);
                         if (struct) {
                             finalCount = generateFrom3D(struct);
                             used3D = true;
                         }
-                    }
-                } else {
-                    smilesToUse = smiles;
-                    // SMILES 输入路径同样优先 PubChem 3D（网络可用时），失败回退本地解析
-                    const struct = await fetchPubChem3D('smiles', smiles);
-                    if (struct) {
-                        finalCount = generateFrom3D(struct);
-                        used3D = true;
-                    }
+                    } catch (e) { used3D = false; }
                 }
                 if (!used3D) {
                     // 本地解析器不支持立体标记（@/@@/顺反 / \），剥除后重试；
