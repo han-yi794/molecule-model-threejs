@@ -6339,6 +6339,15 @@ const fSide = new Set();
                     i++;
                     continue;
                 }
+                if (ch === '.') {
+                    // 片段分隔符（2026-08 大分子支持）：血红素候选 "卟啉.[Fe+2]" 等
+                    // 盐/络合物写法。断开当前链，后续原子作为新片段起点（片段间无键）。
+                    cur = -1;
+                    stack.length = 0;
+                    pending = 0;
+                    i++;
+                    continue;
+                }
                 if (ch === '-' || ch === '=' || ch === '#') {
                     if (pending) return fail(i, '连续键符号');
                     pending = ch === '=' ? 2 : ch === '#' ? 3 : 1;
@@ -6457,6 +6466,12 @@ const fSide = new Set();
         async function generateFromSmiles(smiles) {
             const spec = smilesToSpec(smiles);
             if (spec.error) return { ok: false, error: spec.error };
+            // 大分子保护（2026-08）：本地粗坐标+迭代优化对大分子是分钟级卡死
+            //（实测胰岛素 ~800 原子直接挂起）。PubChem 3D 无数据的大分子
+            //（蛋白/多肽类）在此拦截，给出明确提示而非卡死页面。
+            if (spec.types.length > 250) {
+                return { ok: false, error: { pos: 0, msg: '分子过大（约 ' + spec.types.length + ' 原子），本地生成不支持；该分子可能无 PubChem 3D 数据' } };
+            }
             generateFromSpec(spec);
             // SMILES 生成语义总是补氢（不依赖用户 UI 开关）：临时置位后调用公共入口，随后恢复
             const prevHydro = HYDROGENATE_AUTO;
@@ -6708,7 +6723,31 @@ const fSide = new Set();
         }
         // 中文→英文翻译：MyMemory 免费 API（无 key、CORS 开放），失败返回 null 不阻断主流程。
         // 翻译命中后再走 PubChem，让"三硝基甲苯/咖啡因"等不在内置库的中文名也能在线解析。
+        // 中文名 → 英文名修正表（2026-08 大分子支持）：翻译 API 对化学术语常出错
+// （"血红素"误译 hemoglobin=血红蛋白、"胰岛素"返回带逗号的 "Insulin, "），
+// 命中表则直接用英文名走 PubChem 在线（优先 3D），未命中再走翻译 API。
+const ZH_NAME_FIX = {
+            '血红素': 'heme', '亚铁血红素': 'heme',
+            '血红蛋白': 'hemoglobin',
+            '胰岛素': 'insulin',
+            '叶绿素': 'chlorophyll', '叶绿素a': 'chlorophyll a', '叶绿素A': 'chlorophyll a',
+            '胆固醇': 'cholesterol',
+            '葡萄糖': 'glucose',
+            '咖啡因': 'caffeine',
+            '青霉素': 'penicillin',
+            '阿司匹林': 'aspirin',
+            '维生素c': 'vitamin C', '维生素C': 'vitamin C', '维他命c': 'vitamin C',
+            '维生素a': 'vitamin A', '维生素A': 'vitamin A',
+            '血红蛋白a': 'hemoglobin',
+            '淀粉': 'starch', '纤维素': 'cellulose',
+            '蔗糖': 'sucrose', '麦芽糖': 'maltose', '乳糖': 'lactose',
+            '氨基酸': 'amino acid', '甘氨酸': 'glycine', '丙氨酸': 'alanine'
+        };
         async function translateZhToEn(name) {
+            // 修正表优先（离线、零延迟、术语准确）
+            if (ZH_NAME_FIX[name]) return ZH_NAME_FIX[name];
+            const lower = name.toLowerCase();
+            if (ZH_NAME_FIX[lower]) return ZH_NAME_FIX[lower];
             try {
                 const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
                 const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(name) + '&langpair=zh|en', { signal: ctrl });
@@ -6716,7 +6755,8 @@ const fSide = new Set();
                 const d = await res.json();
                 const en = d && d.responseData && d.responseData.translatedText;
                 if (!en) return null;
-                const clean = String(en).replace(/<[^>]*>/g, '').trim();
+                // 清洗：去 HTML 标签 + 去首尾空白 + 去尾部标点（实测 "Insulin, " 带逗号致 PubChem 404）
+                const clean = String(en).replace(/<[^>]*>/g, '').trim().replace(/[,.:;!?、。，：；！？]+$/, '').trim();
                 return /[\u4e00-\u9fff]/.test(clean) ? null : clean;
             } catch (e) { return null; }
         }
@@ -7085,7 +7125,16 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     for (const v of adj[i]) if (placed[v]) cnt++;
                     if (cnt > bestCnt) { bestCnt = cnt; next = i; }
                 }
-                if (next < 0 || bestCnt === 0) break;
+                if (next < 0) break;
+                if (bestCnt === 0) {
+                    // 新片段起点（2026-08 多片段 SMILES 支持，如血红素 "卟啉.[Fe+2]"）：
+                    // 放到已放置内容的包围盒右侧外，避免与主片段重叠产生假键
+                    placed[next] = true;
+                    let maxX = 0;
+                    for (let k = 0; k < n; k++) if (placed[k] && pos[k].x > maxX) maxX = pos[k].x;
+                    pos[next].set(maxX + 3, 0, 0);
+                    continue;
+                }
                 const pNeighbors = adj[next].filter(v => placed[v]);
                 const parent = pNeighbors[0];
                 let ref = null;
