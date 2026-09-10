@@ -194,7 +194,7 @@ class AssertionCollector {
             await page.click('#btn-molecule-from-input');
             const toast = await waitFor(async () => {
                 const t = await toastText();
-                return /请输入分子名称或 SMILES/.test(t) ? t : null;
+                return /请输入分子名称、SMILES、分子式或蛋白质序列/.test(t) ? t : null;
             }, 10000, '空输入 toast');
             ac.ok(!!toast, '空输入 toast 出现（实际: ' + (toast || '(无)') + '）');
             const after = await atomCount();

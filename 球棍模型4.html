@@ -151,6 +151,17 @@
         #settings-panel .settings-body .setting-item input:checked + .check-box::after {
             content: '✓'; color: #8cf; font-size: 11px; font-weight: bold;
         }
+        /* 下拉选择框深色主题（2026-09）：select 内文字与下拉 option 列表统一深底浅字，
+           修复系统浅色主题下 option 白底+白字看不清的问题 */
+        select {
+            color: #e8eefc !important;
+            background-color: rgba(16, 22, 38, 0.9) !important;
+            border-color: rgba(255,255,255,0.18) !important;
+        }
+        select option {
+            background-color: #161d2e;
+            color: #e8eefc;
+        }
         /* 左上角全局同步优化按钮（2026-08） */
         #btn-optimize-all {
             position: absolute;
@@ -466,8 +477,8 @@
         #mode-badge {
             position: fixed; right: 60px; bottom: 20px; z-index: 90;
             display: flex; align-items: center; gap: 8px;
-            background: rgba(10, 14, 28, 0.85); border: 1px solid rgba(120, 170, 255, 0.35);
-            border-radius: 22px; padding: 7px 14px; color: #dde8ff; font-size: 12px;
+            background: rgba(10, 14, 28, 0.95); border: 1px solid rgba(120, 170, 255, 0.5);
+            border-radius: 22px; padding: 7px 14px; color: #eaf2ff; font-size: 12px;
             cursor: pointer; user-select: none; backdrop-filter: blur(6px);
             transition: border-color 0.2s, box-shadow 0.2s;
             font-family: monospace;
@@ -740,6 +751,15 @@
                 <span class="check-box"></span>
                 <span id="btn-toggle-pi">显示离域π键</span>
             </label>
+            <div class="setting-item" style="align-items:center; gap:6px;">
+                <span style="font-size:12px; color:#9ab; flex:1;">原子材质</span>
+                <select id="atom-style-select" style="flex:1; border-radius:12px; padding:4px 6px; background:rgba(255,255,255,0.03); color:#fff; border:1px solid rgba(255,255,255,0.06); font-size:12px;">
+                    <option value="glow">自发光</option>
+                    <option value="classic">经典光泽</option>
+                    <option value="metal">金属质感</option>
+                    <option value="toon">卡通扁平</option>
+                </select>
+            </div>
         </div>
     </div>
     <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
@@ -757,8 +777,18 @@
                 <input type="text" id="smiles-input" placeholder="输入 SMILES，如 CCO / c1ccccc1" />
                 <i class="clear-btn" data-clear="smiles-input" title="清空">×</i>
             </div>
+            <div style="display:flex; align-items:center; gap:4px; margin:6px 0 4px;">
+                <span style="font-size:12px; color:#9ab;">分子式</span>
+                <span id="btn-open-keypad" style="cursor:pointer; font-size:13px; color:#ffd28a; border:1px solid rgba(255,210,138,0.4); border-radius:8px; padding:1px 6px; user-select:none;">⌨ 小键盘</span>
+            </div>
+            <div class="input-wrap">
+                <input type="text" id="formula-input" placeholder="如 C6H6O（自动列异构体）" />
+                <i class="clear-btn" data-clear="formula-input" title="清空">×</i>
+            </div>
+            <div style="font-size:12px; color:#9ab; margin:6px 0 4px;">蛋白质序列（氨基酸字母，≤400 残基）</div>
+            <textarea id="seq-input" rows="3" placeholder="如 MVLSPADKTNVKAAWGK...（ESMFold 在线预测 3D 结构）" style="width:100%; box-sizing:border-box; border-radius:8px; padding:6px; background:rgba(255,255,255,0.03); color:#fff; border:1px solid rgba(255,255,255,0.06); font-size:12px; resize:vertical;"></textarea>
             <div class="action-btn" id="btn-molecule-from-input">从输入生成</div>
-            <div class="hint"><i>名称或 SMILES 二选一（SMILES 优先）</i></div>
+            <div class="hint"><i>名称 / SMILES / 分子式（如 C6H6O，自动列出异构体）二选一；蛋白质序列则优先 ESMFold 预测</i></div>
             <div class="smiles-help-toggle" id="smiles-help-toggle">❔ SMILES 输入方法介绍</div>
             <div class="smiles-help" id="smiles-help">
                 <b>原子</b>：直接用元素符号，如 <code>C</code> 碳、<code>O</code> 氧、<code>N</code> 氮、<code>S</code> 硫、<code>P</code> 磷、<code>Cl</code> 氯。<br/>
@@ -770,6 +800,35 @@
                 <b>其他写法</b>：芳香环也可大写（自动判环）；立体标记（如 <code>@</code>、<code>/</code>）会被自动忽略后重试。<br/>
                 <b>例子</b>：<code>CCO</code> 乙醇、<code>c1ccccc1</code> 苯、<code>CC(=O)Oc1ccccc1C(=O)O</code> 阿司匹林、<code>CCCCCCCCCCCCCC(=O)N[C@@H](COP(=O)(O)OCC[N+](C)(C)C)[C@@H](O)/C=C/CCCCCCCCCCCCCC</code> 鞘磷脂
             </div>
+        </div>
+    </div>
+    <div id="isomer-panel" style="display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:480px; max-height:70vh; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:14px; z-index:1000; padding:14px; box-shadow:0 8px 40px rgba(0,0,0,0.6); overflow:hidden; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <b style="color:#fff; font-size:14px;"><span id="isomer-panel-title">异构体</span></b>
+            <span id="isomer-panel-close" style="cursor:pointer; color:#9ab; font-size:18px; line-height:1;">✕</span>
+        </div>
+        <div id="isomer-list" style="overflow-y:auto; flex:1; max-height:calc(70vh - 90px);"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+            <label style="color:#9ab; font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                <input type="checkbox" id="isomer-select-all" style="accent-color:#ffd28a;" /> 全选
+            </label>
+            <div>
+                <span id="isomer-count" style="color:#9ab; font-size:12px; margin-right:10px;"></span>
+                <button id="btn-isomer-generate" style="background:#e8b44c; color:#1a1f27; border:none; border-radius:10px; padding:6px 14px; font-weight:bold; cursor:pointer; font-size:13px;">生成选中</button>
+            </div>
+        </div>
+    </div>
+    <div id="formula-keypad" style="display:none; position:fixed; width:230px; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:12px; z-index:999; padding:10px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <b style="color:#fff; font-size:13px;">分子式键盘</b>
+            <span id="formula-keypad-close" style="cursor:pointer; color:#9ab; font-size:15px; line-height:1;">✕</span>
+        </div>
+        <div style="font-size:12px; color:#9ab; margin-bottom:4px;">点击元素追加到分子式框</div>
+        <div id="formula-keypad-keys" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+            <span id="formula-keypad-backspace" style="cursor:pointer; color:#ffd28a; font-size:13px; border:1px solid rgba(255,210,138,0.4); border-radius:8px; padding:2px 8px; user-select:none;">⌫ 退格</span>
+            <span id="formula-keypad-clear" style="cursor:pointer; color:#e8886a; font-size:13px; border:1px solid rgba(232,136,106,0.4); border-radius:8px; padding:2px 8px; user-select:none;">清空</span>
+            <span id="formula-keypad-ok" style="cursor:pointer; color:#1a1f27; background:#e8b44c; font-size:13px; font-weight:bold; border-radius:8px; padding:2px 12px; user-select:none;">生成</span>
         </div>
     </div>
     <div id="group-sidebar">
@@ -907,6 +966,10 @@
         // 状态持久化到 localStorage.HYDROGENATE_AUTO，默认关闭
         let HYDROGENATE_AUTO = false;
         try { HYDROGENATE_AUTO = localStorage.getItem('HYDROGENATE_AUTO') === '1'; } catch (e) {}
+        // 离域π体系显示开关：必须在 try{} 主块之外声明（主块 954 起，块内 8736 有同名 let，
+        // 而 updateDelocPiUI 在 try 外引用它——块内 let 对 try 外函数不可见会抛
+        // "showPiSystems is not defined"。此处提前声明 + 删除块内声明，保证单一绑定）。
+        let showPiSystems = false;
         function updateHydroUI() {
             const b = document.getElementById('btn-toggle-hydro');
             if (b) b.textContent = '自动补氢: ' + (HYDROGENATE_AUTO ? '开' : '关');
@@ -2196,9 +2259,16 @@
                 bondDirs[i] = (di >= 0) ? baseDirs[di].clone() : currDirs[i].clone();
             }
 
-            // 孤对方向为未被分配的 baseDirs
+            // 孤对方向为未被分配的 baseDirs，但数量不超过价电子预算 estLonePairs。
+            // sp2/sp3 模板按杂化全展开（sp2=3 域、sp3=4 域），而 σ 邻居数可能少于
+            // 满配（如苯基锚点碳只有 2 个环键、连接位空缺）——多余的未分配域是
+            // "空缺的成键位"而非孤对，碳等原子会因此被误显示孤对（实测拖出苯基
+            // 锚点碳出现 1 朵云）。凡价键预算算不出孤对的原子一律不显示。
             const lonePairDirs = [];
-            for (let di = 0; di < baseDirs.length; di++) if (!assignedDomain[di]) lonePairDirs.push(baseDirs[di].clone());
+            let lpBudget = estLonePairs;
+            for (let di = 0; di < baseDirs.length && lpBudget > 0; di++) {
+                if (!assignedDomain[di]) { lonePairDirs.push(baseDirs[di].clone()); lpBudget--; }
+            }
 
             // 对孤对进行经验性斥力处理，使键方向远离孤对方向（模拟孤对排斥导致的键角收缩）
             if (lonePairDirs.length > 0) {
@@ -3419,13 +3489,83 @@ isOptimizing = false;
             const info = atomTypes[type];
             const vr = getVisualRadiusForType(type, null);
             const geometry = new THREE.SphereGeometry(vr, 32, 16);
-            const material = new THREE.MeshPhongMaterial({ color: info ? info.color : 0xbbbbbb, emissive: 0x222222, shininess: 30, specular: 0x333333 });
+            const material = createAtomMaterial(type);
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.copy(position);
             mesh.userData = { atomType: type, isAtom: true, hybridization: null }; // 添加杂化属性，默认 null（自动）
             mesh.userData._id = atomIdCounter++;
             return mesh;
         }
+
+        // ============ 原子材质风格（2026-09 新增）============
+        // ATOM_STYLE 四选一：'classic'（Phong 经典光照）/ 'glow'（MeshBasic 自发光霓虹，忽略场景光）/
+        // 'metal'（MeshStandard 金属质感，依赖场景光）/ 'toon'（MeshToon 卡通扁平，依赖场景光）。
+        // 持久化 localStorage.ATOM_STYLE（非法值回退 'glow'）。历史 GLOW_MODE 迁移：'0'→classic。
+        const ATOM_STYLES = ['classic', 'glow', 'metal', 'toon'];
+        let ATOM_STYLE = 'glow';
+        try {
+            const s = localStorage.getItem('ATOM_STYLE');
+            if (s === '0' || s === 'false') ATOM_STYLE = 'classic';
+            else if (ATOM_STYLES.includes(s)) ATOM_STYLE = s;
+            else if (s) ATOM_STYLE = 'glow';
+        } catch (e) {}
+        function createAtomMaterial(type, style = ATOM_STYLE) {
+            const info = atomTypes[type];
+            const color = info ? info.color : 0xbbbbbb;
+            switch (style) {
+                case 'glow': return new THREE.MeshBasicMaterial({ color });
+                case 'metal': return new THREE.MeshStandardMaterial({ color, metalness: 0.85, roughness: 0.3, envMapIntensity: 0.4 });
+                case 'toon': return new THREE.MeshToonMaterial({ color });
+                case 'classic':
+                default: return new THREE.MeshPhongMaterial({ color, emissive: 0x222222, shininess: 30, specular: 0x333333 });
+            }
+        }
+        function makeBondMaterial(style = ATOM_STYLE) {
+            switch (style) {
+                case 'glow': return new THREE.MeshBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.8 });
+                case 'metal': return new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.7, roughness: 0.35, transparent: true, opacity: 0.85 });
+                case 'toon': return new THREE.MeshToonMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.85 });
+                case 'classic':
+                default: return new THREE.MeshPhongMaterial({ color: 0xaaaaaa, emissive: 0x222222, transparent: true, opacity: 0.8 });
+            }
+        }
+        function makeGlowMaterial() {
+            return new THREE.MeshPhongMaterial({ color: 0xffaa44, transparent: true, opacity: 0.35, side: THREE.BackSide });
+        }
+        function updateStyleUI() {
+            const sel = document.getElementById('atom-style-select');
+            if (sel) sel.value = ATOM_STYLE;
+            const btn = document.getElementById('btn-toggle-glow');
+            if (btn) btn.style.opacity = ATOM_STYLE === 'glow' ? '1' : '0.45';
+            const chk = document.getElementById('chk-glow');
+            if (chk) chk.checked = ATOM_STYLE === 'glow';
+        }
+        function applyAtomStyle() {
+            // 存量原子：按当前风格重建材质
+            for (const mesh of atomsGroup.children) {
+                if (!mesh.userData || !mesh.userData.isAtom) continue;
+                const old = mesh.material;
+                mesh.material = createAtomMaterial(mesh.userData.atomType);
+                try { old.dispose(); } catch (e) {}
+                const gl = mesh.children.find(c => c.isGlowSphere);
+                if (gl) { const og = gl.material; gl.material = makeGlowMaterial(); try { og.dispose(); } catch (e) {} }
+            }
+            // 存量键：重建 cylinder 材质（显式替换，不重建网格以保几何）
+            for (const bd of bonds) {
+                for (const cyl of bd.cylinders) {
+                    const old = cyl.material;
+                    cyl.material = makeBondMaterial();
+                    try { old.dispose(); } catch (e) {}
+                }
+            }
+            updateStyleUI();
+        }
+        window.__glowMode = { get: () => ATOM_STYLE === 'glow', toggle: () => { ATOM_STYLE = ATOM_STYLE === 'glow' ? 'classic' : 'glow'; try { localStorage.setItem('ATOM_STYLE', ATOM_STYLE); } catch (e) {} applyAtomStyle(); return ATOM_STYLE; } };
+        window.__atomStyle = {
+            get: () => ATOM_STYLE,
+            set: (s) => { if (!ATOM_STYLES.includes(s)) return ATOM_STYLE; ATOM_STYLE = s; try { localStorage.setItem('ATOM_STYLE', ATOM_STYLE); } catch (e) {} applyAtomStyle(); return ATOM_STYLE; },
+            list: () => ATOM_STYLES.slice()
+        };
 
         function createLabel(type) {
             const info = atomTypes[type];
@@ -3518,7 +3658,13 @@ isOptimizing = false;
             const vr = getVisualRadiusForType(type, null);
             const geometry = new THREE.SphereGeometry(vr, 32, 16);
             const color = new THREE.Color(info.color);
-            const material = new THREE.MeshPhongMaterial({ color: color, emissive: 0x113366, transparent: true, opacity: 0.6, shininess: 30 });
+            const material = ATOM_STYLE === 'glow'
+                ? new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 })
+                : ATOM_STYLE === 'metal'
+                    ? new THREE.MeshStandardMaterial({ color, metalness: 0.8, roughness: 0.3, transparent: true, opacity: 0.6 })
+                    : ATOM_STYLE === 'toon'
+                        ? new THREE.MeshToonMaterial({ color, transparent: true, opacity: 0.6 })
+                        : new THREE.MeshPhongMaterial({ color: color, emissive: 0x113366, transparent: true, opacity: 0.6, shininess: 30 });
             return new THREE.Mesh(geometry, material);
         }
 
@@ -3921,7 +4067,7 @@ isOptimizing = false;
 
         function createBondCylinder() {
             const geometry = new THREE.CylinderGeometry(BOND_RADIUS, BOND_RADIUS, 1, 6);
-            const material = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, emissive: 0x222222, transparent: true, opacity: 0.8 });
+            const material = makeBondMaterial();
             const cylinder = new THREE.Mesh(geometry, material);
             cylinder.userData.isBond = true;
             return cylinder;
@@ -4084,9 +4230,62 @@ isOptimizing = false;
                     }
                 }
             }
+            // 选中原子旁挂删除图标（2026-09）；取消选中（null）时移除
+            if (selectedAtom && selectedAtom.userData) attachDeleteIcon(selectedAtom);
+            else detachDeleteIcon();
         }
 
         const MOVE_STEP = 0.1;
+        // ============ 选中原子旁的删除图标（2026-09 新增）============
+        // 用 CSS2DObject 挂在选中原子 mesh 上（随原子自动跟随位置），点击删除该原子
+        let deleteIconObj = null;
+        function detachDeleteIcon() {
+            if (deleteIconObj) {
+                try {
+                    if (deleteIconObj.parent && deleteIconObj.parent.remove) deleteIconObj.parent.remove(deleteIconObj);
+                } catch (e) {}
+                try {
+                    if (deleteIconObj.element && deleteIconObj.element.parentNode) deleteIconObj.element.parentNode.removeChild(deleteIconObj.element);
+                } catch (e) {}
+                deleteIconObj = null;
+            }
+        }
+        function attachDeleteIcon(atom) {
+            detachDeleteIcon();
+            if (!atom || !atom.userData) return;
+            const div = document.createElement('div');
+            div.textContent = '✕';
+            div.title = '删除选中原子';
+            div.style.cssText = 'cursor:pointer; user-select:none; width:20px; height:20px; border-radius:50%; '
+                + 'background:rgba(232,80,90,0.9); color:#fff; font-size:13px; font-weight:bold; line-height:20px; '
+                + 'text-align:center; border:1.5px solid rgba(255,255,255,0.7); box-shadow:0 2px 8px rgba(0,0,0,0.5); '
+                + 'transition:transform 0.12s, background 0.12s;';
+            div.addEventListener('mouseenter', () => { div.style.transform = 'scale(1.18)'; div.style.background = 'rgba(255,80,90,1)'; });
+            div.addEventListener('mouseleave', () => { div.style.transform = 'scale(1)'; div.style.background = 'rgba(232,80,90,0.9)'; });
+            div.addEventListener('mousedown', (e) => e.stopPropagation());
+            div.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const target = selectedAtom;
+                detachDeleteIcon();
+                if (target) {
+                    const type = target.userData?.atomType || '';
+                    removeAtom(target);
+                    showToast(`已删除 ${type} 原子`, 1200);
+                }
+            });
+            const icon = new CSS2DObject(div);
+            const vr = getVisualRadiusForAtom(atom);
+            icon.position.set(vr + 0.55, vr + 0.55, 0); // 原子右上角外侧
+            atom.add(icon);
+            deleteIconObj = icon;
+        }
+        // setSelectedAtom 结尾挂载删除图标（在原子选中视觉之后）
+        function setSelectedAtomWithDelete(atom) {
+            setSelectedAtom(atom);
+            if (atom && atom.userData) attachDeleteIcon(atom); else detachDeleteIcon();
+        }
+        window.__attachDeleteIcon = attachDeleteIcon;
+        window.__detachDeleteIcon = detachDeleteIcon;
         function moveSelectedAtom(dx, dy, dz) {
             if (!selectedAtom) return;
             selectedAtom.position.x += dx;
@@ -4188,21 +4387,34 @@ isOptimizing = false;
         document.getElementById('btn-optimize-all').addEventListener('click', () => {
             optimizeAllWithAutoHydrogen();
         });
-        document.getElementById('btn-toggle-hydro').addEventListener('click', () => {
+        document.getElementById('btn-toggle-hydro').addEventListener('click', (e) => {
+            e.preventDefault();
             HYDROGENATE_AUTO = !HYDROGENATE_AUTO;
             try { localStorage.setItem('HYDROGENATE_AUTO', HYDROGENATE_AUTO ? '1' : '0'); } catch (e) {}
             updateHydroUI();
             showToast(HYDROGENATE_AUTO ? '自动补氢已开启（全局优化前自动补H）' : '自动补氢已关闭', 1400);
         });
-        document.getElementById('btn-toggle-lp').addEventListener('click', toggleLonePairs);
-        document.getElementById('btn-toggle-deloc').addEventListener('click', () => {
+        document.getElementById('btn-toggle-lp').addEventListener('click', (e) => { e.preventDefault(); toggleLonePairs(); });
+        document.getElementById('btn-toggle-deloc').addEventListener('click', (e) => {
+            e.preventDefault();
             DELOCAL_PI_ENABLED = !DELOCAL_PI_ENABLED;
             updateDelocPiUI();
             showToast(DELOCAL_PI_ENABLED ? '离域π键: 已开启（杂化+VSEPR+离域π键）' : '离域π键: 已关闭（仅杂化轨道+VSEPR，旧逻辑）', 2200);
             window.__setDelocPiMode(DELOCAL_PI_ENABLED);
         });
-        document.getElementById('btn-toggle-pi').addEventListener('click', () => { try { togglePiSystems(); showToast(showPiSystems ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); } catch (e) { showToast('离域π检测失败: ' + e, 2500); } });
+        document.getElementById('btn-toggle-pi').addEventListener('click', (e) => { e.preventDefault(); try { togglePiSystems(); showToast(showPiSystems ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); } catch (e) { showToast('离域π检测失败: ' + e, 2500); } });
         document.getElementById('btn-pi-test').addEventListener('click', () => { const rs = runPiSystemTests(); showToast(`离域π自测: ${rs.filter(r => r.pass).length}/${rs.length} 通过`, 2500); });
+        const styleSelect = document.getElementById('atom-style-select');
+        if (styleSelect) styleSelect.addEventListener('change', function() {
+            const want = this.value;
+            if (ATOM_STYLES.includes(want) && ATOM_STYLE !== want) {
+                ATOM_STYLE = want;
+                try { localStorage.setItem('ATOM_STYLE', ATOM_STYLE); } catch (e) {}
+                applyAtomStyle();
+                const meta = { classic: '经典光泽（Phong 光照）', glow: '自发光霓虹（忽略场景光）', metal: '金属质感（Standard）', toon: '卡通扁平（Toon）' };
+                showToast('原子材质: ' + (meta[want] || want), 1600);
+            }
+        });
 
         // 勾选框同步：点击勾选框触发对应切换逻辑
         document.getElementById('chk-hydro').addEventListener('change', function() {
@@ -4227,6 +4439,7 @@ isOptimizing = false;
             if (DELOCAL_PI_ENABLED) { try { togglePiSystems(); } catch (e) {} showToast(want ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); }
             else { this.checked = false; showToast('请先开启离域π键', 1200); }
         });
+        updateStyleUI();
 
         // --- 卡片事件绑定（与之前相同）---
         const carbonCard = document.getElementById('drag-carbon');
@@ -6463,7 +6676,7 @@ const fSide = new Set();
         // SMILES → 分子完整管线：spec → 粗坐标 → 补氢 + 全局优化
         // generateFromSpec 内部已 updateBonds + refreshLonePairVisuals(true)；
         // optimizeAllWithAutoHydrogen 内部 addMissingHydrogens（同样带 lp 重算）+ optimizeAllAtoms。
-        async function generateFromSmiles(smiles) {
+        async function generateFromSmiles(smiles, opts) {
             const spec = smilesToSpec(smiles);
             if (spec.error) return { ok: false, error: spec.error };
             // 大分子保护（2026-08）：本地粗坐标+迭代优化对大分子是分钟级卡死
@@ -6472,13 +6685,31 @@ const fSide = new Set();
             if (spec.types.length > 250) {
                 return { ok: false, error: { pos: 0, msg: '分子过大（约 ' + spec.types.length + ' 原子），本地生成不支持；该分子可能无 PubChem 3D 数据' } };
             }
-            generateFromSpec(spec);
+            const keepExisting = !!(opts && opts.keepExisting);
+            // 多分子共存（异构体并排）：keepExisting 时不清场，下一个分子向右平移
+            // 避开已存在分子的包围盒。生成新分子前记录旧原子数，生成后平移新原子。
+            const prevCount = atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length;
+            generateFromSpec(spec, { keepExisting });
             // SMILES 生成语义总是补氢（不依赖用户 UI 开关）：临时置位后调用公共入口，随后恢复
             const prevHydro = HYDROGENATE_AUTO;
             HYDROGENATE_AUTO = true;
             try { optimizeAllWithAutoHydrogen(); } finally { HYDROGENATE_AUTO = prevHydro; }
-            const atomCount = atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length;
-            return { ok: true, spec, atomCount };
+            const atoms = atomsGroup.children.filter(c => c.userData && c.userData.isAtom);
+            const atomCount = atoms.length;
+            if (keepExisting && prevCount > 0 && atomCount > prevCount) {
+                const oldAtoms = atoms.slice(0, prevCount);
+                const newAtoms = atoms.slice(prevCount);
+                let maxX = -Infinity;
+                for (const a of oldAtoms) maxX = Math.max(maxX, a.position.x);
+                let minX = Infinity;
+                for (const a of newAtoms) minX = Math.min(minX, a.position.x);
+                const shift = maxX + 4 - minX;
+                if (shift > 0.01) {
+                    for (const a of newAtoms) a.position.x += shift;
+                    try { updateBonds(true); } catch (e) {}
+                }
+            }
+            return { ok: true, spec, atomCount, prevCount };
         }
         window.__generateFromSmiles = generateFromSmiles;
 
@@ -6566,18 +6797,163 @@ const fSide = new Set();
         }
         // 按 SDF 3D 结构直接生成：clearMolecule → 逐原子按真实坐标放置 → 逐键建立 → updateBonds + lp 重算。
         // 坐标已是优化构象，不再跑优化器（避免扰动真实几何）；返回原子总数。
-        function generateFrom3D(struct) {
-            clearMolecule();
+        function generateFrom3D(struct, opts) {
+            const keepExisting = !!(opts && opts.keepExisting);
+            const prevCount = keepExisting ? atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length : 0;
+            if (!keepExisting) clearMolecule();
             const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
             for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
             aromatize3DRings();
             updateBonds();
             refreshLonePairVisuals(true);
+            if (keepExisting && prevCount > 0) {
+                // 与 generateFromSmiles keepExisting 相同的右移逻辑：新分子平移到旧分子右缘 +4Å
+                const atoms = atomsGroup.children.filter(c => c.userData && c.userData.isAtom);
+                const oldAtoms = atoms.slice(0, prevCount);
+                const newAtoms = atoms.slice(prevCount);
+                let maxX = -Infinity, minX = Infinity;
+                for (const a of oldAtoms) maxX = Math.max(maxX, a.position.x);
+                for (const a of newAtoms) minX = Math.min(minX, a.position.x);
+                const shift = maxX + 4 - minX;
+                if (shift > 0.01) {
+                    for (const a of newAtoms) a.position.x += shift;
+                    try { updateBonds(true); } catch (e) {}
+                }
+            }
             return meshes.length;
         }
         window.__parseSDF3D = parseSDF3D;
         window.__fetchPubChem3D = fetchPubChem3D;
         window.__generateFrom3D = generateFrom3D;
+
+        // ============ 蛋白质序列 → ESMFold 3D 结构（2026-09 新增）============
+        // 用户输入氨基酸序列，POST 到 Meta 免费 API api.esmatlas.com/foldSequence/v1/pdb/
+        // （免 key、CORS 开放、限 ~400 残基），返回 PDB 文本 → 解析为真实 3D 坐标。
+        // PDB 无 CONECT 记录 → 按 getTargetBondLength×1.35 距离阈值重建键
+        // （蛋白相邻残基 Cα-Cα≈3.8Å 远大于键长，不会误建跨残基键）。
+        function parsePDB(text) {
+            const lines = String(text).split(/\r?\n/);
+            const atoms = [];
+            const atomIndex = new Map();
+            for (let i = 0; i < lines.length; i++) {
+                const ln = lines[i];
+                if (ln.startsWith('ATOM  ') || ln.startsWith('HETATM')) {
+                    const serial = parseInt(ln.slice(6, 11), 10);
+                    const x = parseFloat(ln.slice(30, 38));
+                    const y = parseFloat(ln.slice(38, 46));
+                    const z = parseFloat(ln.slice(46, 54));
+                    if (isNaN(x) || isNaN(y) || isNaN(z)) continue;
+                    let type = ln.slice(76, 78).trim();
+                    if (!type) {
+                        const name = ln.slice(12, 16).trim();
+                        type = name.replace(/[0-9]/g, '').trim().slice(0, 2);
+                    }
+                    if (!type) continue;
+                    type = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+                    if (type === 'H') continue;
+                    const idx = atoms.length;
+                    atoms.push({ type, pos: new THREE.Vector3(x, y, z), userData: { atomType: type } });
+                    atomIndex.set(serial, idx);
+                }
+            }
+            if (!atoms.length) return null;
+            const bonds = [];
+            const seen = new Set();
+            for (let i = 0; i < atoms.length; i++) {
+                for (let j = i + 1; j < atoms.length; j++) {
+                    const d = atoms[i].pos.distanceTo(atoms[j].pos);
+                    const tol = getTargetBondLength(atoms[i], atoms[j]) * 1.35;
+                    if (d < tol) {
+                        const key = i < j ? i * 100000 + j : j * 100000 + i;
+                        if (!seen.has(key)) { seen.add(key); bonds.push([i, j, 1]); }
+                    }
+                }
+            }
+            return { atoms, bonds };
+        }
+        window.__parsePDB = parsePDB;
+
+        // 氨基酸名称 → 单字母序列：支持中文名（甘氨酸）、三字母码（Gly）、单字母码（G）混合输入，
+        // 分隔符 - / 、逗号/空格可选（中文名之间也可直接连写）。20 种标准氨基酸。
+        const AA_NAMES = {
+            '甘氨酸': 'G', '丙氨酸': 'A', '缬氨酸': 'V', '亮氨酸': 'L', '异亮氨酸': 'I',
+            '脯氨酸': 'P', '苯丙氨酸': 'F', '色氨酸': 'W', '甲硫氨酸': 'M', '蛋氨酸': 'M',
+            '丝氨酸': 'S', '苏氨酸': 'T', '天冬酰胺': 'N', '谷氨酰胺': 'Q', '酪氨酸': 'Y',
+            '半胱氨酸': 'C', '赖氨酸': 'K', '精氨酸': 'R', '组氨酸': 'H',
+            '天冬氨酸': 'D', '天门冬氨酸': 'D', '谷氨酸': 'E'
+        };
+        const AA_3LETTER = {
+            'GLY': 'G', 'ALA': 'A', 'VAL': 'V', 'LEU': 'L', 'ILE': 'I', 'PRO': 'P', 'PHE': 'F',
+            'TRP': 'W', 'MET': 'M', 'SER': 'S', 'THR': 'T', 'ASN': 'N', 'GLN': 'Q', 'TYR': 'Y',
+            'CYS': 'C', 'LYS': 'K', 'ARG': 'R', 'HIS': 'H', 'ASP': 'D', 'GLU': 'E'
+        };
+        function parseAaSequence(input) {
+            const raw = String(input || '').replace(/^>.*$/gm, '').trim();
+            if (!raw) return { error: '请输入蛋白质序列' };
+            let s = raw.replace(/[\s,，、;；|/]+/g, '-');
+            if (/[\u4e00-\u9fff]/.test(s)) {
+                let out = '';
+                let rest = s.replace(/-/g, '');
+                while (rest) {
+                    let matched = false;
+                    for (const cn of Object.keys(AA_NAMES)) {
+                        if (rest.startsWith(cn)) { out += AA_NAMES[cn]; rest = rest.slice(cn.length); matched = true; break; }
+                    }
+                    if (!matched) return { error: '无法识别的氨基酸名称：' + rest.slice(0, 6) + '…' };
+                }
+                s = out;
+            } else if (s.includes('-')) {
+                const parts = s.split('-').filter(Boolean);
+                const bad = parts.find(p => !AA_3LETTER[p.toUpperCase()]);
+                if (bad) return { error: '无法识别的三字母氨基酸码：' + bad };
+                s = parts.map(p => AA_3LETTER[p.toUpperCase()]).join('');
+            } else {
+                s = s.replace(/-/g, '');
+            }
+            s = s.toUpperCase();
+            if (!s) return { error: '请输入蛋白质序列' };
+            if (s.length > 400) return { error: 'ESMFold 免费 API 限制 ≤400 残基（当前 ' + s.length + '），请截取结构域或片段' };
+            if (!/^[ACDEFGHIKLMNPQRSTVWY]+$/.test(s)) return { error: '序列含非氨基酸字符（仅 20 种标准氨基酸）' };
+            return { seq: s };
+        }
+        window.__parseAaSequence = parseAaSequence;
+
+        async function fetchProteinPDB(sequence) {
+            const p = parseAaSequence(sequence);
+            if (p.error) return { error: p.error };
+            const seq = p.seq;
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(120000) : undefined;
+                const res = await fetch('https://api.esmatlas.com/foldSequence/v1/pdb/', {
+                    method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: seq, signal: ctrl
+                });
+                if (!res.ok) return { error: 'ESMFold API 返回 HTTP ' + res.status };
+                const text = await res.text();
+                const struct = parsePDB(text);
+                if (!struct) return { error: 'ESMFold 返回的 PDB 无可用原子坐标' };
+                return { ok: true, seq, struct, pdbLen: text.length };
+            } catch (e) { return { error: 'ESMFold 请求失败: ' + (e && e.message ? e.message : String(e)) }; }
+        }
+        window.__fetchProteinPDB = fetchProteinPDB;
+
+        function generateFromPDB(struct) {
+            clearMolecule();
+            const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
+            for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
+            updateBonds();
+            refreshLonePairVisuals(true);
+            return meshes.length;
+        }
+        window.__generateFromPDB = generateFromPDB;
+
+        async function generateFromProteinSeq(sequence) {
+            const r = await fetchProteinPDB(sequence);
+            if (!r.ok) { showToast(r.error, 3200); return { ok: false, error: r }; }
+            const count = generateFromPDB(r.struct);
+            console.log(`[分子来源] ESMFold 预测 · ${r.seq.length} 残基 · ${count} 原子`);
+            return { ok: true, count, seqLen: r.seq.length };
+        }
+        window.__generateFromProteinSeq = generateFromProteinSeq;
 
         // ============ 名称解析：内置库 NAME_LIBRARY + PubChem/Cactus 在线兜底 ============
         const NAME_LIBRARY = {
@@ -6741,24 +7117,51 @@ const ZH_NAME_FIX = {
             '血红蛋白a': 'hemoglobin',
             '淀粉': 'starch', '纤维素': 'cellulose',
             '蔗糖': 'sucrose', '麦芽糖': 'maltose', '乳糖': 'lactose',
-            '氨基酸': 'amino acid', '甘氨酸': 'glycine', '丙氨酸': 'alanine'
+            '氨基酸': 'amino acid', '甘氨酸': 'glycine', '丙氨酸': 'alanine',
+            // 2026-09 修复：MyMemory 把"环辛四烯"误译 Cyclooctadecene（环十八碳烯，18 元环），
+            // 导致名称输入生成错误分子（应为 cyclooctatetraene，8 元环交替双键）
+            '环辛四烯': 'cyclooctatetraene', '环辛烯': 'cyclooctene', '环辛烷': 'cyclooctane',
+            '环丁二烯': 'cyclobutadiene', '环戊二烯': 'cyclopentadiene'
         };
         async function translateZhToEn(name) {
             // 修正表优先（离线、零延迟、术语准确）
             if (ZH_NAME_FIX[name]) return ZH_NAME_FIX[name];
             const lower = name.toLowerCase();
             if (ZH_NAME_FIX[lower]) return ZH_NAME_FIX[lower];
+            // 回译校验：MyMemory 对化学术语不可靠（"环辛四烯"→Cyclooctadecene 环十八碳烯），
+            // 但错误翻译反译回中文不会还原原名（环十八烯≠环辛四烯）→ 用回译一致性过滤。
+            const overlap = (a, b) => {
+                if (!a || !b) return 0;
+                let hits = 0;
+                for (const ch of a) if (b.includes(ch)) hits++;
+                return hits / a.length;
+            };
+            const candidates = [];
             try {
                 const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
                 const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(name) + '&langpair=zh|en', { signal: ctrl });
-                if (!res.ok) return null;
-                const d = await res.json();
-                const en = d && d.responseData && d.responseData.translatedText;
-                if (!en) return null;
-                // 清洗：去 HTML 标签 + 去首尾空白 + 去尾部标点（实测 "Insulin, " 带逗号致 PubChem 404）
-                const clean = String(en).replace(/<[^>]*>/g, '').trim().replace(/[,.:;!?、。，：；！？]+$/, '').trim();
-                return /[\u4e00-\u9fff]/.test(clean) ? null : clean;
-            } catch (e) { return null; }
+                if (res.ok) {
+                    const d = await res.json();
+                    for (const m of d && d.matches ? d.matches : []) {
+                        const en = m && m.translation;
+                        if (!en) continue;
+                        const clean = String(en).replace(/<[^>]*>/g, '').trim().replace(/[,.:;!?、。，：；！？]+$/, '').trim();
+                        if (!clean || /[\u4e00-\u9fff]/.test(clean)) continue;
+                        candidates.push(clean);
+                    }
+                }
+            } catch (e) {}
+            for (const cand of candidates) {
+                try {
+                    const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
+                    const r2 = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(cand) + '&langpair=en|zh', { signal: ctrl });
+                    if (!r2.ok) continue;
+                    const d2 = await r2.json();
+                    const back = d2 && d2.responseData && d2.responseData.translatedText ? String(d2.responseData.translatedText).trim() : '';
+                    if (overlap(name, back) >= 0.5) return cand;
+                } catch (e) {}
+            }
+            return null;
         }
         window.__translateZhToEn = translateZhToEn;
         window.__stripStereoMarkers = stripStereoMarkers;
@@ -6817,21 +7220,140 @@ const ZH_NAME_FIX = {
         window.__resolveNameOnline = resolveNameOnline;
         window.__resolveNameToSmiles = resolveNameToSmiles;
 
+        // ============ 分子式 → 异构体枚举（2026-09 新增）============
+        // 输入框填分子式（如 C2H6O），用 PubChem fastformula API 列出全部同分异构体，
+        // 弹面板让用户多选后生成。过滤规则：排除含方括号的（同位素/离子/显式H）、
+        // 含 . 片段的组合物、名称含 deuterio/tritio 的氘代物、重复 SMILES。
+        const FORMULA_ELEMENTS = ['C','H','N','O','S','P','F','Cl','Br','I','B','Si','Na','K','Mg','Ca','Fe','Cu','Zn'];
+        // 分子式输入用小键盘数字键输入 Unicode 下标（₀-₉）美化显示，解析时归一化为普通数字
+        const SUBSCRIPT_DIGITS = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉'];
+        function normalizeFormulaDigits(str) {
+            return String(str || '').replace(/[₀-₉]/g, ch => String(SUBSCRIPT_DIGITS.indexOf(ch)));
+        }
+        window.__normalizeFormulaDigits = normalizeFormulaDigits;
+        // 分子式展示用：元素符号后的计数数字转下角标（C6H6→C₆H₆）。仅用于展示，
+        // 不得用于 SMILES（其数字是环闭合标记/键序编码，保持原样）。
+        function toSubscriptFormula(str) {
+            return String(str || '').replace(/([A-Z][a-z]?)(\d+)/g, (m, el, num) => el + String(num).split('').map(d => SUBSCRIPT_DIGITS[Number(d)] || d).join(''));
+        }
+        window.__toSubscriptFormula = toSubscriptFormula;
+        function parseFormula(str) {
+            const s = normalizeFormulaDigits(str).trim();
+            if (!/^[A-Z][a-z]?(?:\d*[A-Z][a-z]?\d*)+$/.test(s) && !/^[A-Z][a-z]?\d*$/.test(s)) return null;
+            const re = /([A-Z][a-z]?)(\d*)/g;
+            const counts = {};
+            let m;
+            while ((m = re.exec(s))) {
+                const el = m[1];
+                if (el === 'H' || FORMULA_ELEMENTS.includes(el)) counts[el] = (counts[el] || 0) + (m[2] ? parseInt(m[2], 10) : 1);
+            }
+            const keys = Object.keys(counts);
+            if (!keys.length) return null;
+            return counts;
+        }
+        function formulaToString(counts) {
+            const order = ['C','H','N','O','S','P','F','Cl','Br','I','B','Si','Na','K','Mg','Ca','Fe','Cu','Zn'];
+            return order.filter(e => counts[e]).map(e => e + (counts[e] > 1 ? counts[e] : '')).join('');
+        }
+        window.__parseFormula = parseFormula;
+        window.__formulaToString = formulaToString;
+
+        // 收集 FastFormula 候选的分子展示信息（名称/SMILES）
+        async function fetchFormulaIsomers(formula) {
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined;
+                const r = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastformula/' + encodeURIComponent(formula) + '/cids/JSON', { signal: ctrl });
+                if (!r.ok) return { ok: false, error: 'FastFormula 检索失败 (HTTP ' + r.status + ')' };
+                const j = await r.json();
+                const cids = j && j.IdentifierList ? j.IdentifierList.CID : null;
+                if (!cids || !cids.length) return { ok: false, error: '未找到该分子式的任何记录' };
+                const props = [];
+                // 分块请求属性（CID 过多时分批，避免 URL 过长）
+                for (let i = 0; i < cids.length; i += 50) {
+                    const chunk = cids.slice(i, i + 50);
+                    const p = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/' + chunk.join(',') + '/property/MolecularFormula,ConnectivitySMILES,IUPACName/JSON', { signal: ctrl });
+                    if (!p.ok) continue;
+                    const pj = await p.json();
+                    const list = pj && pj.PropertyTable ? pj.PropertyTable.Properties : [];
+                    for (const x of list) props.push(x);
+                }
+                const seen = new Set();
+                const items = [];
+                for (const x of props) {
+                    const smi = x.ConnectivitySMILES || '';
+                    if (!smi || smi.includes('[') || smi.includes('.')) continue;
+                    const name = x.IUPACName || '';
+                    if (/deuterio|tritio|isotop/i.test(name)) continue;
+                    if (seen.has(smi)) continue;
+                    seen.add(smi);
+                    items.push({ cid: x.CID, name: name || smi, smiles: smi, formula: x.MolecularFormula || formula });
+                }
+                items.sort((a, b) => a.name.localeCompare(b.name, 'en'));
+                return { ok: true, formula, items };
+            } catch (e) { return { ok: false, error: '请求失败: ' + (e && e.message ? e.message : String(e)) }; }
+        }
+        window.__fetchFormulaIsomers = fetchFormulaIsomers;
+
         // ============ 名称 / SMILES 双输入 UI（Task 4.3）============
         // 优先级：SMILES 输入框非空 → 直接解析；否则名称输入框 → 名称解析（内置库 → PubChem → Cactus）
         let _inputBusy = false;
         async function generateFromInput() {
             const nameInput = document.getElementById('name-input');
             const smilesInput = document.getElementById('smiles-input');
+            const seqInput = document.getElementById('seq-input');
             const btn = document.getElementById('btn-molecule-from-input');
             const name = (nameInput ? nameInput.value : '').trim();
             const smiles = (smilesInput ? smilesInput.value : '').trim();
-            if (!name && !smiles) { showToast('请输入分子名称或 SMILES', 2200); return false; }
+            const seq = (seqInput ? seqInput.value : '').trim();
+            const formulaInput = document.getElementById('formula-input');
+            const formulaBox = (formulaInput ? formulaInput.value : '').trim();
+            if (!name && !smiles && !seq && !formulaBox) { showToast('请输入分子名称、SMILES、分子式或蛋白质序列', 2200); return false; }
             if (_inputBusy) return false;
             _inputBusy = true;
             const prevText = btn ? btn.textContent : '';
             if (btn) { btn.textContent = '解析中…'; btn.style.opacity = '0.6'; }
             try {
+                if (seq) {
+                    const r = await generateFromProteinSeq(seq);
+                    if (r.ok) {
+                        if (smilesInput) smilesInput.value = '';
+                        syncInputClearButtons();
+                        setInputPanelOpen(false);
+                        showToast(`已从序列生成: ${r.seqLen} 残基 · ${r.count} 原子（ESMFold 预测）`, 2800);
+                    }
+                    return r.ok;
+                }
+                // 分子式分流（2026-09）：优先用专用 formula-input（小键盘输入），其次名称/SMILES
+                // 框填的是纯分子式（如 C2H6O / C6H6）也识别 → 枚举异构体弹面板多选。
+                // 多元素分子式或带数字单元素（O2）才判定为分子式，避免与英文名混淆；
+                // 但合法 SMILES（如 CCl4 或 c1ccccc1）仍按 SMILES 处理。
+                let formulaCounts = null;
+                const formulaLike = (formulaBox || name || smiles);
+                if (formulaLike && !/[a-z=#()\[\]\\/@.%]/.test(formulaLike)) {
+                    let isLegitSmiles = false;
+                    try {
+                        const ps = parseSmiles(formulaLike);
+                        isLegitSmiles = !!(ps && !ps.error);
+                    } catch (e2) {}
+                    if (!isLegitSmiles) {
+                        const c = parseFormula(formulaLike);
+                        if (c) {
+                            const tokens = Object.keys(c);
+                            if (tokens.length >= 2 || /\d/.test(formulaLike)) formulaCounts = c;
+                        }
+                    }
+                }
+                if (formulaCounts) {
+                    const fStr = formulaToString(formulaCounts);
+                    showToast('正在枚举 ' + fStr + ' 的异构体…', 2200);
+                    const res = await fetchFormulaIsomers(fStr);
+                    if (res.ok && res.items.length) {
+                        showIsomerPanel(fStr, res.items);
+                        return true;
+                    }
+                    showToast(res.error || '未找到该分子式的异构体', 3200);
+                    return false;
+                }
                 let smilesToUse = '';
                 let usedName = false;
                 let used3D = false;
@@ -6900,6 +7422,8 @@ setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                     finalCount = res.atomCount;
                 }
 if (smilesInput) smilesInput.value = smilesToUse;
+                const _fIn = document.getElementById('formula-input');
+                if (_fIn) _fIn.value = '';
                 syncInputClearButtons();
                 setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                 if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子${used3D ? ' · 3D 坐标' : ''})`, 2800);
@@ -6916,8 +7440,191 @@ if (smilesInput) smilesInput.value = smilesToUse;
         }
         window.__generateFromInput = generateFromInput;
 
+        // ============ 异构体选择弹窗（2026-09 新增）============
+        let _isomerItems = [];
+        function showIsomerPanel(formula, items) {
+            _isomerItems = items;
+            const panel = document.getElementById('isomer-panel');
+            const list = document.getElementById('isomer-list');
+            const title = document.getElementById('isomer-panel-title');
+            const all = document.getElementById('isomer-select-all');
+            if (title) title.textContent = toSubscriptFormula(formula) + ' 的同分异构体（' + items.length + ' 个）';
+            if (all) all.checked = false;
+            if (!list) return;
+            list.innerHTML = '';
+            items.forEach((it, idx) => {
+                const row = document.createElement('label');
+                row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; cursor:pointer;';
+                row.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox'; cb.value = String(idx);
+                cb.style.cssText = 'accent-color:#ffd28a; flex-shrink:0;';
+                const info = document.createElement('span');
+                info.style.cssText = 'font-size:13px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+                info.textContent = it.name + '   (' + toSubscriptFormula(it.formula) + ')  ' + it.smiles;
+                info.title = it.smiles;
+                row.appendChild(cb); row.appendChild(info);
+                row.addEventListener('click', () => { cb.checked = !cb.checked; updateIsomerCount(); });
+                list.appendChild(row);
+            });
+            const allEl = document.getElementById('isomer-select-all');
+            if (allEl) allEl.addEventListener('change', () => {
+                list.querySelectorAll('input[type="checkbox"]').forEach(c => { c.checked = allEl.checked; });
+                updateIsomerCount();
+            });
+            if (panel) panel.style.display = 'flex';
+            updateIsomerCount();
+        }
+        function hideIsomerPanel() {
+            const panel = document.getElementById('isomer-panel');
+            if (panel) panel.style.display = 'none';
+        }
+        function updateIsomerCount() {
+            const list = document.getElementById('isomer-list');
+            const n = list ? list.querySelectorAll('input[type="checkbox"]:checked').length : 0;
+            const cnt = document.getElementById('isomer-count');
+            if (cnt) cnt.textContent = '已选 ' + n + ' 个';
+            return n;
+        }
+        async function generateSelectedIsomers() {
+            const list = document.getElementById('isomer-list');
+            const sel = [];
+            if (list) list.querySelectorAll('input[type="checkbox"]:checked').forEach(c => {
+                const idx = parseInt(c.value, 10);
+                if (_isomerItems[idx]) sel.push(_isomerItems[idx]);
+            });
+            if (!sel.length) { showToast('请至少选择一种异构体', 1600); return; }
+            hideIsomerPanel();
+            _inputBusy = false;
+            const _fIn = document.getElementById('formula-input');
+            if (_fIn) _fIn.value = '';
+            syncInputClearButtons();
+            let ok = 0, fail = 0;
+            for (let si = 0; si < sel.length; si++) {
+                const it = sel[si];
+                showToast(`正在生成 ${si + 1}/${sel.length} ${it.name}…`, 2400);
+                const opts = si > 0 ? { keepExisting: true } : {};
+                try {
+                    let r = null;
+                    // 优先 PubChem 3D 快速路径（真实坐标、不跑优化器）；失败回退本地管线
+                    try {
+                        const struct = await fetchPubChem3D('smiles', it.smiles);
+                        if (struct) { generateFrom3D(struct, opts); r = { ok: true, atomCount: struct.atoms.length }; }
+                    } catch (e) { r = null; }
+                    if (!r) r = await window.__generateFromSmiles(it.smiles, opts);
+                    if (r && r.ok) { ok++; console.log(`[异构体 ${si + 1}/${sel.length}] ${it.name} ✓`); }
+                    else { fail++; console.log(`[异构体 ${si + 1}/${sel.length}] ${it.name} ✗`); }
+                } catch (e) { fail++; }
+            }
+            showToast(`已生成 ${ok} 个异构体${fail ? '，失败 ' + fail + ' 个' : ''}${sel.length > 1 ? '（并排显示）' : ''}`, 3200);
+        }
+        async function generateFromSmilesPublic(smilesStr) {
+            try { return await window.__generateFromSmiles(smilesStr); }
+            catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+        }
+        window.__showIsomerPanel = showIsomerPanel;
+        window.__hideIsomerPanel = hideIsomerPanel;
+        window.__generateSelectedIsomers = generateSelectedIsomers;
+
+        const _isot = document.getElementById('isomer-panel-close');
+        if (_isot) _isot.addEventListener('click', hideIsomerPanel);
+        const _isoGen = document.getElementById('btn-isomer-generate');
+        if (_isoGen) _isoGen.addEventListener('click', generateSelectedIsomers);
+        const _isomerPanel = document.getElementById('isomer-panel');
+        if (_isomerPanel) _isomerPanel.addEventListener('click', (e) => { if (e.target === _isomerPanel) hideIsomerPanel(); });
+
+        // ============ 分子式小键盘（2026-09 新增）============
+        const FORMULA_KEY_GROUPS = ['C','H','N','O','S','P','F','Cl','Br','I','Na','K','Ca','Mg','Fe','Cu','Zn','B','Si'];
+        function initFormulaKeypad() {
+            const grid = document.getElementById('formula-keypad-keys');
+            if (!grid) return;
+            grid.innerHTML = '';
+            const mk = (label, val) => {
+                const b = document.createElement('span');
+                b.textContent = label;
+                b.style.cssText = 'text-align:center; cursor:pointer; padding:5px 0; border-radius:6px; font-size:13px; color:#fff; background:rgba(255,255,255,0.06); user-select:none;';
+                b.addEventListener('click', () => appendFormulaInput(val));
+                return b;
+            };
+            for (const el of FORMULA_KEY_GROUPS) grid.appendChild(mk(el, el));
+            // 数字键输入 Unicode 下标（₀-₉），配合 SUBSCRIPT_DIGITS 归一化解析（2026-09）
+            for (let d = 0; d <= 9; d++) grid.appendChild(mk(SUBSCRIPT_DIGITS[d], SUBSCRIPT_DIGITS[d]));
+        }
+        function appendFormulaInput(val) {
+            const input = document.getElementById('formula-input');
+            if (!input) return;
+            input.value += val;
+            input.focus();
+            syncInputClearButtons();
+        }
+        function positionFormulaKeypad() {
+            const kp = document.getElementById('formula-keypad');
+            const input = document.getElementById('formula-input');
+            if (!kp || !input) return;
+            const r = input.getBoundingClientRect();
+            const kpw = 230;
+            let left = r.left;
+            if (left + kpw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - kpw - 8);
+            kp.style.left = left + 'px';
+            kp.style.top = (r.bottom + 4) + 'px';
+        }
+        function showFormulaKeypad() {
+            const kp = document.getElementById('formula-keypad');
+            if (!kp) return;
+            positionFormulaKeypad();
+            kp.style.display = 'block';
+        }
+        function hideFormulaKeypad() {
+            const kp = document.getElementById('formula-keypad');
+            if (kp) kp.style.display = 'none';
+        }
+        function toggleFormulaKeypad() {
+            const kp = document.getElementById('formula-keypad');
+            if (!kp) return;
+            if (kp.style.display === 'none') showFormulaKeypad(); else hideFormulaKeypad();
+        }
+        initFormulaKeypad();
+        const _kFIn = document.getElementById('formula-input');
+        if (_kFIn) {
+            _kFIn.addEventListener('focus', () => {
+                const kp = document.getElementById('formula-keypad');
+                if (kp && kp.style.display === 'none') showFormulaKeypad();
+            });
+            // Escape 关闭后 input 仍持焦点，再点击不会触发 focus → 用 click 兜底重新弹出
+            _kFIn.addEventListener('click', () => {
+                const kp = document.getElementById('formula-keypad');
+                if (kp && kp.style.display === 'none') showFormulaKeypad();
+            });
+            _kFIn.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') hideFormulaKeypad();
+            });
+        }
+        // 小键盘按钮按下时防止输入框失焦（否则每次点击后 blur 再 focus 会抖动/闪关）
+        const _kpPanel = document.getElementById('formula-keypad');
+        if (_kpPanel) _kpPanel.addEventListener('mousedown', (e) => e.preventDefault());
+        const _kpBtn = document.getElementById('btn-open-keypad');
+        if (_kpBtn) _kpBtn.addEventListener('click', toggleFormulaKeypad);
+        const _kpClose = document.getElementById('formula-keypad-close');
+        if (_kpClose) _kpClose.addEventListener('click', hideFormulaKeypad);
+        const _kpBack = document.getElementById('formula-keypad-backspace');
+        if (_kpBack) _kpBack.addEventListener('click', () => {
+            const input = document.getElementById('formula-input');
+            if (input && input.value) { input.value = input.value.slice(0, -1); syncInputClearButtons(); input.focus(); }
+        });
+        const _kpClear = document.getElementById('formula-keypad-clear');
+        if (_kpClear) _kpClear.addEventListener('click', () => {
+            const input = document.getElementById('formula-input');
+            if (input) { input.value = ''; syncInputClearButtons(); input.focus(); }
+        });
+        const _kpOk = document.getElementById('formula-keypad-ok');
+        if (_kpOk) _kpOk.addEventListener('click', () => {
+            const kp = document.getElementById('formula-keypad');
+            if (kp) kp.style.display = 'none';
+            generateFromInput();
+        });
+
         document.getElementById('btn-molecule-from-input').addEventListener('click', () => { generateFromInput(); });
-        for (const inputId of ['name-input', 'smiles-input']) {
+        for (const inputId of ['name-input', 'smiles-input', 'formula-input']) {
             const inputEl = document.getElementById(inputId);
             if (inputEl) inputEl.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); generateFromInput(); }
@@ -6925,14 +7632,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
         }
         // 输入框内 × 清空按钮（2026-08）：有内容才显示，点击清空并聚焦
         function syncInputClearButtons() {
-            for (const inputId of ['name-input', 'smiles-input']) {
+            for (const inputId of ['name-input', 'smiles-input', 'formula-input']) {
                 const inputEl = document.getElementById(inputId);
                 const btn = document.querySelector(`.clear-btn[data-clear="${inputId}"]`);
                 if (inputEl && btn) btn.style.display = inputEl.value ? 'block' : 'none';
             }
         }
         window.__syncInputClearButtons = syncInputClearButtons;
-        for (const inputId of ['name-input', 'smiles-input']) {
+        for (const inputId of ['name-input', 'smiles-input', 'formula-input']) {
             const inputEl = document.getElementById(inputId);
             if (!inputEl) continue;
             const btn = document.querySelector(`.clear-btn[data-clear="${inputId}"]`);
@@ -7043,8 +7750,9 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return L;
         }
 
-        function generateFromSpec(spec) {
-            clearMolecule();
+        function generateFromSpec(spec, opts) {
+            const keepExisting = !!(opts && opts.keepExisting);
+            if (!keepExisting) clearMolecule();
             const n = spec.types.length;
             const atoms = spec.types.map(t => createCompleteAtom(t, new THREE.Vector3(0, 0, 0)));
             const pos = atoms.map(a => a.position);
@@ -8251,6 +8959,21 @@ if (smilesInput) smilesInput.value = smilesToUse;
         });
         window.addEventListener('mousedown', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) bondMenu.style.display = 'none'; });
         window.addEventListener('touchstart', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) bondMenu.style.display = 'none'; });
+        // 下拉框点击别处自动收起（2026-09）：原生 select 失焦即关闭下拉列表。
+        // 捕获阶段监听：点击目标不在任何 select 内（或其弹出的原生列表）时 blur 当前聚焦的 select。
+        const _collapseSelects = () => {
+            if (document.activeElement && document.activeElement.tagName === 'SELECT') {
+                document.activeElement.blur();
+            }
+        };
+        document.addEventListener('mousedown', (e) => {
+            if (e.target && e.target.closest && e.target.closest('select')) return;
+            _collapseSelects();
+        }, true);
+        document.addEventListener('touchstart', (e) => {
+            if (e.target && e.target.closest && e.target.closest('select')) return;
+            _collapseSelects();
+        }, true);
 
         // 杂化菜单事件
         document.querySelectorAll('[data-hybridization]').forEach(btn => {
@@ -8493,7 +9216,6 @@ if (smilesInput) smilesInput.value = smilesToUse;
         }
         // ---- 离域 π 体系可视化：体系原子叠半透明球、体系内 π 键叠半透明管 ----
         // 芳香（Hückel 4n+2）高亮金色，开环共轭高亮青蓝；overlay 独立 group，随分子变化自动重建。
-        let showPiSystems = false;
         const PI_VIS = { group: new THREE.Group(), sig: '' };
         const PI_AROM_COLOR = 0xffd54a;
         const PI_CHAIN_COLOR = 0x66aaff;
