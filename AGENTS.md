@@ -9,6 +9,7 @@
 
 ## 运行与验证
 - 验证脚本访问 `http://127.0.0.1:8000/球棍模型2.html`，需先在仓库根目录起静态服务器：`python -m http.server 8000`。
+- 发布规矩：凡提交改动了 `球棍模型4.html`，一并更新 `gh-pages` 分支（`index.html` = 最新 4.html 全量拷贝 + README 同步）并推送，保持 https://han-yi794.github.io/molecule-model-threejs/ 在线版同步。
 - 运行验证：`node playwright-verify.js`。`node_modules` 里已有 playwright 1.62（无 package.json，Node >= 20）；首次需 `npx playwright install chromium`。
 - 页面加载后 900ms 会自动运行全部测试（`AUTO_RUN_ALL_TESTS = true`），无需手动触发；也可通过 UI 按钮或 `runAllExamplesAndTests()` 触发。
 - **Three.js 已内联（2026-08-13）**：球棍模型4.html 的 importmap 改为 `data:text/javascript;base64` 内联 three@0.148.0 三模块（three.module.js/OrbitControls/CSS2DRenderer，~2MB），**双击 file:// 打开完全离线可用**（Playwright 断网拦截实测 0 个 http 请求）。根因：unpkg CDN + 浏览器缓存损坏（ERR_CACHE_READ_FAILURE）导致打不开。OrbitControls/CSS2DRenderer 内部仅 `import 'three'` bare specifier → importmap 二次解析回同一 data:URL 模块实例。还原 CDN 版的原始配置保留在 importmap 上方 HTML 注释里；重建流程：`node download_three.js`（下载到 vendor_tmp/，不入库）→ `node build_inline.js`。注意 2/3 号文件仍是 unpkg CDN 加载。

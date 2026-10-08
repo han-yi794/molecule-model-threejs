@@ -2508,7 +2508,11 @@
             // 默认 40 轮基线。
             // 上限 160：320 轮实测出现整体漂移（均值 1.25、bbox 拉到 -10），多轮
             // 累加位移的均值漂移在长链分子上不可忽略。
-            const effIterations = Math.min(160, Math.max(ITERATIONS, ITERATIONS + atoms.length));
+            let effIterations = Math.min(160, Math.max(ITERATIONS, ITERATIONS + atoms.length));
+            // 收敛保证阈值（2026-10）：一键优化后键角必须收敛到杂化理想值
+            const CONVERGENCE_STD = (window.OPT_PARAMS && window.OPT_PARAMS.CONVERGENCE_STD) || 3.0;
+            const CONVERGENCE_MAX_ITER = (window.OPT_PARAMS && window.OPT_PARAMS.CONVERGENCE_MAX_ITER) || 280;
+            let optLastWorst = null;
             const ANGLE_DAMPING_BASE = (window.OPT_PARAMS && window.OPT_PARAMS.ANGLE_DAMPING_BASE) || 0.60;   // 角度调整阻尼基准
             const ANGLE_DAMPING_RING = (window.OPT_PARAMS && window.OPT_PARAMS.ANGLE_DAMPING_RING) || 0.30;   // 环中角度阻尼（更保守）
             const BOND_DAMPING = (window.OPT_PARAMS && window.OPT_PARAMS.BOND_DAMPING) || 0.55;   // 键长调整阻尼
@@ -2976,6 +2980,28 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
                         });
                     }
                 } catch (e) {}
+                // 收敛保证（2026-10）：畸变初值（如手摆乙醛甲基 H 聚拢朝醛基侧）可能
+                // 需要超过默认轮数才能爬出局部 basin（实测 47 轮后甲基 std 仍 28，再跑
+                // 一轮即到 0.1）。每 20 轮检查一次重原子键角 std：超标且在改善则延长
+                // 迭代（CONVERGENCE_MAX_ITER 封顶），保证一键优化后键角收敛到杂化
+                // 理想值；已收敛的分子零额外开销（只多一次 std 扫描）。
+                if ((iter + 1) % 20 === 0) {
+                    try {
+                        let worst = 0;
+                        const allA = atomsGroup.children.filter(c => c.userData?.isAtom && c.userData.atomType !== 'H');
+                        for (const a of allA) {
+                            if (getBondsForAtom(a).length < 2) continue;
+                            const s = computeBondAngleStd(a);
+                            if (s > worst) worst = s;
+                        }
+                        if (worst > CONVERGENCE_STD && effIterations < CONVERGENCE_MAX_ITER) {
+                            if (optLastWorst === null || worst < optLastWorst - 0.05) {
+                                effIterations = Math.min(CONVERGENCE_MAX_ITER, effIterations + 20);
+                            }
+                            optLastWorst = worst;
+                        }
+                    } catch (e) {}
+                }
             }
 
             isOptimizing = false;
@@ -3686,6 +3712,10 @@ isOptimizing = false;
         // 在当前分子上施加随机扰动以人为制造角度/键长错误（单位 Å）
         function perturbMolecule(mag = 0.4) {
             const atoms = atomsGroup.children.filter(c => c.userData?.isAtom);
+            // 连接保证（2026-10）：扰动只许动位置、不许改拓扑。先快照键表，扰动后把
+            // 误删的键按原键序补回、误增的键移除——畸变幅度再大也不会在优化开始前
+            // 就把连接顺序搞乱（大畸变测试 + 手摆大扰动的前提）。
+            const connSnap = bonds.map(b => ({ a: b.atomA, c: b.atomB, t: b.type }));
             for (const a of atoms) {
                 const scale = (a.userData.atomType === 'H') ? 0.5 : 1.0;
                 const rx = (Math.random() - 0.5) * 2 * mag * scale;
@@ -3697,6 +3727,27 @@ isOptimizing = false;
             const wasOptimizing = isOptimizing;
             isOptimizing = true;
             try { updateBonds(); } finally { isOptimizing = wasOptimizing; }
+            // 按快照恢复拓扑：删误增、补误删（isOptimizing 期间键表本就不该变，此为兜底）
+            try {
+                const key = (a, c) => {
+                    const ia = a.userData._id, ic = c.userData._id;
+                    return (ia < ic ? ia + '_' + ic : ic + '_' + ia);
+                };
+                const snapSet = new Set(connSnap.map(b => key(b.a, b.c) + ':' + b.t));
+                for (let i = bonds.length - 1; i >= 0; i--) {
+                    const b = bonds[i];
+                    if (!snapSet.has(key(b.atomA, b.atomB) + ':' + b.type)) {
+                        try { b.cylinders.forEach(cyl => scene.remove(cyl)); } catch (e) {}
+                        bonds.splice(i, 1);
+                    }
+                }
+                for (const s of connSnap) {
+                    const still = bonds.some(b => (b.atomA === s.a && b.atomB === s.c) || (b.atomA === s.c && b.atomB === s.a));
+                    if (!still && atomsGroup.children.includes(s.a) && atomsGroup.children.includes(s.c)) {
+                        addBondBetween(s.a, s.c, s.t);
+                    }
+                }
+            } catch (e) {}
         }
 
         function updateAtomLabel(atom) {
@@ -8101,8 +8152,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 const connBefore = getConnectivityReport(CONNECTIVITY_SPECS[ex] || { types: [], bonds: [], strict: false });
                 if (!connBefore.ok) console.warn('连接性(生成后)问题:', ex, connBefore.issues);
                 await sleep(150);
-                // 对当前分子施加轻微扰动以模拟畸变（用于自动化回归）
-                perturbMolecule(0.45);
+                // 对当前分子施加大畸变以模拟最坏初值（2026-10：0.45→0.9，用于自动化回归）
+                // perturbMolecule 内有连接快照恢复保证，幅度再大也不会在优化前搞乱连接；
+                // optimizeAllAtoms 内有收敛保证，畸变初值多爬几轮直至键角达标
+                perturbMolecule(0.9);
                 // 记录角度分布（用于检测全局优化是否改善角度）
                 const carbonAtoms = atomsGroup.children.filter(a => a.userData.atomType === 'C');
                 const preStdArr = carbonAtoms.map(a => computeBondAngleStd(a));
