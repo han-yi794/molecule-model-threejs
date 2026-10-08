@@ -2,6 +2,8 @@
 
 单文件 Three.js 分子建模应用:通过键长、杂化推断与迭代几何优化,使有机分子(烷烃、烯烃、芳香环、羧酸等)获得化学合理的键角与键长;支持名称/SMILES/分子式(异构体枚举)/蛋白质序列四种输入生成分子,并提供基团拖拽、单键旋转、顺反翻转、原子材质、孤对电子可视化等交互建模能力。全部逻辑内联于单个 HTML,无需构建。
 
+**在线体验**:[https://han-yi794.github.io/molecule-model-threejs/](https://han-yi794.github.io/molecule-model-threejs/)（GitHub Pages 实时同步最新版,浏览器直接打开即可使用）
+
 ## 目录
 
 - [功能特性](#功能特性)
