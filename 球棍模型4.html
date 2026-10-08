@@ -657,6 +657,68 @@
             width: 100%;
             margin-top: 8px;
         }
+        /* ============ 响应式布局（2026-09 新增）============ */
+        /* 平板/小窗（≤1024px）：左右侧栏收窄、面板压缩，避免与画布抢空间 */
+        @media (max-width: 1024px) {
+            #group-sidebar, #sidebar { width: 104px; }
+            #sidebar { right: 12px; }
+            #group-sidebar { left: 12px; }
+            #guide-panel { left: 12px; width: 116px; }
+            #settings-panel { left: 142px; width: 104px; }
+            #btn-optimize-all { left: 256px; width: 72px; padding: 5px 4px; }
+            #btn-clear-molecule { left: 336px; width: 40px; padding: 5px 4px; }
+            #input-panel { right: 12px; width: 118px; top: 12px; }
+        }
+        /* 手机竖屏（≤640px）：侧栏下移为底部横向条、面板堆叠右上，画布占满 */
+        @media (max-width: 640px) {
+            html, body { overflow: hidden; touch-action: manipulation; }
+            /* 左上栏杆：说明+设置+优化+清空横向排一行 */
+            #guide-panel { top: 8px; left: 8px; width: 34px; padding: 6px 2px; }
+            #guide-panel .guide-toggle { font-size: 16px; line-height: 1; }
+            #guide-panel .guide-body { display: none !important; }
+            #settings-panel { top: 8px; left: 46px; width: 40px; padding: 6px 2px; }
+            #settings-panel .settings-toggle { font-size: 9px; line-height: 1.2; }
+            #btn-optimize-all { top: 8px; left: 90px; width: 58px; padding: 4px 2px; font-size: 9px; white-space: nowrap; }
+            #btn-clear-molecule { top: 8px; left: 152px; width: 36px; padding: 4px 2px; font-size: 14px; white-space: nowrap; line-height: 1; }
+            /* 右上输入面板：紧凑，展开后为浮层（限高防遮挡） */
+            #input-panel { top: 8px; right: 8px; width: 150px; max-width: 46vw; z-index: 40; max-height: 52vh; overflow-y: auto; }
+            #input-panel .input-panel-toggle { font-size: 11px; white-space: normal; position: sticky; top: 0; background: rgba(0,0,0,0.6); border-radius: 10px; }
+            /* 侧栏改底部横向条：group 在下、atom 库在上（次第高 52+8） */
+            #group-sidebar, #sidebar {
+                left: 8px; right: 8px; width: auto;
+                top: auto; transform: none;
+                flex-direction: row;
+                overflow-x: auto; overflow-y: hidden;
+                max-height: none;
+                border-radius: 18px;
+                padding: 8px 6px;
+                gap: 8px;
+                align-items: center;
+                scrollbar-width: thin;
+                -webkit-overflow-scrolling: touch;
+            }
+            #group-sidebar { bottom: 8px; }
+            #sidebar { bottom: 84px; }
+            #group-sidebar .title, #group-sidebar .hint,
+            #sidebar .title, #sidebar .hint,
+            #group-sidebar .drag-mode-row, #sidebar .drag-mode-row { display: none; }
+            .group-card { width: 78px; height: 40px; font-size: 13px; flex-shrink: 0; margin: 2px; }
+            .atom-card { width: 52px; height: 52px; font-size: 17px; flex-shrink: 0; margin: 2px; }
+            .atom-card small { font-size: 10px; }
+            #group-sidebar .action-btn, #sidebar .action-btn { flex-shrink: 0; font-size: 10px; padding: 5px 6px; margin-top: 0; }
+            #sidebar select { max-width: 96px; }
+            /* 模式徽章与帮助按钮：置侧栏上方 */
+            #mode-badge { right: 10px; bottom: 200px; font-size: 10px; padding: 5px 9px; }
+            #btn-help { right: 14px; bottom: 162px; }
+            /* 浮层宽度限制，防溢出 */
+            #isomer-panel { width: min(480px, 94vw); max-height: 82vh; left: 50%; top: 50%; transform: translate(-50%,-50%); }
+            #isomer-list { max-height: calc(82vh - 90px); }
+            #formula-keypad { width: min(230px, 92vw); }
+            #candidate-panel { max-width: 92vw; }
+            #toast-message { max-width: 92vw; white-space: normal; }
+            #drag-hud, #torsion-hud { max-width: 92vw; }
+            #bond-type-menu { max-width: 94vw; flex-wrap: wrap; }
+        }
     </style>
     <!-- Three.js r0.148 已内联（2026-08-13）：file:// 双击离线可用，不再依赖 unpkg CDN。
      原始 CDN 配置（如需还原）：
