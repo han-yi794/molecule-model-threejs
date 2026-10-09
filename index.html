@@ -2294,8 +2294,14 @@
                     const a3 = (a2 < 0 && atom.userData.__sp3AnchorIdx >= 0) ? atom.userData.__sp3AnchorIdx : -1;
                     anchorForcedIdx = (a2 >= 0) ? a2 : a3;
                 }
+                // 强制锚定邻居占 0° 槽（baseDirs[0] = axis/start 方向）。
+                // 2026-10 修复：此前该逻辑被 AB 测试禁用（空 if），当 H 摆得
+                // 贴近主键方向时，贪心分配会因 currDir·0°槽 dot 更大把 0° 槽
+                // 分给 H，主键被挤到 109.47° 槽 → 键角数值正确但构象错误
+                // （乙醛甲基 3H 朝醛基碳一侧，C-C 方向被 H 占据）。
                 if (anchorForcedIdx >= 0 && anchorForcedIdx < num) {
-                    // AB测试:禁用强制锚定
+                    mapping[anchorForcedIdx] = 0;
+                    assignedDomain[0] = true;
                 }
             } catch (eA) {}
 
