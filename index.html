@@ -224,7 +224,7 @@
             color: white;
             user-select: none;
             pointer-events: auto;
-            touch-action: none;
+            touch-action: pan-y; /* 2026-10: 容器允许纵向滚动(触摸),卡片自身仍 none 以支持拖拽 */
             max-height: 80vh;
             overflow-y: auto;
         }
@@ -300,7 +300,7 @@
             color: white;
             user-select: none;
             pointer-events: auto;
-            touch-action: none;
+            touch-action: pan-y; /* 2026-10: 容器允许纵向滚动(触摸),卡片自身仍 none 以支持拖拽 */
             max-height: 80vh;
             overflow-y: auto;
         }
@@ -658,66 +658,77 @@
             margin-top: 8px;
         }
         /* ============ 响应式布局（2026-09 新增）============ */
-        /* 平板/小窗（≤1024px）：左右侧栏收窄、面板压缩，避免与画布抢空间 */
+        /* ============ 按比例缩放适配（2026-10 重写：统一横屏布局，组件随视口比例缩放）============ */
+        /* 原则：不切换布局（始终左右侧栏横屏式），窄屏时所有组件尺寸用 min(px, vw) 等比缩小。
+           min(a,b) 取较小者：宽屏(≥1024) 命中 px 设计尺寸；窄屏命中 vw 比例 → 按比例缩放组件。 */
         @media (max-width: 1024px) {
-            #group-sidebar, #sidebar { width: 104px; }
-            #sidebar { right: 12px; }
-            #group-sidebar { left: 12px; }
-            #guide-panel { left: 12px; width: 116px; }
-            #settings-panel { left: 142px; width: 104px; }
-            #btn-optimize-all { left: 256px; width: 72px; padding: 5px 4px; }
-            #btn-clear-molecule { left: 336px; width: 40px; padding: 5px 4px; }
-            #input-panel { right: 12px; width: 118px; top: 12px; }
-        }
-        /* 手机竖屏（≤640px）：侧栏下移为底部横向条、面板堆叠右上，画布占满 */
-        @media (max-width: 640px) {
-            html, body { overflow: hidden; touch-action: manipulation; }
-            /* 左上栏杆：说明+设置+优化+清空横向排一行 */
-            #guide-panel { top: 8px; left: 8px; width: 34px; padding: 6px 2px; }
-            #guide-panel .guide-toggle { font-size: 16px; line-height: 1; }
-            #guide-panel .guide-body { display: none !important; }
-            #settings-panel { top: 8px; left: 46px; width: 40px; padding: 6px 2px; }
-            #settings-panel .settings-toggle { font-size: 9px; line-height: 1.2; }
-            #btn-optimize-all { top: 8px; left: 90px; width: 58px; padding: 4px 2px; font-size: 9px; white-space: nowrap; }
-            #btn-clear-molecule { top: 8px; left: 152px; width: 36px; padding: 4px 2px; font-size: 14px; white-space: nowrap; line-height: 1; }
-            /* 右上输入面板：紧凑，展开后为浮层（限高防遮挡） */
-            #input-panel { top: 8px; right: 8px; width: 150px; max-width: 46vw; z-index: 40; max-height: 52vh; overflow-y: auto; }
-            #input-panel .input-panel-toggle { font-size: 11px; white-space: normal; position: sticky; top: 0; background: rgba(0,0,0,0.6); border-radius: 10px; }
-            /* 侧栏改底部横向条：group 在下、atom 库在上（次第高 52+8） */
-            #group-sidebar, #sidebar {
-                left: 8px; right: 8px; width: auto;
-                top: auto; transform: none;
-                flex-direction: row;
-                overflow-x: auto; overflow-y: hidden;
-                max-height: none;
-                border-radius: 18px;
-                padding: 8px 6px;
-                gap: 8px;
-                align-items: center;
-                scrollbar-width: thin;
-                -webkit-overflow-scrolling: touch;
-            }
-            #group-sidebar { bottom: 8px; }
-            #sidebar { bottom: 84px; }
-            #group-sidebar .title, #group-sidebar .hint,
-            #sidebar .title, #sidebar .hint,
-            #group-sidebar .drag-mode-row, #sidebar .drag-mode-row { display: none; }
-            .group-card { width: 78px; height: 40px; font-size: 13px; flex-shrink: 0; margin: 2px; }
-            .atom-card { width: 52px; height: 52px; font-size: 17px; flex-shrink: 0; margin: 2px; }
-            .atom-card small { font-size: 10px; }
-            #group-sidebar .action-btn, #sidebar .action-btn { flex-shrink: 0; font-size: 10px; padding: 5px 6px; margin-top: 0; }
-            #sidebar select { max-width: 96px; }
-            /* 模式徽章与帮助按钮：置侧栏上方 */
-            #mode-badge { right: 10px; bottom: 200px; font-size: 10px; padding: 5px 9px; }
-            #btn-help { right: 14px; bottom: 162px; }
-            /* 浮层宽度限制，防溢出 */
-            #isomer-panel { width: min(480px, 94vw); max-height: 82vh; left: 50%; top: 50%; transform: translate(-50%,-50%); }
+            :root { --ui-scale: min(1, calc(100vw / 1024)); }
+            /* 左右侧栏：宽度按视口比例（≈12vw），高度保持 80vh 可纵向滚动 */
+            #group-sidebar, #sidebar { width: min(130px, 13vw); }
+            #sidebar { right: min(20px, 2vw); }
+            #group-sidebar { left: min(20px, 2vw); }
+            /* 左侧上方面板：说明+设置+优化+清空 横排等比缩 */
+            #guide-panel { left: min(20px, 2vw); width: min(130px, 13vw); padding: min(10px, 1vw); }
+            #settings-panel { left: min(170px, 17vw); width: min(130px, 13vw); padding: min(10px, 1vw); }
+            #btn-optimize-all { left: min(320px, 32vw); width: min(90px, 9vw); }
+            #btn-clear-molecule { left: min(430px, 43vw); width: min(50px, 5vw); padding: min(6px, 0.6vw); }
+            /* 右上输入面板：等比缩 */
+            #input-panel { right: min(20px, 2vw); top: min(20px, 2vw); width: min(130px, 13vw); max-width: 46vw; padding: min(10px, 1vw); }
+            /* 卡片与控件：按比例缩放（min 取 px 或 vw 的较小值） */
+            .atom-card { width: min(80px, 8vw); height: min(80px, 8vw); font-size: min(24px, 2.4vw); }
+            .atom-card small { font-size: min(12px, 1.2vw); }
+            .group-card { width: min(100px, 10vw); height: min(44px, 4.4vw); font-size: min(16px, 1.6vw); }
+            .group-card small { font-size: min(12px, 1.2vw); }
+            #sidebar .title, #group-sidebar .title { font-size: min(14px, 1.4vw); }
+            #sidebar select, #group-sidebar select { width: min(120px, 12vw); font-size: min(12px, 1.2vw); }
+            #sidebar .action-btn, #group-sidebar .action-btn { font-size: min(12px, 1.2vw); padding: min(6px, 0.6vw); }
+            /* 浮层限宽防溢出 */
+            #isomer-panel { width: min(480px, 94vw); max-height: 82vh; }
             #isomer-list { max-height: calc(82vh - 90px); }
             #formula-keypad { width: min(230px, 92vw); }
-            #candidate-panel { max-width: 92vw; }
+            #candidate-panel { max-width: min(440px, 92vw); }
             #toast-message { max-width: 92vw; white-space: normal; }
             #drag-hud, #torsion-hud { max-width: 92vw; }
             #bond-type-menu { max-width: 94vw; flex-wrap: wrap; }
+            #help-overlay .help-content { max-width: 92vw; }
+        }
+        /* 手机窄屏（≤640px）：顶部面板压缩为图标行，侧栏贴边纵向条，徽章帮助居中 */
+        @media (max-width: 640px) {
+            html, body { overflow: hidden; }
+            /* 左上角四按钮：缩为一行图标 */
+            #guide-panel { top: 8px; left: 8px; width: 34px; padding: 6px 2px; border-radius: 12px; }
+            #guide-panel .guide-toggle { font-size: 16px; line-height: 1; }
+            #guide-panel .guide-body { display: none !important; }
+            #settings-panel { top: 8px; left: 46px; width: 40px; padding: 6px 2px; border-radius: 12px; }
+            #settings-panel .settings-toggle { font-size: 9px; line-height: 1; }
+            #btn-optimize-all { top: 8px; left: 90px; width: 56px; padding: 4px 2px; font-size: 9px; white-space: nowrap; }
+            #btn-clear-molecule { top: 8px; left: 150px; width: 36px; padding: 4px 2px; font-size: 13px; white-space: nowrap; line-height: 1; }
+            /* 右上输入面板：紧凑浮层 */
+            #input-panel { top: 8px; right: 8px; width: 150px; max-width: 46vw; z-index: 40; max-height: 52vh; overflow-y: auto; }
+            #input-panel .input-panel-toggle { font-size: 11px; white-space: normal; }
+            /* 侧栏：贴边纵向条，从顶部面板下方开始（不垂直居中，避免与顶部/徽章重叠） */
+            #group-sidebar { left: min(8px, 2vw); top: 104px; transform: none; bottom: 16px; max-height: none; }
+            #sidebar { right: min(8px, 2vw); top: 104px; transform: none; bottom: 16px; max-height: none; }
+            /* 徽章帮助：底部居中避让两侧栏 */
+            #mode-badge { left: 50%; transform: translateX(-50%); right: auto; bottom: 8px; font-size: 10px; padding: 5px 9px; }
+            #btn-help { left: calc(50% + 30px); right: auto; bottom: 42px; }
+        }
+        /* 横屏窄高（手机横屏 641~900 宽）：侧栏贴边从顶部面板下方开始，徽章帮助居中 */
+        @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
+            #group-sidebar { top: 70px; transform: none; bottom: 16px; max-height: none; }
+            #sidebar { top: 70px; transform: none; bottom: 16px; max-height: none; }
+            #mode-badge { left: 50%; transform: translateX(-50%); right: auto; bottom: 8px; }
+            #btn-help { left: calc(50% + 30px); right: auto; bottom: 40px; }
+        }
+        /* 竖屏（高>宽）提示横屏使用：应用按横屏设计，竖屏空间不足时引导旋转 */
+        @media (orientation: portrait) and (max-width: 640px) {
+            body::after {
+                content: '◐ 建议横屏使用（旋转手机以获得最佳布局）';
+                position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+                background: rgba(0,0,0,0.75); color: #ffd78c; padding: 6px 12px;
+                border-radius: 20px; font-size: 11px; z-index: 300; pointer-events: none;
+                white-space: nowrap;
+            }
         }
     </style>
     <!-- Three.js r0.148 已内联（2026-08-13）：file:// 双击离线可用，不再依赖 unpkg CDN。
