@@ -4073,9 +4073,10 @@ isOptimizing = false;
                 const tLen = getTargetBondLength(anchor, other);
                 const dist = anchor.position.distanceTo(other.position);
                 if (dist > tLen * 1.8) continue;
-                // 连接方向：优先取 target 向外伸出的 H 方向（取代该 H 的位置，化学语义正确，
-                // 且可避免锚点贴近 target 邻位原子被 updateBonds 误建第二键），
-                // 无 H 可选时回退为"从 target 指向锚点（放置侧）"的拖拽方向
+                // 连接方向：取代模式（target 已饱和）优先取 target 向外伸出的 H 方向
+                // （取代该 H 的位置，化学语义正确，且可避免锚点贴近 target 邻位原子被
+                // updateBonds 误建第二键）；直接成键模式（target 未饱和）必须用拖拽
+                // 方向——H 不得被取代，若沿 H 方向接近必然与该 H 碰撞而无解。
                 let bestDir = anchor.position.clone().sub(other.position);
                 let bestOutH = null, bestDotH = -1e9;
                 for (const c of others) {
@@ -4087,7 +4088,7 @@ isOptimizing = false;
                     const dot = hDir.dot(bestDir) / (hLen * bestDir.length());
                     if (dot > bestDotH) { bestDotH = dot; bestOutH = c; }
                 }
-                if (bestOutH) bestDir = bestOutH.position.clone().sub(other.position);
+                if (bestOutH && mode === 'replace') bestDir = bestOutH.position.clone().sub(other.position);
                 if (bestDir.lengthSq() < 1e-9) continue;
                 // 预测锚点最终位置（target 外侧键长处），并旋转组内全部原子（整组 +X 朝外）
                 const candDir = bestDir.clone().normalize();
@@ -4120,12 +4121,17 @@ isOptimizing = false;
                             if (candMemberPos[mi].distanceTo(c.position) < cLen * 1.24) {
                                 // 锚点与 target 自身：正是要成键的位置，放行
                                 if ((c === other) && isAnchorMember) continue;
-                                // 与 target 直接成键的 H（环上伸出的 H）可安全替换移除；
-                                // 其余邻居（含 target 直接邻位原子）一律视为碰撞——
-                                // 否则会被 updateBonds 补建为第二键（实测 1.865/1.578）
+                                // target 的 H：仅"取代模式"（target 已饱和、canAddBond 不通过）
+                                // 且该 H 正是连接方向上被替换的那个（bestOutH）时，才标记待
+                                // 移除并放行。直接成键模式（target 未饱和）下成员压到 target
+                                // 的 H 一律视为该旋转角摆放失败（拒绝换角/换目标）——用户
+                                // 要求：仅当中心原子饱和时才发生取代，未饱和时 H 不得消失。
                                 if (isTargetH) {
-                                    if (!marked.includes(c)) marked.push(c);
-                                    continue;
+                                    if (mode === 'replace' && c === bestOutH) {
+                                        if (!marked.includes(c)) marked.push(c);
+                                        continue;
+                                    }
+                                    collide = true; break;
                                 }
                                 collide = true; break;
                             }
@@ -4140,12 +4146,13 @@ isOptimizing = false;
                 const score = Math.abs(dist - tLen);
                 if (score < bestScore) { bestScore = score; target = other; chosenQ = bestQ; chosenMarked = bestMarked; }
             }
-            return { target, chosenQ, chosenMarked };
+            return { target, chosenQ, chosenMarked, mode };
             }
             // 阶段一优先；阶段二仅当附近无未饱和原子时启用
             let picked = scanCandidates('direct');
             if (!picked.target) picked = scanCandidates('replace');
             const target = picked.target, chosenQ = picked.chosenQ, chosenMarked = picked.chosenMarked;
+            const pickedMode = picked.mode;
             if (target) {
                 const tLen = getTargetBondLength(anchor, target);
                 // 连接方向：逻辑在候选循环中已确定（优先 target 的 H 方向，否则拖拽方向），
@@ -4161,7 +4168,7 @@ isOptimizing = false;
                     const dot = hDir.dot(dir) / (hLen * dir.length());
                     if (dot > bestDot) { bestDot = dot; outH = c; }
                 }
-                if (outH) dir = outH.position.clone().sub(target.position);
+                if (outH && pickedMode === 'replace') dir = outH.position.clone().sub(target.position);
                 if (dir.lengthSq() > 1e-6) {
                     dir.normalize();
                     const oldAnchor = anchor.position.clone();
