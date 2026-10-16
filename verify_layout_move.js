@@ -20,29 +20,35 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         const out = {};
         const step = (name, ok, detail) => report.results.push({ name, ok: !!ok, detail });
 
-        // S1: input-panel 位于右上角,默认收起
+        // S1: input-panel 位于右上角;默认态按环境约定(自动化 navigator.webdriver=true 默认展开不写记忆,常规环境默认收起)
         out.S1 = await page.evaluate(() => {
             const p = document.getElementById('input-panel');
             if (!p) return { fail: 'missing' };
             const r = p.getBoundingClientRect();
             return {
                 right: Math.round(innerWidth - r.right), top: Math.round(r.top),
-                collapsedByDefault: !p.classList.contains('open') && document.getElementById('input-panel-body').style.display === 'none',
+                webdriver: navigator.webdriver === true,
+                defaultState: (p.classList.contains('open') && document.getElementById('input-panel-body').style.display !== 'none') ? 'open' : 'collapsed',
                 toggleText: document.getElementById('input-panel-toggle').textContent
             };
         });
-        step('S1 输入面板右上角且默认收起', out.S1.top <= 25 && out.S1.right <= 25 && out.S1.collapsedByDefault, out.S1);
+        const s1DefaultOk = out.S1.webdriver ? out.S1.defaultState === 'open' : out.S1.defaultState === 'collapsed';
+        // 无论默认态,收敛到收起态验证折叠机制
+        await page.evaluate(() => window.__setInputPanelOpen(false));
+        out.S1.forcedCollapsed = await page.evaluate(() => document.getElementById('input-panel-body').style.display === 'none');
+        step('S1 输入面板右上角,默认态符合环境约定且可收起', out.S1.top <= 25 && out.S1.right <= 25 && s1DefaultOk && out.S1.forcedCollapsed, out.S1);
 
-        // S1b: 默认收起态下首次点击 = 展开(记忆 '1')
+        // S1b: 收起点击 = 展开(记忆:常规环境 '1',自动化环境不写)
         await page.click('#input-panel-toggle');
         out.S1b = await page.evaluate(() => {
             const p = document.getElementById('input-panel');
             const body = document.getElementById('input-panel-body');
-            return { opened: body.style.display !== 'none', mem: localStorage.getItem('INPUT_PANEL_OPEN') };
+            return { opened: body.style.display !== 'none', mem: localStorage.getItem('INPUT_PANEL_OPEN'), webdriver: navigator.webdriver === true };
         });
-        step('S1b 点击展开并记忆', out.S1b.opened && out.S1b.mem === '1', out.S1b);
+        const s1bMemOk = out.S1b.webdriver ? out.S1b.mem === null : out.S1b.mem === '1';
+        step('S1b 点击展开并记忆(自动化环境不写记忆)', out.S1b.opened && s1bMemOk, out.S1b);
 
-        // S1c: 再点收起,与原子库不重叠(记忆 '0')
+        // S1c: 再点收起,与原子库不重叠(记忆:常规环境 '0',自动化环境不写)
         await page.click('#input-panel-toggle');
         out.S1c = await page.evaluate(() => {
             const p = document.getElementById('input-panel').getBoundingClientRect();
@@ -51,10 +57,11 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
                 collapsed: document.getElementById('input-panel-body').style.display === 'none',
                 noOverlap: p.bottom <= sb.top + 2,
                 panelBottom: Math.round(p.bottom), sidebarTop: Math.round(sb.top),
-                mem: localStorage.getItem('INPUT_PANEL_OPEN')
+                mem: localStorage.getItem('INPUT_PANEL_OPEN'), webdriver: navigator.webdriver === true
             };
         });
-        step('S1c 再点收起、与原子库不重叠且记忆', out.S1c.collapsed && out.S1c.noOverlap && out.S1c.mem === '0', out.S1c);
+        const s1cMemOk = out.S1c.webdriver ? out.S1c.mem === null : out.S1c.mem === '0';
+        step('S1c 再点收起、与原子库不重叠且记忆', out.S1c.collapsed && out.S1c.noOverlap && s1cMemOk, out.S1c);
 
         // S2: btn-help 在右下角且不与 mode-badge 重叠
         out.S2 = await page.evaluate(() => {
