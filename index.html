@@ -12,69 +12,54 @@
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
             touch-action: pan-y pinch-zoom;
         }
-        /* 左上角使用说明面板（2026-08 界面重构：原顶部 #info 长横幅移除，
-           快捷键/操作介绍收纳于此，默认收起不挡画布） */
-        /* 右上角名称/SMILES 输入面板（2026-08 界面重构：从右侧栏抽出独立成板） */
-        #input-panel {
+        /* ===== 角落控件统一结构（2026-10）=====
+           左上：[使用说明][设置][全局同步优化][清空]，右上：[名称 / SMILES]。
+           统一结构：.corner-widget 外框（top:20 对齐，同圆角/内边距/阴影），
+           .corner-head 头部（图标 + .corner-label 文字 + 可折叠的 .corner-caret，flex 居中 12px），
+           .corner-body 内容区（展开态统一上分隔线）。可折叠头部 .corner-toggle 点击切换，
+           caret 由 setCornerCaret() 翻转（收起 ▾ / 展开 ▴），单动作按钮仅头部。 */
+        #guide-panel, #settings-panel, #input-panel, #btn-optimize-all, #btn-clear-molecule {
             position: absolute;
             top: 20px;
-            right: 20px;
-            width: 130px;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(12px);
             border-radius: 18px;
-            padding: 10px 10px;
+            padding: 6px 10px;
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.15);
             z-index: 25;
-            color: white;
-        }
-        /* 独立面板内去掉原侧栏分区的上边线与外边距 */
-        #input-panel .molecule-input-row {
-            margin-top: 0;
-            padding-top: 0;
-            border-top: none;
-            flex-shrink: 0;
-        }
-        /* 可折叠（2026-08）：默认展开（自动化脚本兼容），用户收起后 localStorage 记忆；
-           收起态仅一行标题，不遮挡下方原子库面板 */
-        #input-panel .input-panel-toggle {
-            font-size: 12px;
-            text-align: center;
-            cursor: pointer;
-            padding: 2px 0;
-            color: #fff;
-            white-space: nowrap; /* 「名称 / SMILES」窄面板防折行 */
-        }
-        #input-panel .input-panel-toggle:hover { color: #ffd78c; }
-        #guide-panel {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 130px;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(12px);
-            border-radius: 18px;
-            padding: 10px 10px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            z-index: 25;
-            color: white;
             user-select: none;
+            backdrop-filter: blur(12px);
         }
-        #guide-panel .guide-toggle {
-            font-size: 13px;
-            text-align: center;
-            cursor: pointer;
-            padding: 2px 0;
+        #guide-panel, #settings-panel, #input-panel {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             color: #fff;
         }
-        #guide-panel .guide-toggle:hover { color: #ffd78c; }
-        #guide-panel .guide-body {
-            display: none;
+        /* 定位：说明/设置/优化/清空横排 + 输入面板右上角 */
+        #guide-panel { left: 20px; width: 130px; }
+        #settings-panel { left: 170px; width: 130px; }
+        #btn-optimize-all { left: 320px; width: 90px; margin-top: 0; cursor: pointer; }
+        #btn-clear-molecule { left: 430px; width: 50px; margin-top: 0; cursor: pointer; }
+        #input-panel { right: 20px; width: 130px; }
+        .corner-head {
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+            font-size: 12px; line-height: 18px; min-height: 18px; white-space: nowrap;
+        }
+        .corner-toggle { cursor: pointer; }
+        .corner-toggle:hover { color: #ffd78c; }
+        .corner-body {
             margin-top: 8px;
             padding-top: 8px;
             border-top: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        /* 输入面板内容区：与说明/设置面板一致的上分隔线（2026-10 统一） */
+        #input-panel .molecule-input-row {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            flex-shrink: 0;
+        }
+        /* 使用说明面板内容（外框/头部见顶部「角落控件统一结构」） */
+        #guide-panel .guide-body {
+            display: none;
             font-size: 11px;
             line-height: 1.9;
             color: #cdd7e8;
@@ -97,35 +82,9 @@
             color: #ffaa44;
             font-weight: bold;
         }
-        /* 设置面板（2026-08）：收纳功能开关，参考 nobook 齿轮图标展开样式 */
-        #settings-panel {
-            position: absolute;
-            top: 20px;
-            left: 170px; /* 紧贴 guide-panel 右侧 */
-            width: 130px;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(12px);
-            border-radius: 18px;
-            padding: 10px 10px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            z-index: 25;
-            color: white;
-        }
-        #settings-panel .settings-toggle {
-            font-size: 13px;
-            text-align: center;
-            cursor: pointer;
-            padding: 2px 0;
-            color: #fff;
-            white-space: nowrap;
-        }
-        #settings-panel .settings-toggle:hover { color: #ffd78c; }
-#settings-panel .settings-body {
+        /* 设置面板内容（外框/头部见顶部「角落控件统一结构」）（2026-08） */
+        #settings-panel .settings-body {
             display: none;
-            margin-top: 6px;
-            padding-top: 6px;
-            border-top: 1px solid rgba(255, 255, 255, 0.12);
         }
         #settings-panel .settings-body.open { display: flex; flex-direction: column; gap: 6px; }
         #settings-panel .settings-body .setting-item {
@@ -170,47 +129,9 @@
             background-color: #161d2e;
             color: #e8eefc;
         }
-        /* 左上角全局同步优化按钮（2026-08） */
-        #btn-optimize-all {
-            position: absolute;
-            top: 20px;
-            left: 320px;
-            width: 90px;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(12px);
-            border-radius: 14px;
-            padding: 6px 8px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            z-index: 25;
-            color: white;
-            font-size: 11px;
-            text-align: center;
-            cursor: pointer;
-            user-select: none;
-            line-height: 1.2;
-        }
+        /* 左上角全局同步优化 / 清空按钮（2026-08；2026-10 并入角落控件统一结构，
+           外框见文件顶部，橙色语义配色保留 .action-btn 的 background/border/color） */
         #btn-optimize-all:hover { border-color: rgba(255, 170, 68, 0.6); color: #ffd78c; }
-        /* 左上角清空按钮（2026-08） */
-        #btn-clear-molecule {
-            position: absolute;
-            top: 20px;
-            left: 430px;
-            width: 50px;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(12px);
-            border-radius: 14px;
-            padding: 6px 8px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            z-index: 25;
-            color: white;
-            font-size: 12px;
-            text-align: center;
-            cursor: pointer;
-            user-select: none;
-            line-height: 1.2;
-        }
         #btn-clear-molecule:hover { border-color: rgba(255, 100, 100, 0.6); color: #ff6b6b; }
         #sidebar {
             position: absolute;
@@ -678,13 +599,14 @@
             #group-sidebar, #sidebar { width: min(130px, 13vw); }
             #sidebar { right: min(20px, 2vw); }
             #group-sidebar { left: min(20px, 2vw); }
-            /* 左侧上方面板：说明+设置+优化+清空 横排等比缩 */
-            #guide-panel { left: min(20px, 2vw); width: min(130px, 13vw); padding: min(10px, 1vw); }
-            #settings-panel { left: min(170px, 17vw); width: min(130px, 13vw); padding: min(10px, 1vw); }
+            /* 左侧上方面板：说明+设置+优化+清空 横排等比缩（2026-10 统一结构后 padding 同步缩放） */
+            #guide-panel, #settings-panel, #input-panel, #btn-optimize-all, #btn-clear-molecule { padding: min(6px, 0.6vw) min(10px, 1vw); }
+            #guide-panel { left: min(20px, 2vw); width: min(130px, 13vw); }
+            #settings-panel { left: min(170px, 17vw); width: min(130px, 13vw); }
             #btn-optimize-all { left: min(320px, 32vw); width: min(90px, 9vw); }
-            #btn-clear-molecule { left: min(430px, 43vw); width: min(50px, 5vw); padding: min(6px, 0.6vw); }
+            #btn-clear-molecule { left: min(430px, 43vw); width: min(50px, 5vw); }
             /* 右上输入面板：等比缩 */
-            #input-panel { right: min(20px, 2vw); top: min(20px, 2vw); width: min(130px, 13vw); max-width: 46vw; padding: min(10px, 1vw); }
+            #input-panel { right: min(20px, 2vw); top: min(20px, 2vw); width: min(130px, 13vw); max-width: 46vw; }
             /* 卡片与控件：按比例缩放（min 取 px 或 vw 的较小值） */
             .atom-card { width: min(80px, 8vw); height: min(80px, 8vw); font-size: min(24px, 2.4vw); }
             .atom-card small { font-size: min(12px, 1.2vw); }
@@ -706,17 +628,18 @@
         /* 手机窄屏（≤640px）：顶部面板压缩为图标行，侧栏贴边纵向条，徽章帮助居中 */
         @media (max-width: 640px) {
             html, body { overflow: hidden; }
-            /* 左上角四按钮：缩为一行图标 */
-            #guide-panel { top: 8px; left: 8px; width: 34px; padding: 6px 2px; border-radius: 12px; }
-            #guide-panel .guide-toggle { font-size: 16px; line-height: 1; }
+            /* 左上角四键：统一结构下缩为一行纯图标（隐藏文字与 caret，保留图标按钮语义） */
+            #guide-panel, #settings-panel, #btn-optimize-all, #btn-clear-molecule { top: 8px; padding: 6px 2px; border-radius: 12px; box-sizing: border-box; height: 32px; }
+            #guide-panel { left: 8px; width: 34px; }
+            #settings-panel { left: 46px; width: 40px; }
+            #btn-optimize-all { left: 90px; width: 56px; }
+            #btn-clear-molecule { left: 150px; width: 36px; }
+            #guide-panel .corner-label, #guide-panel .corner-caret,
+            #settings-panel .corner-label, #settings-panel .corner-caret,
+            #btn-optimize-all .corner-label, #btn-clear-molecule .corner-label { display: none; }
             #guide-panel .guide-body { display: none !important; }
-            #settings-panel { top: 8px; left: 46px; width: 40px; padding: 6px 2px; border-radius: 12px; }
-            #settings-panel .settings-toggle { font-size: 9px; line-height: 1; }
-            #btn-optimize-all { top: 8px; left: 90px; width: 56px; padding: 4px 2px; font-size: 9px; white-space: nowrap; }
-            #btn-clear-molecule { top: 8px; left: 150px; width: 36px; padding: 4px 2px; font-size: 13px; white-space: nowrap; line-height: 1; }
-            /* 右上输入面板：紧凑浮层 */
-            #input-panel { top: 8px; right: 8px; width: 150px; max-width: 46vw; z-index: 40; max-height: 52vh; overflow-y: auto; }
-            #input-panel .input-panel-toggle { font-size: 11px; white-space: normal; }
+            /* 右上输入面板：紧凑浮层（保留标题文字与 caret，位距与左侧四键一致） */
+            #input-panel { top: 8px; right: 8px; width: 150px; max-width: 46vw; padding: 6px min(10px, 1vw); border-radius: 12px; box-sizing: border-box; z-index: 40; max-height: 52vh; overflow-y: auto; }
             /* 侧栏：贴边纵向条，从顶部面板下方开始（不垂直居中，避免与顶部/徽章重叠） */
             #group-sidebar { left: min(8px, 2vw); top: 104px; transform: none; bottom: 16px; max-height: none; }
             #sidebar { right: min(8px, 2vw); top: 104px; transform: none; bottom: 16px; max-height: none; }
@@ -788,9 +711,9 @@
     </script>
 </head>
 <body>
-    <div id="guide-panel">
-        <div class="guide-toggle" id="guide-toggle"><span class="ui-ic" data-icon="book-open" data-size="13"></span> 使用说明 <span class="ui-ic" data-icon="chevron-down" data-size="12"></span></div>
-        <div class="guide-body" id="guide-body">
+    <div id="guide-panel" class="corner-widget">
+        <div class="corner-head corner-toggle" id="guide-toggle"><span class="ui-ic" data-icon="book-open" data-size="13"></span><span class="corner-label">使用说明</span><span class="ui-ic corner-caret" data-icon="chevron-down" data-size="12"></span></div>
+        <div class="corner-body guide-body" id="guide-body">
             <b>基本操作</b>
             点击原子选中<br/>
             点击键设置类型<br/>
@@ -807,9 +730,9 @@
             拖原子靠近即成键
         </div>
     </div>
-    <div id="settings-panel">
-        <div class="settings-toggle" id="settings-toggle"><span class="ui-ic" data-icon="settings" data-size="13"></span> 设置</div>
-        <div class="settings-body" id="settings-body">
+    <div id="settings-panel" class="corner-widget">
+        <div class="corner-head corner-toggle" id="settings-toggle"><span class="ui-ic" data-icon="settings" data-size="13"></span><span class="corner-label">设置</span><span class="ui-ic corner-caret" data-icon="chevron-down" data-size="12"></span></div>
+        <div class="corner-body settings-body" id="settings-body">
             <label class="setting-item">
                 <input type="checkbox" id="chk-hydro" />
                 <span class="check-box"></span>
@@ -851,12 +774,12 @@
             </div>
         </div>
     </div>
-    <div class="action-btn" id="btn-optimize-all"><span class="ui-ic" data-icon="sparkles" data-size="13"></span> 全局同步优化</div>
-    <div class="action-btn" id="btn-clear-molecule"><span class="ui-ic" data-icon="trash-2" data-size="13"></span> 清空</div>
+    <div class="action-btn corner-widget corner-head" id="btn-optimize-all"><span class="ui-ic" data-icon="sparkles" data-size="13"></span><span class="corner-label">全局同步优化</span></div>
+    <div class="action-btn corner-widget corner-head" id="btn-clear-molecule"><span class="ui-ic" data-icon="trash-2" data-size="13"></span><span class="corner-label">清空</span></div>
     <!-- 自测报告 DOM 已移除（结果仍写 window/lastRunResults/localStorage，供自动化读取）-->
-    <div id="input-panel">
-        <div class="input-panel-toggle" id="input-panel-toggle"><span class="ui-ic" data-icon="flask-conical" data-size="13"></span> 名称 / SMILES <span class="ui-ic" data-icon="chevron-down" data-size="12"></span></div>
-        <div class="molecule-input-row" id="input-panel-body">
+    <div id="input-panel" class="corner-widget">
+        <div class="corner-head corner-toggle" id="input-panel-toggle"><span class="ui-ic" data-icon="flask-conical" data-size="13"></span><span class="corner-label">名称 / SMILES</span><span class="ui-ic corner-caret" data-icon="chevron-down" data-size="12"></span></div>
+        <div class="corner-body molecule-input-row" id="input-panel-body">
             <div style="font-size:12px; color:#9ab; margin-bottom:4px;">名称 / SMILES 生成</div>
             <div class="input-wrap">
                 <input type="text" id="name-input" placeholder="输入分子名称，如 ethanol / 乙醇 / 阿司匹林" />
@@ -7868,6 +7791,15 @@ if (smilesInput) smilesInput.value = smilesToUse;
             });
             sync();
         }
+        // 角落控件统一结构（2026-10）：折叠头固定为「图标 + .corner-label + .corner-caret」，
+        // 展开态只翻转 caret 方向（收起 ▾ / 展开 ▴），不再整体重写头部 innerHTML。
+        function setCornerCaret(tgl, open) {
+            const caret = tgl && tgl.querySelector('.corner-caret');
+            if (!caret) return;
+            const name = open ? 'chevron-up' : 'chevron-down';
+            caret.dataset.icon = name;
+            caret.innerHTML = iconSvg(name, 12);
+        }
         // 右上角输入面板折叠（2026-08）：默认收起（不遮挡原子库），用户展开后
         // 记忆；分子生成成功后自动折叠（generateFromInput 成功路径调用）。
         // 暴露 window.__setInputPanelOpen 供自动化脚本在操作输入框前展开。
@@ -7878,7 +7810,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!panel || !body) return;
             panel.classList.toggle('open', open);
             body.style.display = open ? '' : 'none';
-            if (tgl) tgl.innerHTML = iconSvg('flask-conical', 13) + ' 名称 / SMILES ' + iconSvg(open ? 'chevron-up' : 'chevron-down', 12);
+            setCornerCaret(tgl, open);
         }
         window.__setInputPanelOpen = setInputPanelOpen;
         (function () {
@@ -7901,7 +7833,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!tgl || !body) return;
             tgl.addEventListener('click', () => {
                 const open = body.classList.toggle('open');
-                tgl.innerHTML = iconSvg('book-open', 13) + ' 使用说明 ' + iconSvg(open ? 'chevron-up' : 'chevron-down', 12);
+                setCornerCaret(tgl, open);
             });
         })();
         // 设置面板折叠（2026-08）
@@ -7911,7 +7843,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!tgl || !body) return;
             tgl.addEventListener('click', () => {
                 body.classList.toggle('open');
-                tgl.innerHTML = iconSvg('settings', 13) + ' 设置' + (body.classList.contains('open') ? ' ' + iconSvg('chevron-up', 12) : '');
+                setCornerCaret(tgl, body.classList.contains('open'));
             });
         })();
         // SMILES 输入方法介绍折叠（2026-08）
