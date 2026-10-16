@@ -403,24 +403,28 @@
             opacity: 0; transition: opacity 0.15s; white-space: nowrap;
             backdrop-filter: blur(6px);
         }
+        /* 右下角：[模式徽章][帮助]——与左上/右上角落控件同模板（2026-10-16）：
+           同外框（圆角18 / 内边距6×10 / 同阴影 / blur12）、同头部尺寸（flex 居中、12px / 行高18 → 高32）；
+           两件底部对齐 bottom:16 并排（徽章居左、帮助居右），保留蓝色描边语义与各自 hover。 */
+        #mode-badge, #btn-help {
+            position: fixed; bottom: 16px; z-index: 90;
+            border-radius: 18px; padding: 6px 10px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            user-select: none; backdrop-filter: blur(12px);
+        }
         #mode-badge {
-            position: fixed; right: 60px; bottom: 20px; z-index: 90;
-            display: flex; align-items: center; gap: 8px;
+            right: 60px;
             background: rgba(10, 14, 28, 0.95); border: 1px solid rgba(120, 170, 255, 0.5);
-            border-radius: 22px; padding: 7px 14px; color: #eaf2ff; font-size: 12px;
-            cursor: pointer; user-select: none; backdrop-filter: blur(6px);
+            color: #eaf2ff; cursor: pointer;
             transition: border-color 0.2s, box-shadow 0.2s;
-            font-family: monospace;
         }
         #mode-badge:hover { border-color: rgba(120, 170, 255, 0.7); box-shadow: 0 0 14px rgba(80,140,255,0.25); }
         #mode-badge .mode-dot { width: 10px; height: 10px; border-radius: 50%; }
         #btn-help {
-            position: fixed; right: 16px; bottom: 16px; z-index: 90;
-            width: 36px; height: 36px; border-radius: 50%;
+            right: 16px; width: 36px; height: 32px; box-sizing: border-box;
             background: rgba(10, 14, 28, 0.85); border: 1px solid rgba(120, 170, 255, 0.35);
-            color: #9fc2ff; font-size: 18px; cursor: pointer; text-align: center; line-height: 34px;
-            display: flex; align-items: center; justify-content: center;
-            backdrop-filter: blur(6px); transition: border-color 0.2s; user-select: none;
+            color: #9fc2ff; cursor: pointer;
+            transition: border-color 0.2s;
         }
         #btn-help:hover { border-color: rgba(120, 170, 255, 0.8); color: #ffffff; }
         #help-overlay {
@@ -652,7 +656,7 @@
             #group-sidebar { top: 70px; transform: none; bottom: 16px; max-height: none; }
             #sidebar { top: 70px; transform: none; bottom: 16px; max-height: none; }
             #mode-badge { left: 50%; transform: translateX(-50%); right: auto; bottom: 8px; }
-            #btn-help { left: calc(50% + 30px); right: auto; bottom: 40px; }
+            #btn-help { left: calc(50% + 30px); right: auto; bottom: 42px; }
         }
         /* 竖屏（高>宽）提示横屏使用：应用按横屏设计，竖屏空间不足时引导旋转 */
         @media (orientation: portrait) and (max-width: 640px) {
@@ -925,8 +929,8 @@
     <!-- 三维拖动辅助：拖拽 HUD / 模式徽章 / 帮助面板 -->
     <div id="drag-hud"><span class="hud-axisdot" id="hud-dot"></span><span id="hud-text"></span></div>
     <div id="torsion-hud"><span id="torsion-hud-text"></span></div>
-    <div id="mode-badge" title="点击切换拖动方式 (Tab)"><span class="mode-dot" id="mode-badge-dot"></span><span id="mode-badge-text">平面拖</span></div>
-    <div id="btn-help" title="操作指南 / 快捷键"><span class="ui-ic" data-icon="circle-help" data-size="19"></span></div>
+    <div id="mode-badge" class="corner-widget corner-head" title="点击切换拖动方式 (Tab)"><span class="mode-dot" id="mode-badge-dot"></span><span id="mode-badge-text">平面拖</span></div>
+    <div id="btn-help" class="corner-widget corner-head" title="操作指南 / 快捷键"><span class="ui-ic" data-icon="circle-help" data-size="14"></span></div>
     <div id="help-overlay">
         <div id="help-card">
             <button id="help-close" data-icon="x" data-size="16"></button>
@@ -4384,10 +4388,10 @@ isOptimizing = false;
             div.title = '删除选中原子';
             div.style.cssText = 'cursor:pointer; pointer-events:auto; width:20px; height:20px;';
             const inner = document.createElement('span');
-            inner.innerHTML = iconSvg('x', 12);
+            inner.innerHTML = iconSvg('trash-2', 13); // 删除语义图标（2026-10-16 替换原 x）
             inner.style.cssText = 'display:flex; align-items:center; justify-content:center; '
                 + 'width:20px; height:20px; box-sizing:border-box; border-radius:50%; '
-                + 'background:rgba(232,80,90,0.9); color:#fff; font-size:12px; font-weight:bold; '
+                + 'background:rgba(232,80,90,0.9); color:#fff; '
                 + 'border:1.5px solid rgba(255,255,255,0.7); box-shadow:0 2px 8px rgba(0,0,0,0.5); '
                 + 'transition:transform 0.12s, background 0.12s; user-select:none;';
             div.appendChild(inner);

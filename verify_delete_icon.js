@@ -1,4 +1,4 @@
-// 真实鼠标验证：选中原子 → 右上角 ✕ 删除图标（CSS2DObject）→ 点击应删除该原子
+// 真实鼠标验证：选中原子 → 右上角垃圾桶删除图标（CSS2DObject）→ 点击应删除该原子
 // 背景：labelRenderer.domElement 是 pointer-events:none（CSS 继承），CSS2D 子元素若未显式
 //       pointer-events:auto，真实鼠标点击会穿透到画布、div 的 click 永不触发
 //       （JS 合成 element.click() 不走命中测试，测不出这个问题）
@@ -113,8 +113,8 @@ function matchRemoval(before, after, tol) {
             }));
             const ac = new AssertionCollector();
             ac.ok(info.hitTag === 'CANVAS', `原子点击点命中画布（实际 ${info.hitTag}，验证无遮挡）`);
-            ac.ok(p1.icon, '点选原子后 ✕ 图标出现');
-            push('1 点选原子后 ✕ 图标出现', ac.failed === 0,
+            ac.ok(p1.icon, '点选原子后删除图标出现');
+            push('1 点选原子后删除图标出现', ac.failed === 0,
                 `hit=${info.hitTag} icon=${p1.icon} atoms=${p1.atoms} 点选=${info.a0t} | ${ac.failures.join('；')}`);
         }
 
@@ -186,7 +186,7 @@ function matchRemoval(before, after, tol) {
                 JSON.stringify({ pre: { w: iconGeom.visW, bg: iconGeom.bg }, post: p3 }) + ' | ' + ac.failures.join('；'));
         }
 
-        // ---------- 场景 4：真实鼠标点击 ✕ → 原子删除 ----------
+        // ---------- 场景 4：真实鼠标点击垃圾桶图标 → 原子删除 ----------
         {
             const b4 = await page.evaluate(() => ({
                 n: window.__dragMode.atoms().length,
@@ -209,7 +209,7 @@ function matchRemoval(before, after, tol) {
             ac.ok(!a4.icon, '删除后图标消失');
             ac.ok(/已删除/.test(a4.toast), `toast 提示（实际 "${a4.toast}"）`);
             ac.ok(match.ok, `其余原子位置不变（恰删 1 个，${JSON.stringify(match)}）`);
-            push('4 真实点击 ✕ 删除原子', ac.failed === 0,
+            push('4 真实点击垃圾桶图标删除原子', ac.failed === 0,
                 `atoms ${b4.n}→${a4.n} bonds ${b4.bonds}→${a4.bonds} icon=${a4.icon} toast="${a4.toast}" | ${ac.failures.join('；')}`);
         }
 

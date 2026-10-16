@@ -1,6 +1,7 @@
-// verify_corners.js — 左上/右上角落控件统一结构验证（2026-10）
+// verify_corners.js — 角落控件统一结构验证（2026-10；含右下角两件）
 // C1 桌面五控件统一外框  C2 头部同构（图标+文字+可选caret）  C3 caret 翻转/内容区显示
-// C4 内容区上分隔线一致  C5 收起恢复  C6 移动端 375 纯图标行对齐  C7 零 console 错误
+// C4 内容区上分隔线一致  C5 收起恢复  C6 桌面右下角（徽章+帮助）同模板  C7 移动端 375 左四键纯图标行
+// C8 移动端 375 右下角位置  C9 零 console 错误
 const { chromium } = require('playwright');
 const http = require('http');
 const PORT = 8051;
@@ -114,9 +115,43 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
         });
         step('C5 再收起 caret 恢复朝下（▴→▾）', out.C5.g === 'chevron-down' && out.C5.s === 'chevron-down' && out.C5.i === 'chevron-down', out.C5);
 
+        // C6: 右下角两件（模式徽章 + 帮助）与左上/右上同模板
+        out.C6 = await page.evaluate(() => {
+            const read = (id) => {
+                const el = document.getElementById(id);
+                const r = el.getBoundingClientRect();
+                const cs = getComputedStyle(el);
+                return {
+                    h: Math.round(r.height), radius: cs.borderRadius, padT: cs.paddingTop, padL: cs.paddingLeft,
+                    border: cs.borderTopWidth, bottom: Math.round(innerHeight - r.bottom), right: Math.round(innerWidth - r.right),
+                    font: cs.fontSize, blur: cs.backdropFilter, cls: el.className
+                };
+            };
+            const b = document.getElementById('mode-badge').getBoundingClientRect();
+            const h = document.getElementById('btn-help').getBoundingClientRect();
+            return {
+                badge: read('mode-badge'), help: read('btn-help'),
+                sameTop: Math.round(b.top) === Math.round(h.top),
+                noOverlap: h.left >= b.right - 2,
+                dot: !!document.getElementById('mode-badge-dot'),
+                badgeText: ((document.getElementById('mode-badge-text') || {}).textContent || ''),
+                helpIcon: !!document.querySelector('#btn-help svg[data-icon="circle-help"]')
+            };
+        });
+        const sameShell = (v) => v.h === 32 && v.radius === '18px' && v.padT === '6px' && v.padL === '10px'
+            && v.border === '1px' && v.font === '12px' && /blur\(12px\)/.test(v.blur);
+        const c6ok = sameShell(out.C6.badge) && sameShell(out.C6.help)
+            && out.C6.badge.bottom === 16 && out.C6.badge.right === 60 && out.C6.help.bottom === 16 && out.C6.help.right === 16
+            && out.C6.sameTop && out.C6.noOverlap
+            && out.C6.badge.cls.includes('corner-widget') && out.C6.badge.cls.includes('corner-head')
+            && out.C6.help.cls.includes('corner-widget') && out.C6.help.cls.includes('corner-head')
+            && out.C6.dot && out.C6.badgeText.length > 0 && out.C6.helpIcon;
+        step('C6 桌面右下角徽章+帮助同模板（高32/圆角18/内边距6×10/12px/blur12，底部对齐16并排不重叠）', c6ok, out.C6);
+
         await page.screenshot({ path: 'd_corners_desk.png', clip: { x: 0, y: 0, width: 1289, height: 90 } });
+        await page.screenshot({ path: 'd_corners_br.png', clip: { x: 989, y: 826, width: 300, height: 70 } });
     } catch (e) {
-        step('C1-C5 FATAL', false, String(e).slice(0, 400));
+        step('C1-C6 FATAL', false, String(e).slice(0, 400));
     }
     await page.close();
 
@@ -129,7 +164,7 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
         await m.waitForFunction(() => !!(window.__diag && window.__setInputPanelOpen), null, { timeout: 30000 });
         await m.evaluate(() => window.__setInputPanelOpen(false));
         await m.waitForTimeout(250);
-        out.C6 = await m.evaluate((ids) => {
+        out.C7 = await m.evaluate((ids) => {
             const rects = ids.map(id => { const r = document.getElementById(id).getBoundingClientRect(); return { id, l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), h: Math.round(r.height) }; });
             const iconsOnly = ids.slice(0, 4).every(id => {
                 const label = document.querySelector('#' + id + ' .corner-label');
@@ -145,15 +180,32 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
                 inputLabelVisible: !!inputLabel && getComputedStyle(inputLabel).display !== 'none'
             };
         }, IDS);
-        const c6ok = out.C6.iconsOnly && !out.C6.overlap && out.C6.sameTop && out.C6.sameH && out.C6.inputLabelVisible;
-        step('C6 移动端375：左四纯图标、五控件等高(top8/h32)同行不重叠、输入面板保留标题', c6ok, out.C6);
+        const c7ok = out.C7.iconsOnly && !out.C7.overlap && out.C7.sameTop && out.C7.sameH && out.C7.inputLabelVisible;
+        step('C7 移动端375：左四纯图标、五控件等高(top8/h32)同行不重叠、输入面板保留标题', c7ok, out.C7);
         await m.screenshot({ path: 'd_corners_mobile.png', clip: { x: 0, y: 0, width: 375, height: 90 } });
+
+        // C8: 移动端右下角两件位置（徽章底部居中 bottom8、帮助在其上方 bottom42、互不重叠）
+        out.C8 = await m.evaluate(() => {
+            const b = document.getElementById('mode-badge').getBoundingClientRect();
+            const h = document.getElementById('btn-help').getBoundingClientRect();
+            return {
+                badgeBottom: Math.round(innerHeight - b.bottom), badgeCenter: Math.round(b.left + b.width / 2),
+                helpBottom: Math.round(innerHeight - h.bottom),
+                halfW: Math.round(innerWidth / 2),
+                noOverlap: h.bottom <= b.top + 2 || h.left >= b.right - 2,
+                cls: document.getElementById('mode-badge').className + ' | ' + document.getElementById('btn-help').className
+            };
+        });
+        const c8ok = out.C8.badgeBottom === 8 && Math.abs(out.C8.badgeCenter - out.C8.halfW) <= 2
+            && out.C8.helpBottom === 42 && out.C8.noOverlap
+            && out.C8.cls.includes('corner-widget') && out.C8.cls.includes('corner-head');
+        step('C8 移动端375：徽章底部居中(bottom8)、帮助在其上方(bottom42)不重叠', c8ok, out.C8);
     } catch (e) {
-        step('C6 FATAL', false, String(e).slice(0, 400));
+        step('C7-C8 FATAL', false, String(e).slice(0, 400));
     }
     await m.close();
 
-    step('C7 无 console 错误', report.consoleErrors.length === 0, { errors: report.consoleErrors.slice(0, 5) });
+    step('C9 无 console 错误', report.consoleErrors.length === 0, { errors: report.consoleErrors.slice(0, 5) });
 
     report.summary = { total: report.results.length, fail: report.results.filter(r => !r.ok).length };
     console.log(JSON.stringify(report, null, 1));

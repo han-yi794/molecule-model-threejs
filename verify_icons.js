@@ -9,7 +9,7 @@
 //   I4 勾选框选中态为 SVG 对勾（::after background-image = data:image/svg+xml）
 //   I5 折叠交互：使用说明/设置/输入面板 点击后 chevron 方向翻转
 //   I6 帮助面板：btn-help（circle-help）点击开、help-close（x）点击关
-//   I7 选中原子删除图标内层含 Lucide x
+//   I7 选中原子删除图标内层含 Lucide trash-2（删除语义）
 //   I8 控制台零错误
 // 运行：cmd /c "node verify_icons.js > verify_icons.json 2>&1"
 const { chromium } = require('playwright-core');
@@ -271,7 +271,7 @@ class AssertionCollector {
             push('I6 帮助面板开合', ac.failed === 0, `none→${st1}→${st2} | ${ac.failures.join('；')}`);
         }
 
-        // ---------- I7 删除图标内层含 Lucide x ----------
+        // ---------- I7 删除图标内层含 Lucide trash-2 ----------
         {
             const ac = new AssertionCollector();
             await page.evaluate(() => {
@@ -289,7 +289,7 @@ class AssertionCollector {
             const r7 = await page.evaluate(() => {
                 const el = document.querySelector('[title="删除选中原子"]');
                 const inner = el && el.firstElementChild;
-                const svg = el && el.querySelector('svg[data-icon="x"]');
+                const svg = el && el.querySelector('svg[data-icon="trash-2"]');
                 return {
                     found: !!el,
                     innerHasSvg: !!(inner && inner.querySelector('svg')),
@@ -299,8 +299,8 @@ class AssertionCollector {
             });
             ac.ok(r7.found, '选中原子后图标出现');
             ac.ok(r7.innerHasSvg, '内层含 SVG（不再是 ✕ 文本）');
-            ac.ok(!!r7.svgDecoded, `SVG 为 Lucide x（${r7.svgDecoded}）`);
-            push('I7 删除图标内嵌 Lucide x', ac.failed === 0, JSON.stringify(r7) + ' | ' + ac.failures.join('；'));
+            ac.ok(!!r7.svgDecoded, `SVG 为 Lucide trash-2（${r7.svgDecoded}）`);
+            push('I7 删除图标内嵌 Lucide trash-2', ac.failed === 0, JSON.stringify(r7) + ' | ' + ac.failures.join('；'));
         }
     } catch (e) {
         report.failed = report.total = 1;
