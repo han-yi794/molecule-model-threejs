@@ -53,8 +53,12 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
 
         await page.screenshot({ path: 'd_guide_open.png' });
         await page.click('#guide-toggle');
-        out.S3b = await page.evaluate(() => ({ closed: getComputedStyle(document.getElementById('guide-body')).display === 'none', tgl: document.getElementById('guide-toggle').textContent }));
-        step('S4 再点收起', out.S3b.closed && out.S3b.tgl.includes('▾'), out.S3b);
+        out.S3b = await page.evaluate(() => ({
+            closed: getComputedStyle(document.getElementById('guide-body')).display === 'none',
+            tgl: document.getElementById('guide-toggle').textContent,
+            hasChevDown: !!document.querySelector('#guide-toggle svg[data-icon="chevron-down"]')
+        }));
+        step('S4 再点收起', out.S3b.closed && out.S3b.hasChevDown && out.S3b.tgl.includes('使用说明'), out.S3b);
 
         // S5: 与预设基团面板不重叠(收起态)
         out.S5 = await page.evaluate(() => {

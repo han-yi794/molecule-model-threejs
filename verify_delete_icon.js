@@ -151,7 +151,19 @@ function matchRemoval(before, after, tol) {
         // ---------- 场景 3：真实悬停放大+变亮 + 不漂移（图标中心点悬停后仍命中图标） ----------
         {
             await page.mouse.move(iconGeom.cx, iconGeom.cy);
-            await page.waitForTimeout(300);
+            // 悬停动画 = mouseenter 设 transform + CSS 过渡 0.12s：输入事件可能被主线程延迟，
+            // 固定 300ms 等待在负载高时会测到过渡中间值（曾测到 visW=21.7 < 阈值 22）。
+            // 改为轮询等待缩放到位（解析 matrix 的 scale ≥ 1.17）后再测量。
+            try {
+                await page.waitForFunction(() => {
+                    const el = document.querySelector('[title="删除选中原子"]');
+                    const inner = el && el.firstElementChild;
+                    if (!inner) return false;
+                    const m = getComputedStyle(inner).transform.match(/matrix\(([-\d.]+)/);
+                    return !!m && parseFloat(m[1]) >= 1.17;
+                }, null, { timeout: 3000 });
+            } catch (e) {}
+            await page.waitForTimeout(100);
             const p3 = await page.evaluate(({ cx, cy }) => {
                 const el = document.querySelector('[title="删除选中原子"]');
                 if (!el) return { found: false };
