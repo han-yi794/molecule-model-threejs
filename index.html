@@ -4390,15 +4390,25 @@ isOptimizing = false;
         function attachDeleteIcon(atom) {
             detachDeleteIcon();
             if (!atom || !atom.userData) return;
+            // 双层结构（2026-10）：外层 div 仅定位/命中——CSS2DRenderer 每帧重写它的
+            // style.transform（定位矩阵），对外层做缩放动画会被覆盖；内层 span 承载视觉，
+            // 悬停缩放内层 transform（renderer 不触碰内层，且以其自身中心缩放无漂移）。
+            // 另：labelRenderer.domElement 是 pointer-events:none，该属性会被 CSS2D 子元素
+            // 继承——外层必须显式 pointer-events:auto，否则真实鼠标点击穿透到画布、click
+            // 永不触发（JS 合成 element.click() 不走命中测试，旧验证测不出）
             const div = document.createElement('div');
-            div.textContent = '✕';
             div.title = '删除选中原子';
-            div.style.cssText = 'cursor:pointer; user-select:none; width:20px; height:20px; border-radius:50%; '
-                + 'background:rgba(232,80,90,0.9); color:#fff; font-size:13px; font-weight:bold; line-height:20px; '
-                + 'text-align:center; border:1.5px solid rgba(255,255,255,0.7); box-shadow:0 2px 8px rgba(0,0,0,0.5); '
-                + 'transition:transform 0.12s, background 0.12s;';
-            div.addEventListener('mouseenter', () => { div.style.transform = 'scale(1.18)'; div.style.background = 'rgba(255,80,90,1)'; });
-            div.addEventListener('mouseleave', () => { div.style.transform = 'scale(1)'; div.style.background = 'rgba(232,80,90,0.9)'; });
+            div.style.cssText = 'cursor:pointer; pointer-events:auto; width:20px; height:20px;';
+            const inner = document.createElement('span');
+            inner.textContent = '✕';
+            inner.style.cssText = 'display:flex; align-items:center; justify-content:center; '
+                + 'width:20px; height:20px; box-sizing:border-box; border-radius:50%; '
+                + 'background:rgba(232,80,90,0.9); color:#fff; font-size:12px; font-weight:bold; '
+                + 'border:1.5px solid rgba(255,255,255,0.7); box-shadow:0 2px 8px rgba(0,0,0,0.5); '
+                + 'transition:transform 0.12s, background 0.12s; user-select:none;';
+            div.appendChild(inner);
+            div.addEventListener('mouseenter', () => { inner.style.transform = 'scale(1.18)'; inner.style.background = 'rgba(255,80,90,1)'; });
+            div.addEventListener('mouseleave', () => { inner.style.transform = 'scale(1)'; inner.style.background = 'rgba(232,80,90,0.9)'; });
             div.addEventListener('mousedown', (e) => e.stopPropagation());
             div.addEventListener('click', (e) => {
                 e.stopPropagation();
