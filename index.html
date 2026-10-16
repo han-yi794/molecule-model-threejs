@@ -149,8 +149,16 @@
             border-color: #6af;
         }
         #settings-panel .settings-body .setting-item input:checked + .check-box::after {
-            content: '✓'; color: #8cf; font-size: 11px; font-weight: bold;
+            content: ''; width: 10px; height: 10px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238cf' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
         }
+        /* ===== UI 图标（Lucide 图标库 v1.58.0，ISC 许可）=====
+           界面原 emoji/符号图标（📖 ⚙️ 🧪 ✨ 🗑️ ⌨ ✕ ✕ ⌫ ⚛️ ⇄ 🖱 ✋ 💡 ❔ ◐）统一换为 Lucide 内联 SVG：
+           与 three.js 内联同理，保持单文件完全离线；stroke=currentColor 跟随文字配色。
+           用法：静态 HTML 写占位 <span class="ui-ic" data-icon="名字" data-size="13"></span>
+           （启动时 hydrateIcons() 填充）；动态文案用 iconSvg('名字', 尺寸) 拼 innerHTML。 */
+        .ui-icon { vertical-align: -2px; flex-shrink: 0; }
+        .ui-ic { display: inline-flex; align-items: center; justify-content: center; vertical-align: -2px; flex-shrink: 0; }
         /* 下拉选择框深色主题（2026-09）：select 内文字与下拉 option 列表统一深底浅字，
            修复系统浅色主题下 option 白底+白字看不清的问题 */
         select {
@@ -490,6 +498,7 @@
             width: 36px; height: 36px; border-radius: 50%;
             background: rgba(10, 14, 28, 0.85); border: 1px solid rgba(120, 170, 255, 0.35);
             color: #9fc2ff; font-size: 18px; cursor: pointer; text-align: center; line-height: 34px;
+            display: flex; align-items: center; justify-content: center;
             backdrop-filter: blur(6px); transition: border-color 0.2s; user-select: none;
         }
         #btn-help:hover { border-color: rgba(120, 170, 255, 0.8); color: #ffffff; }
@@ -513,6 +522,7 @@
             position: absolute; top: 12px; right: 16px; width: 30px; height: 30px; line-height: 28px;
             border-radius: 50%; background: rgba(255, 255, 255, 0.08); border: none; color: #ffffff;
             font-size: 16px; cursor: pointer; text-align: center;
+            display: flex; align-items: center; justify-content: center;
         }
         #help-close:hover { background: rgba(255, 80, 80, 0.35); }
         #sidebar::-webkit-scrollbar {
@@ -598,6 +608,7 @@
             background: rgba(255, 170, 68, 0.5);
             color: #fff;
         }
+        .molecule-input-row .clear-btn .ui-icon { display: block; margin: 2px auto 0; }
         .molecule-input-row input:focus {
             border-color: rgba(255, 170, 68, 0.6);
         }
@@ -723,9 +734,9 @@
         /* 竖屏（高>宽）提示横屏使用：应用按横屏设计，竖屏空间不足时引导旋转 */
         @media (orientation: portrait) and (max-width: 640px) {
             body::after {
-                content: '◐ 建议横屏使用（旋转手机以获得最佳布局）';
+                content: '建议横屏使用（旋转手机以获得最佳布局）';
                 position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
-                background: rgba(0,0,0,0.75); color: #ffd78c; padding: 6px 12px;
+                background: rgba(0,0,0,0.75) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ffd78c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='14' height='20' x='5' y='2' rx='2' ry='2'/%3E%3Cpath d='M12 18h.01'/%3E%3C/svg%3E") no-repeat 12px center; color: #ffd78c; padding: 6px 12px 6px 32px;
                 border-radius: 20px; font-size: 11px; z-index: 300; pointer-events: none;
                 white-space: nowrap;
             }
@@ -778,7 +789,7 @@
 </head>
 <body>
     <div id="guide-panel">
-        <div class="guide-toggle" id="guide-toggle">📖 使用说明 ▾</div>
+        <div class="guide-toggle" id="guide-toggle"><span class="ui-ic" data-icon="book-open" data-size="13"></span> 使用说明 <span class="ui-ic" data-icon="chevron-down" data-size="12"></span></div>
         <div class="guide-body" id="guide-body">
             <b>基本操作</b>
             点击原子选中<br/>
@@ -797,35 +808,40 @@
         </div>
     </div>
     <div id="settings-panel">
-        <div class="settings-toggle" id="settings-toggle">⚙️ 设置</div>
+        <div class="settings-toggle" id="settings-toggle"><span class="ui-ic" data-icon="settings" data-size="13"></span> 设置</div>
         <div class="settings-body" id="settings-body">
             <label class="setting-item">
                 <input type="checkbox" id="chk-hydro" />
                 <span class="check-box"></span>
+                <span class="ui-ic" data-icon="wand-sparkles" data-size="12"></span>
                 <span id="btn-toggle-hydro">自动补氢</span>
             </label>
             <label class="setting-item">
                 <input type="checkbox" id="chk-lp" />
                 <span class="check-box"></span>
+                <span class="ui-ic" data-icon="cloud" data-size="12"></span>
                 <span id="btn-toggle-lp">显示孤对电子</span>
             </label>
             <label class="setting-item">
                 <input type="checkbox" id="chk-grid" />
                 <span class="check-box"></span>
+                <span class="ui-ic" data-icon="grid-3x3" data-size="12"></span>
                 <span id="btn-toggle-grid">网格吸附</span>
             </label>
             <label class="setting-item">
                 <input type="checkbox" id="chk-deloc" />
                 <span class="check-box"></span>
+                <span class="ui-ic" data-icon="orbit" data-size="12"></span>
                 <span id="btn-toggle-deloc">离域π键</span>
             </label>
             <label class="setting-item">
                 <input type="checkbox" id="chk-pi" />
                 <span class="check-box"></span>
+                <span class="ui-ic" data-icon="eye" data-size="12"></span>
                 <span id="btn-toggle-pi">显示离域π键</span>
             </label>
             <div class="setting-item" style="align-items:center; gap:6px;">
-                <span style="font-size:12px; color:#9ab; flex:1;">原子材质</span>
+                <span style="font-size:12px; color:#9ab; flex:1; display:inline-flex; align-items:center; gap:5px;"><span class="ui-ic" data-icon="palette" data-size="12"></span>原子材质</span>
                 <select id="atom-style-select" style="flex:1; border-radius:12px; padding:4px 6px; background:rgba(255,255,255,0.03); color:#fff; border:1px solid rgba(255,255,255,0.06); font-size:12px;">
                     <option value="glow">自发光</option>
                     <option value="classic">经典光泽</option>
@@ -835,34 +851,34 @@
             </div>
         </div>
     </div>
-    <div class="action-btn" id="btn-optimize-all">✨ 全局同步优化</div>
-    <div class="action-btn" id="btn-clear-molecule">🗑️ 清空</div>
+    <div class="action-btn" id="btn-optimize-all"><span class="ui-ic" data-icon="sparkles" data-size="13"></span> 全局同步优化</div>
+    <div class="action-btn" id="btn-clear-molecule"><span class="ui-ic" data-icon="trash-2" data-size="13"></span> 清空</div>
     <!-- 自测报告 DOM 已移除（结果仍写 window/lastRunResults/localStorage，供自动化读取）-->
     <div id="input-panel">
-        <div class="input-panel-toggle" id="input-panel-toggle">🧪 名称 / SMILES 生成</div>
+        <div class="input-panel-toggle" id="input-panel-toggle"><span class="ui-ic" data-icon="flask-conical" data-size="13"></span> 名称 / SMILES <span class="ui-ic" data-icon="chevron-down" data-size="12"></span></div>
         <div class="molecule-input-row" id="input-panel-body">
             <div style="font-size:12px; color:#9ab; margin-bottom:4px;">名称 / SMILES 生成</div>
             <div class="input-wrap">
                 <input type="text" id="name-input" placeholder="输入分子名称，如 ethanol / 乙醇 / 阿司匹林" />
-                <i class="clear-btn" data-clear="name-input" title="清空">×</i>
+                <i class="clear-btn" data-clear="name-input" data-icon="x" data-size="11" title="清空"></i>
             </div>
             <div class="input-wrap">
                 <input type="text" id="smiles-input" placeholder="输入 SMILES，如 CCO / c1ccccc1" />
-                <i class="clear-btn" data-clear="smiles-input" title="清空">×</i>
+                <i class="clear-btn" data-clear="smiles-input" data-icon="x" data-size="11" title="清空"></i>
             </div>
             <div style="display:flex; align-items:center; gap:4px; margin:6px 0 4px;">
                 <span style="font-size:12px; color:#9ab;">分子式</span>
-                <span id="btn-open-keypad" style="cursor:pointer; font-size:13px; color:#ffd28a; border:1px solid rgba(255,210,138,0.4); border-radius:8px; padding:1px 6px; user-select:none;">⌨ 小键盘</span>
+                <span id="btn-open-keypad" style="cursor:pointer; font-size:13px; color:#ffd28a; border:1px solid rgba(255,210,138,0.4); border-radius:8px; padding:1px 6px; user-select:none; display:inline-flex; align-items:center; gap:4px;"><span class="ui-ic" data-icon="keyboard" data-size="12"></span>小键盘</span>
             </div>
             <div class="input-wrap">
                 <input type="text" id="formula-input" placeholder="如 C6H6O（自动列异构体）" />
-                <i class="clear-btn" data-clear="formula-input" title="清空">×</i>
+                <i class="clear-btn" data-clear="formula-input" data-icon="x" data-size="11" title="清空"></i>
             </div>
             <div style="font-size:12px; color:#9ab; margin:6px 0 4px;">蛋白质序列（氨基酸字母，≤400 残基）</div>
             <textarea id="seq-input" rows="3" placeholder="如 MVLSPADKTNVKAAWGK...（ESMFold 在线预测 3D 结构）" style="width:100%; box-sizing:border-box; border-radius:8px; padding:6px; background:rgba(255,255,255,0.03); color:#fff; border:1px solid rgba(255,255,255,0.06); font-size:12px; resize:vertical;"></textarea>
             <div class="action-btn" id="btn-molecule-from-input">从输入生成</div>
             <div class="hint"><i>名称 / SMILES / 分子式（如 C6H6O，自动列出异构体）二选一；蛋白质序列则优先 ESMFold 预测</i></div>
-            <div class="smiles-help-toggle" id="smiles-help-toggle">❔ SMILES 输入方法介绍</div>
+            <div class="smiles-help-toggle" id="smiles-help-toggle"><span class="ui-ic" data-icon="circle-help" data-size="12"></span> SMILES 输入方法介绍</div>
             <div class="smiles-help" id="smiles-help">
                 <b>原子</b>：直接用元素符号，如 <code>C</code> 碳、<code>O</code> 氧、<code>N</code> 氮、<code>S</code> 硫、<code>P</code> 磷、<code>Cl</code> 氯。<br/>
                 <b>单键</b>：直接连写，如 <code>CCO</code> = 乙醇（C-C-O）。<br/>
@@ -878,7 +894,7 @@
     <div id="isomer-panel" style="display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:480px; max-height:70vh; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:14px; z-index:1000; padding:14px; box-shadow:0 8px 40px rgba(0,0,0,0.6); overflow:hidden; flex-direction:column;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <b style="color:#fff; font-size:14px;"><span id="isomer-panel-title">异构体</span></b>
-            <span id="isomer-panel-close" style="cursor:pointer; color:#9ab; font-size:18px; line-height:1;">✕</span>
+            <span id="isomer-panel-close" data-icon="x" data-size="16" style="cursor:pointer; color:#9ab; line-height:1; display:inline-flex;"></span>
         </div>
         <div id="isomer-list" style="overflow-y:auto; flex:1; max-height:calc(70vh - 90px);"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
@@ -894,18 +910,18 @@
     <div id="formula-keypad" style="display:none; position:fixed; width:230px; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:12px; z-index:999; padding:10px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <b style="color:#fff; font-size:13px;">分子式键盘</b>
-            <span id="formula-keypad-close" style="cursor:pointer; color:#9ab; font-size:15px; line-height:1;">✕</span>
+            <span id="formula-keypad-close" data-icon="x" data-size="14" style="cursor:pointer; color:#9ab; line-height:1; display:inline-flex;"></span>
         </div>
         <div style="font-size:12px; color:#9ab; margin-bottom:4px;">点击元素追加到分子式框</div>
         <div id="formula-keypad-keys" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px;"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-            <span id="formula-keypad-backspace" style="cursor:pointer; color:#ffd28a; font-size:13px; border:1px solid rgba(255,210,138,0.4); border-radius:8px; padding:2px 8px; user-select:none;">⌫ 退格</span>
+            <span id="formula-keypad-backspace" style="cursor:pointer; color:#ffd28a; font-size:13px; border:1px solid rgba(255,210,138,0.4); border-radius:8px; padding:2px 8px; user-select:none; display:inline-flex; align-items:center; gap:4px;"><span class="ui-ic" data-icon="delete" data-size="13"></span>退格</span>
             <span id="formula-keypad-clear" style="cursor:pointer; color:#e8886a; font-size:13px; border:1px solid rgba(232,136,106,0.4); border-radius:8px; padding:2px 8px; user-select:none;">清空</span>
             <span id="formula-keypad-ok" style="cursor:pointer; color:#1a1f27; background:#e8b44c; font-size:13px; font-weight:bold; border-radius:8px; padding:2px 12px; user-select:none;">生成</span>
         </div>
     </div>
     <div id="group-sidebar">
-        <div class="title">🧪 预设基团</div>
+        <div class="title"><span class="ui-ic" data-icon="shapes" data-size="13"></span> 预设基团</div>
         <div class="group-card" id="drag-group-methyl" data-group="methyl">CH₃<small>甲基</small></div>
         <div class="group-card" id="drag-group-ethyl" data-group="ethyl">C₂H₅<small>乙基</small></div>
         <div class="group-card" id="drag-group-phenyl" data-group="phenyl">Ph<small>苯基</small></div>
@@ -918,7 +934,7 @@
         <div class="hint"><i>拖至原子附近连接</i></div>
     </div>
     <div id="sidebar">
-        <div class="title">⚛️ 原子库</div>
+        <div class="title"><span class="ui-ic" data-icon="atom" data-size="13"></span> 原子库</div>
         <div class="atom-card atom-carbon" id="drag-carbon" data-atom="C">C<small>碳</small></div>
         <div class="atom-card atom-hydrogen" id="drag-hydrogen" data-atom="H">H<small>氢</small></div>
         <div class="atom-card atom-oxygen" id="drag-oxygen" data-atom="O">O<small>氧</small></div>
@@ -936,7 +952,7 @@
                 <option value="gizmo-lock">手柄 + 起始轴锁</option>
             </select>
         </div>
-        <div class="action-btn" id="btn-toggle-pi">显示离域π键</div>
+        <div class="action-btn" id="btn-toggle-pi"><span class="ui-ic" data-icon="eye" data-size="13"></span> 显示离域π键</div>
         <div class="action-btn" id="btn-pi-test">离域π键自测</div>
         <select id="molecule-select" style="width:100%; border-radius:12px; padding:6px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.06);">
             <option value="">生成测试分子</option>
@@ -964,7 +980,7 @@
         <div class="bond-type-btn" data-bond-type="1.5">芳香</div>
         <div class="bond-type-btn" data-bond-type="2">双</div>
         <div class="bond-type-btn" data-bond-type="3">三</div>
-        <div class="bond-type-btn" id="btn-flip-cistrans" title="绕双键轴旋转一侧 180°，交换顺式/反式" style="display: none; width: auto; min-width: 62px; padding: 0 10px; border-radius: 16px; white-space: nowrap;">⇄ 顺反</div>
+        <div class="bond-type-btn" id="btn-flip-cistrans" title="绕双键轴旋转一侧 180°，交换顺式/反式" style="display: none; width: auto; min-width: 62px; padding: 0 10px; border-radius: 16px; white-space: nowrap; gap: 5px;"><span class="ui-ic" data-icon="arrow-left-right" data-size="14"></span>顺反</div>
     </div>
 
     <div id="hybridization-menu" style="display: none;">
@@ -978,7 +994,7 @@
 
     <!-- 歧义名称候选选择面板（MH6：多候选时展示列表供选择） -->
     <div id="candidate-panel">
-        <span class="cand-close" id="candidate-panel-close" title="关闭">✕</span>
+        <span class="cand-close" id="candidate-panel-close" data-icon="x" data-size="14" title="关闭"></span>
         <div class="cand-title" id="candidate-panel-title"></div>
         <div class="cand-list" id="candidate-panel-list"></div>
     </div>
@@ -987,12 +1003,12 @@
     <div id="drag-hud"><span class="hud-axisdot" id="hud-dot"></span><span id="hud-text"></span></div>
     <div id="torsion-hud"><span id="torsion-hud-text"></span></div>
     <div id="mode-badge" title="点击切换拖动方式 (Tab)"><span class="mode-dot" id="mode-badge-dot"></span><span id="mode-badge-text">平面拖</span></div>
-    <div id="btn-help" title="操作指南 / 快捷键">?</div>
+    <div id="btn-help" title="操作指南 / 快捷键"><span class="ui-ic" data-icon="circle-help" data-size="19"></span></div>
     <div id="help-overlay">
         <div id="help-card">
-            <button id="help-close">✕</button>
+            <button id="help-close" data-icon="x" data-size="16"></button>
             <h2>操作指南 · 三维拖动辅助</h2>
-            <h3>🖱 鼠标操作</h3>
+            <h3><span class="ui-ic" data-icon="mouse" data-size="15"></span> 鼠标操作</h3>
             <table>
                 <tr><td>左键拖空白处</td><td>旋转视角</td></tr>
                 <tr><td>滚轮</td><td>缩放</td></tr>
@@ -1002,7 +1018,7 @@
                 <tr><td>左键点键</td><td>修改键序（单 / 芳香 / 双 / 三）</td></tr>
                 <tr><td>Ctrl / ⌘ + 点原子</td><td>设置杂化（自动 / sp³ / sp² / sp）</td></tr>
             </table>
-            <h3>⌨ 快捷键</h3>
+            <h3><span class="ui-ic" data-icon="keyboard" data-size="15"></span> 快捷键</h3>
             <table>
                 <tr><td>x / y / z</td><td>选中原子沿轴微移 0.1Å（Shift 反向）</td></tr>
                 <tr><td>Tab / Shift+Tab</td><td>循环切换拖动方式</td></tr>
@@ -1011,14 +1027,14 @@
                 <tr><td>O / Shift+O</td><td>优化单个原子 / 全局同步优化</td></tr>
                 <tr><td>Delete</td><td>删除选中原子</td></tr>
             </table>
-            <h3>✋ 拖动方式</h3>
+            <h3><span class="ui-ic" data-icon="hand" data-size="15"></span> 拖动方式</h3>
             <table>
                 <tr><td>平面自由拖</td><td>任意方向自由移动，无辅助</td></tr>
                 <tr><td>三轴手柄</td><td>拖彩色轴=沿轴移动；拖中心白球=平面移动</td></tr>
                 <tr><td>起始轴锁</td><td>拖动时自动锁定最近的 x / y / z 世界轴</td></tr>
                 <tr><td>手柄 + 锁轴</td><td>手柄与轴锁组合，点原子本体拖动也会锁轴</td></tr>
             </table>
-            <h3>💡 提示</h3>
+            <h3><span class="ui-ic" data-icon="lightbulb" data-size="15"></span> 提示</h3>
             <p style="font-size:13px; margin:6px 0 0; color:#9fb3d8; line-height:1.6;">
                 选中原子后出现三轴手柄；拖彩色轴时屏幕上方显示实时位移；接近可成键的原子时会发光提醒。单击原子=选中，按住拖动=移动。
             </p>
@@ -1029,6 +1045,51 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+        // ===== UI 图标（Lucide 图标库 v1.58.0，ISC 许可；内联 SVG → 单文件离线）=====
+        // 界面原 emoji/符号图标统一替换为 Lucide（https://lucide.dev）路径；viewBox 24×24、
+        // stroke=currentColor 跟随文字配色。新增图标只需在表里加一行（仅内部路径）：
+        // 静态 HTML 用 <span class="ui-ic" data-icon="名字" data-size="13"></span> 占位，
+        // 启动时 hydrateIcons() 填充；JS 动态文案用 iconSvg('名字', 尺寸) 拼 innerHTML。
+        const LUCIDE_ICONS = {
+            'book-open': '<path d="M12 5v16" /> <path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z" />',
+            'settings': '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /> <circle cx="12" cy="12" r="3" />',
+            'sparkles': '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /> <path d="M20 2v4" /> <path d="M22 4h-4" /> <circle cx="4" cy="20" r="2" />',
+            'trash-2': '<path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />',
+            'flask-conical': '<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2" /> <path d="M6.453 15h11.094" /> <path d="M8.5 2h7" />',
+            'keyboard': '<path d="M10 8h.01" /> <path d="M12 12h.01" /> <path d="M14 8h.01" /> <path d="M16 12h.01" /> <path d="M18 8h.01" /> <path d="M6 8h.01" /> <path d="M7 16h10" /> <path d="M8 12h.01" /> <rect width="20" height="16" x="2" y="4" rx="2" />',
+            'circle-help': '<circle cx="12" cy="12" r="10" /> <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /> <path d="M12 17h.01" />',
+            'x': '<path d="M18 6 6 18" /> <path d="m6 6 12 12" />',
+            'delete': '<path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" /> <path d="m12 9 6 6" /> <path d="m18 9-6 6" />',
+            'shapes': '<path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z" /> <rect x="3" y="14" width="7" height="7" rx="1" /> <circle cx="17.5" cy="17.5" r="3.5" />',
+            'atom': '<circle cx="12" cy="12" r="1" /> <path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z" /> <path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z" />',
+            'arrow-left-right': '<path d="M8 3 4 7l4 4" /> <path d="M4 7h16" /> <path d="m16 21 4-4-4-4" /> <path d="M20 17H4" />',
+            'mouse': '<rect x="5" y="2" width="14" height="20" rx="7" /> <path d="M12 6v4" />',
+            'hand': '<path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2" /> <path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2" /> <path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8" /> <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />',
+            'lightbulb': '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /> <path d="M9 18h6" /> <path d="M10 22h4" />',
+            'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2" /> <path d="M12 18h.01" />',
+            'chevron-down': '<path d="m6 9 6 6 6-6" />',
+            'chevron-up': '<path d="m18 15-6-6-6 6" />',
+            'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
+            'grid-3x3': '<rect width="18" height="18" x="3" y="3" rx="2" /> <path d="M3 9h18" /> <path d="M3 15h18" /> <path d="M9 3v18" /> <path d="M15 3v18" />',
+            'orbit': '<path d="M20.341 6.484A10 10 0 0 1 10.266 21.85" /> <path d="M3.659 17.516A10 10 0 0 1 13.74 2.152" /> <circle cx="12" cy="12" r="3" /> <circle cx="19" cy="5" r="2" /> <circle cx="5" cy="19" r="2" />',
+            'eye': '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /> <circle cx="12" cy="12" r="3" />',
+            'wand-sparkles': '<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" /> <path d="m14 7 3 3" /> <path d="M5 6v4" /> <path d="M19 14v4" /> <path d="M10 2v2" /> <path d="M7 8H3" /> <path d="M21 16h-4" /> <path d="M11 3H9" />',
+            'palette': '<path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /> <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /> <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /> <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /> <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />',
+        };
+        function iconSvg(name, size = 14) {
+            const inner = LUCIDE_ICONS[name];
+            if (!inner) return '';
+            return `<svg class="ui-icon" data-icon="${name}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+        }
+        window.__iconSvg = iconSvg;
+        function hydrateIcons(root) {
+            (root || document).querySelectorAll('[data-icon]:not(svg)').forEach(el => {
+                const size = el.dataset.size ? +el.dataset.size : 14;
+                el.innerHTML = iconSvg(el.dataset.icon, size);
+            });
+        }
+        window.__hydrateIcons = hydrateIcons;
+        hydrateIcons();
         // ===== 合并模式开关：离域π键 =====
         // true（默认，新逻辑）= 杂化轨道 + VSEPR + 离域π键（球棍模型3 行为）
         // false（旧逻辑）= 仅杂化轨道 + VSEPR，不考虑离域π键（球棍模型2 行为）
@@ -4400,7 +4461,7 @@ isOptimizing = false;
             div.title = '删除选中原子';
             div.style.cssText = 'cursor:pointer; pointer-events:auto; width:20px; height:20px;';
             const inner = document.createElement('span');
-            inner.textContent = '✕';
+            inner.innerHTML = iconSvg('x', 12);
             inner.style.cssText = 'display:flex; align-items:center; justify-content:center; '
                 + 'width:20px; height:20px; box-sizing:border-box; border-radius:50%; '
                 + 'background:rgba(232,80,90,0.9); color:#fff; font-size:12px; font-weight:bold; '
@@ -7817,7 +7878,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!panel || !body) return;
             panel.classList.toggle('open', open);
             body.style.display = open ? '' : 'none';
-            if (tgl) tgl.textContent = open ? '🧪 名称 / SMILES ▴' : '🧪 名称 / SMILES ▾';
+            if (tgl) tgl.innerHTML = iconSvg('flask-conical', 13) + ' 名称 / SMILES ' + iconSvg(open ? 'chevron-up' : 'chevron-down', 12);
         }
         window.__setInputPanelOpen = setInputPanelOpen;
         (function () {
@@ -7840,7 +7901,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!tgl || !body) return;
             tgl.addEventListener('click', () => {
                 const open = body.classList.toggle('open');
-                tgl.textContent = open ? '📖 使用说明 ▴' : '📖 使用说明 ▾';
+                tgl.innerHTML = iconSvg('book-open', 13) + ' 使用说明 ' + iconSvg(open ? 'chevron-up' : 'chevron-down', 12);
             });
         })();
         // 设置面板折叠（2026-08）
@@ -7850,7 +7911,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!tgl || !body) return;
             tgl.addEventListener('click', () => {
                 body.classList.toggle('open');
-                tgl.textContent = body.classList.contains('open') ? '⚙️ 设置 ▴' : '⚙️ 设置';
+                tgl.innerHTML = iconSvg('settings', 13) + ' 设置' + (body.classList.contains('open') ? ' ' + iconSvg('chevron-up', 12) : '');
             });
         })();
         // SMILES 输入方法介绍折叠（2026-08）
@@ -7860,7 +7921,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!tgl || !box) return;
             tgl.addEventListener('click', () => {
                 const open = box.classList.toggle('open');
-                tgl.textContent = open ? '❔ SMILES 输入方法介绍（收起）' : '❔ SMILES 输入方法介绍';
+                tgl.innerHTML = iconSvg('circle-help', 12) + (open ? ' SMILES 输入方法介绍（收起）' : ' SMILES 输入方法介绍');
             });
         })();
         const candClose = document.getElementById('candidate-panel-close');
