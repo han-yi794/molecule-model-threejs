@@ -7372,6 +7372,519 @@ const ZH_NAME_FIX = {
             return String(str || '').replace(/([A-Z][a-z]?)(\d+)/g, (m, el, num) => el + String(num).split('').map(d => SUBSCRIPT_DIGITS[Number(d)] || d).join(''));
         }
         window.__toSubscriptFormula = toSubscriptFormula;
+        // ---- 结构简式（condensed structural formula）转换器（2026-10）----
+        // SMILES → 结构简式（CCO → CH3CH2OH、c1ccccc1 → C6H6）；仅供异构体列表展示，
+        // 失败/不确定返回 null（该项不显示）。实现见下方 CONDENSE 标记区（condense_tmp.js 自动生成）。
+        /* CONDENSE_BEGIN */
+const CONDENSE_VALENCE = { C: 4, N: 3, O: 2, S: 2, P: 3, B: 3, F: 1, Cl: 1, Br: 1, I: 1, Si: 4 };
+const CONDENSE_AROMATIC = { c: 'C', n: 'N', o: 'O', s: 'S', p: 'P', b: 'B' };
+const CONDENSE_HALOGENS = ['F', 'Cl', 'Br', 'I'];
+
+// ---- 解析 SMILES 子集 → { atoms:[{el, aromatic}], bonds:[{a,b,order}] } ----
+function parseCondenseSmiles(smiles) {
+    if (typeof smiles !== 'string') return null;
+    const s = smiles.replace(/@+/g, '');
+    if (!s || /[\[\]\.\+]/.test(s)) return null;
+    const atoms = [], bonds = [], ringOpen = {}, branchStack = [];
+    let prev = -1, pending = 0, i = 0;
+    const elemAt = (k) => {
+        const two = s.substr(k, 2);
+        if (two === 'Cl' || two === 'Br' || two === 'Si') return two;
+        const ch = s[k];
+        if ('CNOSPFBI'.indexOf(ch) >= 0) return ch;
+        if (CONDENSE_AROMATIC[ch]) return ch;
+        return null;
+    };
+    while (i < s.length) {
+        const ch = s[i];
+        if (ch === '-' || ch === '=' || ch === '#') { pending = ch === '-' ? 1 : (ch === '=' ? 2 : 3); i++; continue; }
+        if (ch === ':') { pending = 1.5; i++; continue; }
+        if (ch === '/' || ch === '\\') { pending = 1; i++; continue; }
+        if (ch === '(') { branchStack.push(prev); i++; continue; }
+        if (ch === ')') { if (!branchStack.length) return null; prev = branchStack.pop(); i++; continue; }
+        if (ch === '%') {
+            const dd = s.substr(i + 1, 2);
+            if (!/^\d\d$/.test(dd)) return null;
+            const id = '%' + dd;
+            if (prev < 0) return null;
+            if (!(id in ringOpen)) { ringOpen[id] = { atom: prev, order: pending }; pending = 0; }
+            else {
+                const rec = ringOpen[id]; delete ringOpen[id];
+                const o = pending || rec.order || ((atoms[rec.atom].aromatic && atoms[prev].aromatic) ? 1.5 : 1);
+                bonds.push({ a: rec.atom, b: prev, order: o });
+                pending = 0;
+            }
+            i += 3; continue;
+        }
+        if (ch >= '0' && ch <= '9') {
+            const id = ch;
+            if (prev < 0) return null;
+            if (!(id in ringOpen)) { ringOpen[id] = { atom: prev, order: pending }; pending = 0; }
+            else {
+                const rec = ringOpen[id]; delete ringOpen[id];
+                const o = pending || rec.order || ((atoms[rec.atom].aromatic && atoms[prev].aromatic) ? 1.5 : 1);
+                bonds.push({ a: rec.atom, b: prev, order: o });
+                pending = 0;
+            }
+            i++; continue;
+        }
+        const rawEl = elemAt(i);
+        if (rawEl) {
+            const aromatic = rawEl.length === 1 && !!CONDENSE_AROMATIC[rawEl];
+            const el = CONDENSE_AROMATIC[rawEl] || rawEl;
+            const idx = atoms.length;
+            atoms.push({ el: el, aromatic: aromatic });
+            if (prev >= 0) bonds.push({ a: prev, b: idx, order: pending || ((atoms[prev].aromatic && aromatic) ? 1.5 : 1) });
+            pending = 0; prev = idx; i += rawEl.length; continue;
+        }
+        return null;
+    }
+    if (Object.keys(ringOpen).length) return null;
+    if (branchStack.length) return null;
+    if (!atoms.length) return null;
+    return { atoms: atoms, bonds: bonds };
+}
+
+// ---- 邻接表 ----
+function condenseAdjacency(atoms, bonds) {
+    const adj = atoms.map(function () { return []; });
+    bonds.forEach(function (b, bi) {
+        adj[b.a].push({ j: b.b, order: b.order, bondIdx: bi });
+        adj[b.b].push({ j: b.a, order: b.order, bondIdx: bi });
+    });
+    return adj;
+}
+
+// ---- 每个重原子隐含氢数（芳香键按 1.5）----
+function condenseHCounts(atoms, adj) {
+    return atoms.map(function (a, i) {
+        let sum = 0;
+        adj[i].forEach(function (e) { sum += e.order; });
+        const v = CONDENSE_VALENCE[a.el];
+        if (v === undefined) return -1;
+        const h = v - sum;
+        if (h % 1 !== 0) return -1;      // 半整数氢 → 非法
+        return Math.max(0, h);
+    });
+}
+
+// ---- 连通性 ----
+function condenseConnected(adj) {
+    if (!adj.length) return false;
+    const seen = new Array(adj.length).fill(false);
+    const st = [0]; seen[0] = true; let n = 1;
+    while (st.length) {
+        const u = st.pop();
+        adj[u].forEach(function (e) { if (!seen[e.j]) { seen[e.j] = true; n++; st.push(e.j); } });
+    }
+    return n === adj.length;
+}
+// ---- 苯环折叠：找全部基本环，凡苯环（6 元全碳、全 1.5 或交替 3 双键、环碳对外键无 1.5）折叠为伪原子 ----
+function condenseCollapseBenzene(atoms, bonds, adj) {
+    const n = atoms.length;
+    const visited = new Array(n).fill(false);
+    const parent = new Array(n).fill(-1);
+    const parentBond = new Array(n).fill(-1);
+    const treeBond = new Array(bonds.length).fill(false);
+    const seenBack = {};
+    const backEdges = [];
+    const self = this;
+    function dfs(u) {
+        visited[u] = true;
+        for (let k = 0; k < adj[u].length; k++) {
+            const e = adj[u][k];
+            if (e.bondIdx === parentBond[u]) continue;
+            if (!visited[e.j]) {
+                treeBond[e.bondIdx] = true;
+                parent[e.j] = u; parentBond[e.j] = e.bondIdx;
+                dfs(e.j);
+            } else if (!treeBond[e.bondIdx] && !seenBack[e.bondIdx]) {
+                seenBack[e.bondIdx] = true;
+                backEdges.push({ cur: u, other: e.j, bondIdx: e.bondIdx });
+            }
+        }
+    }
+    dfs(0);
+    // 基本环
+    const units = [];           // { atoms:[6], bondSet:{}, h }
+    const ringAtomUnit = {};    // origAtom -> unit idx
+    let unhandled = 0;
+    backEdges.forEach(function (be) {
+        const cycAtoms = [];
+        const cycBonds = [be.bondIdx];
+        let x = be.cur;
+        while (x !== -1 && x !== be.other) { cycAtoms.push(x); cycBonds.push(parentBond[x]); x = parent[x]; }
+        if (x !== be.other) { unhandled++; return; }   // 安全网
+        // 环键按环序排列：[回边, cur→...→v 的父边序列]
+        const ordered = [be.bondIdx];
+        for (let i = 0; i < cycAtoms.length; i++) ordered.push(parentBond[cycAtoms[i]]);
+        const cycAll = cycAtoms.concat([be.other]);   // 完整环原子（含回边另一端点）
+        // 分类
+        let okLen = cycAll.length === 6;
+        if (okLen) for (let i = 0; i < cycAll.length; i++) if (atoms[cycAll[i]].el !== 'C') { okLen = false; break; }
+        let okPattern = false;
+        if (okLen) {
+            const ords = ordered.map(function (bi) { return bonds[bi].order; });
+            const allArom = ords.every(function (o) { return o >= 1.4; });
+            let dbl = 0, sgl = 0, adjDbl = false;
+            for (let i = 0; i < 6; i++) {
+                if (ords[i] > 1.9) { dbl++; if (ords[(i + 1) % 6] > 1.9) adjDbl = true; }
+                else if (ords[i] < 1.1) sgl++;
+            }
+            okPattern = allArom || (dbl === 3 && sgl === 3 && !adjDbl);
+        }
+        let okOutside = okPattern;
+        const bset = {};
+        ordered.forEach(function (bi) { bset[bi] = true; });
+        if (okOutside) {
+            for (let i = 0; i < cycAll.length && okOutside; i++) {
+                const a = cycAll[i];
+                for (let k = 0; k < adj[a].length; k++) {
+                    const e = adj[a][k];
+                    if (!bset[e.bondIdx] && e.order >= 1.4) { okOutside = false; break; }
+                }
+            }
+        }
+        if (!okOutside) { unhandled++; return; }
+        // 环上氢总数
+        let hTot = 0;
+        for (let i = 0; i < cycAll.length; i++) {
+            const a = cycAll[i];
+            let ringSum = 0, outsideSum = 0;
+            for (let k = 0; k < adj[a].length; k++) {
+                const e = adj[a][k];
+                if (bset[e.bondIdx]) ringSum += e.order; else outsideSum += e.order;
+            }
+            const h = 4 - ringSum - outsideSum;
+            if (h % 1 !== 0 || h < 0) { unhandled++; return; }
+            hTot += h;
+        }
+        const uIdx = units.length;
+        units.push({ atoms: cycAll, bondSet: bset, h: hTot });
+        cycAll.forEach(function (ai) { ringAtomUnit[ai] = uIdx; });
+    });
+    if (unhandled > 0) return null;
+    if (Object.keys(ringAtomUnit).length !== units.length * 6) return null; // 环共享原子异常
+    // ---- reduced 图 ----
+    const redAtoms = [], redMap = {};   // origAtom -> redIdx
+    for (let i = 0; i < n; i++) if (!(i in ringAtomUnit)) { redMap[i] = redAtoms.length; redAtoms.push({ el: atoms[i].el, aromatic: atoms[i].aromatic }); }
+    units.forEach(function (u) { u.redIdx = redAtoms.length; redAtoms.push({ el: 'Ar', ringH: u.h }); });
+    const redEdges = [], redKey = {};
+    function addEdge(a, b, o) {
+        if (a === b) return;             // 折叠后自环 → 无效
+        redKey[Math.min(a, b) + '_' + Math.max(a, b)] = o;
+        redEdges.push({ a: Math.min(a, b), b: Math.max(a, b), order: o });
+    }
+    bonds.forEach(function (b) {
+        const ua = (b.a in ringAtomUnit) ? ringAtomUnit[b.a] : -1;
+        const ub = (b.b in ringAtomUnit) ? ringAtomUnit[b.b] : -1;
+        if (ua >= 0 && ub >= 0) return;                       // 环内键
+        const ra = ua >= 0 ? units[ua].redIdx : redMap[b.a];
+        const rb = ub >= 0 ? units[ub].redIdx : redMap[b.b];
+        if ((ra + '_' + rb) in redKey || (rb + '_' + ra) in redKey) return; // 去重（罕见）
+        addEdge(ra, rb, b.order);
+    });
+    return { redAtoms: redAtoms, redEdges: redEdges };
+}
+
+// ---- 剪枝：可被 token 吸收的端氧（C 的 =O；N 恰好两个端 =O 的硝基）----
+function condensePrune(redAtoms, redEdges) {
+    const adj = condenseAdjacency(redAtoms, redEdges);
+    const pruned = new Array(redAtoms.length).fill(false);
+    const nitroCand = {};
+    redAtoms.forEach(function (a, i) {
+        if (a.el !== 'O' || adj[i].length !== 1) return;
+        const e = adj[i][0];
+        if (e.order < 1.9) return;
+        const nbEl = redAtoms[e.j].el;
+        if (nbEl === 'C') pruned[i] = true;
+        else if (nbEl === 'N') { (nitroCand[e.j] = nitroCand[e.j] || []).push(i); }
+    });
+    Object.keys(nitroCand).forEach(function (ni) {
+        const list = nitroCand[ni];
+        if (list.length === 2) list.forEach(function (oi) { pruned[oi] = true; });
+    });
+    return { adj: adj, pruned: pruned };
+}
+// ---- 主干树：reduced 图去掉剪枝节点，必须连通且无环 ----
+function condensePathTree(redAtoms, prunedInfo) {
+    const adj = prunedInfo.adj, pruned = prunedInfo.pruned;
+    const keep = [];
+    for (let i = 0; i < adj.length; i++) if (!pruned[i]) keep.push(i);
+    if (!keep.length) return null;
+    const idx = new Array(adj.length).fill(-1);
+    keep.forEach(function (o, k) { idx[o] = k; });
+    const adjT = keep.map(function () { return []; });
+    let edgeCount = 0;
+    adj.forEach(function (list, u) {
+        if (pruned[u]) return;
+        list.forEach(function (e) {
+            if (pruned[e.j] || e.j < u) return;
+            adjT[idx[u]].push({ j: idx[e.j], order: e.order });
+            adjT[idx[e.j]].push({ j: idx[u], order: e.order });
+            edgeCount++;
+        });
+    });
+    if (edgeCount !== keep.length - 1) return null;
+    if (!condenseConnected(adjT)) return null;
+    return { adjT: adjT, keep: keep };
+}
+
+// ---- 直径路径（双 BFS，平局优先非裸氧、再取小下标）----
+function condenseLongestPath(adjT, isBareO) {
+    const n = adjT.length;
+    function bfs(start) {
+        const dist = new Array(n).fill(-1), par = new Array(n).fill(-1);
+        dist[start] = 0;
+        const q = [start];
+        for (let qi = 0; qi < q.length; qi++) {
+            const u = q[qi];
+            for (let k = 0; k < adjT[u].length; k++) {
+                const v = adjT[u][k].j;
+                if (dist[v] < 0) { dist[v] = dist[u] + 1; par[v] = u; q.push(v); }
+            }
+        }
+        let far = start;
+        for (let i = 0; i < n; i++) {
+            if (dist[i] < 0) continue;
+            if (dist[i] > dist[far]) { far = i; continue; }
+            if (dist[i] === dist[far]) {
+                const bi = isBareO ? isBareO(i) : false, bf = isBareO ? isBareO(far) : false;
+                if (bf && !bi) { far = i; continue; }
+                if (bi === bf && i < far) far = i;
+            }
+        }
+        return { far: far, par: par };
+    }
+    const b = bfs(0);
+    const c = bfs(b.far);
+    const path = [];
+    let x = c.far;
+    while (x !== -1) { path.push(x); x = c.par[x]; }
+    return path;
+}
+
+// ---- 键符号 ----
+function condenseBondSym(order, aEl, bEl) {
+    if (order < 1.9) return '';
+    if (order > 2.5) {
+        if ((aEl === 'C' && bEl === 'N') || (aEl === 'N' && bEl === 'C')) return '';
+        return '≡';
+    }
+    return '=';
+}
+
+// ---- 原子 token ----
+function condenseBaseToken(ctx, id, parentNode) {
+    const rid = ctx.keep[id];
+    const a = ctx.redAtoms[rid];
+    if (a.el === 'Ar') {
+        const hh = a.ringH;
+        return hh >= 2 ? ('C6H' + hh) : (hh === 1 ? 'C6H' : 'C6');
+    }
+    const h = ctx.hRed[rid];
+    if (a.el === 'N' && ctx.prunedOCount[rid] === 2) return 'NO2';
+    if (a.el === 'C' && ctx.prunedOCount[rid] >= 1) {
+        if (h === 2) return 'HCHO';
+        if (h === 1) {
+            const hasSingleOChild = ctx.adjT[id].some(function (e) {
+                return e.j !== parentNode && ctx.redAtoms[ctx.keep[e.j]].el === 'O' && e.order < 1.9;
+            });
+            return hasSingleOChild ? 'HCO' : 'CHO';
+        }
+        if (ctx.prunedOCount[rid] >= 2 && ctx.adjT[id].length === 0) return 'CO2';
+        return 'CO';
+    }
+    return a.el + (h > 0 ? ('H' + (h > 1 ? h : '')) : '');
+}
+
+// ---- 分支渲染（相同子串合并为 (X)n）----
+function condenseRenderBranches(ctx, kids, parentId) {
+    if (!kids.length) return '';
+    const groups = [], map = {};
+    kids.forEach(function (e) {
+        const s = condenseBondSym(e.order, ctx.redAtoms[ctx.keep[parentId]].el, ctx.redAtoms[ctx.keep[e.j]].el) + condenseRenderNode(ctx, e.j, parentId);
+        if (!(s in map)) { map[s] = { s: s, n: 0 }; groups.push(map[s]); }
+        map[s].n++;
+    });
+    let out = '';
+    groups.forEach(function (g) { out += '(' + g.s + ')' + (g.n > 1 ? g.n : ''); });
+    return out;
+}
+
+// ---- 子树渲染（继续段 = 远处子树最大者）----
+function condenseRenderNode(ctx, id, parent) {
+    const token = condenseBaseToken(ctx, id, parent);
+    const kids = ctx.adjT[id].filter(function (e) { return e.j !== parent; });
+    if (!kids.length) return token;
+    function farSize(j) { return (ctx.parentOf[j] === id) ? ctx.downSize[j] : (ctx.total - ctx.downSize[id]); }
+    function bareO(j) { const a = ctx.redAtoms[ctx.keep[j]]; return a.el === 'O' && ctx.adjT[j].length === 1; }
+    let cont = kids[0];
+    kids.forEach(function (e) {
+        const fe = farSize(e.j), fc = farSize(cont.j);
+        const be = bareO(e.j), bc = bareO(cont.j);
+        const better = (fe > fc) || (fe === fc && bc && !be) || (fe === fc && be === bc && e.j < cont.j);
+        if (better) cont = e;
+    });
+    const branchKids = kids.filter(function (e) { return e.j !== cont.j; });
+    let out = token;
+    out += condenseRenderBranches(ctx, branchKids, id);
+    out += condenseBondSym(cont.order, ctx.redAtoms[ctx.keep[id]].el, ctx.redAtoms[ctx.keep[cont.j]].el);
+    out += condenseRenderNode(ctx, cont.j, id);
+    return out;
+}
+
+// ---- 整棵主干树渲染 ----
+function condenseRenderTree(ctx, path) {
+    const n = ctx.adjT.length;
+    ctx.parentOf = new Array(n).fill(-1);
+    const order = [path[0]];
+    ctx.parentOf[path[0]] = -2;
+    for (let qi = 0; qi < order.length; qi++) {
+        const u = order[qi];
+        ctx.adjT[u].forEach(function (e) { if (ctx.parentOf[e.j] === -1) { ctx.parentOf[e.j] = u; order.push(e.j); } });
+    }
+    ctx.downSize = new Array(n).fill(1);
+    for (let i = order.length - 1; i >= 0; i--) {
+        const u = order[i];
+        if (ctx.parentOf[u] >= 0) ctx.downSize[ctx.parentOf[u]] += ctx.downSize[u];
+    }
+    ctx.total = order.length;
+    let out = '';
+    for (let k = 0; k < path.length; k++) {
+        const id = path[k];
+        const parent = k > 0 ? path[k - 1] : -1;
+        const next = k + 1 < path.length ? path[k + 1] : -1;
+        if (k > 0) {
+            const e = ctx.adjT[parent].find(function (x) { return x.j === id; });
+            out += condenseBondSym(e.order, ctx.redAtoms[ctx.keep[parent]].el, ctx.redAtoms[ctx.keep[id]].el);
+        }
+        out += condenseBaseToken(ctx, id, parent);
+        const kids = ctx.adjT[id].filter(function (e) { return e.j !== parent && e.j !== next; });
+        out += condenseRenderBranches(ctx, kids, id);
+    }
+    return out;
+}
+
+// ---- 端点打分（高分为起点）----
+function condenseEndScore(ctx, endId) {
+    const rid = ctx.keep[endId];
+    const a = ctx.redAtoms[rid];
+    let base;
+    if (a.el === 'Ar') base = 4;
+    else if (a.el === 'C') base = ctx.isCarbonyl[rid] ? 1 : 3;
+    else base = 2;
+    const nb = ctx.adjT[endId][0];
+    const bonus = (nb && nb.order < 1.9) ? 1 : 0;
+    return base + bonus;
+}
+
+// ---- 主流程：图 → 结构简式 ----
+function condenseGraph(g) {
+    const atoms = g.atoms, bonds = g.bonds;
+    const adj = condenseAdjacency(atoms, bonds);
+    if (!condenseConnected(adj)) return null;
+    const hCounts = condenseHCounts(atoms, adj);
+    if (hCounts.some(function (h) { return h < 0; })) return null;
+    const collapsed = condenseCollapseBenzene(atoms, bonds, adj);
+    if (!collapsed) return null;
+    const redAtoms = collapsed.redAtoms, redEdges = collapsed.redEdges;
+    const prunedInfo = condensePrune(redAtoms, redEdges);
+    const redH = condenseHCounts(redAtoms, prunedInfo.adj);
+    if (redH.some(function (h, i) { return h < 0 && redAtoms[i].el !== 'Ar'; })) return null;
+    const treeInfo = condensePathTree(redAtoms, prunedInfo);
+    if (!treeInfo) return null;
+    const isBareO = function (k) { return redAtoms[treeInfo.keep[k]].el === 'O' && treeInfo.adjT[k].length === 1; };
+    const path = condenseLongestPath(treeInfo.adjT, isBareO);
+    const ctx = { redAtoms: redAtoms, keep: treeInfo.keep, adjT: treeInfo.adjT, hRed: redH, prunedOCount: [], isCarbonyl: [] };
+    redAtoms.forEach(function (a, i) {
+        let cnt = 0, carb = false;
+        prunedInfo.adj[i].forEach(function (e) {
+            if (e.order >= 1.9 && redAtoms[e.j].el === 'O') { carb = true; if (prunedInfo.pruned[e.j]) cnt++; }
+        });
+        ctx.prunedOCount.push(cnt); ctx.isCarbonyl.push(carb);
+    });
+    let p = path;
+    if (p.length >= 2) {
+        const sa = condenseEndScore(ctx, p[0]), sb = condenseEndScore(ctx, p[p.length - 1]);
+        if (sb > sa || (sb === sa && p[p.length - 1] < p[0])) p = p.slice().reverse();
+    }
+    let out = condenseRenderTree(ctx, p);
+    if (out && /^(O|N|S)H\d?/.test(out)) {
+        const m = /^(O|N|S)H(\d?)/.exec(out);
+        out = 'H' + (m[2] || '') + m[1] + out.slice(m[0].length);
+    }
+    return out || null;
+}
+// ---- 结构简式 → 元素计数（自校验用）----
+function condensedToFormulaCounts(str) {
+    if (typeof str !== 'string' || !str) return null;
+    let i = 0;
+    const parseSeq = function () {
+        const local = {};
+        while (i < str.length) {
+            const ch = str[i];
+            if (ch === ')') { i++; return local; }
+            if (ch === '(') {
+                i++;
+                const sub = parseSeq();
+                let num = '';
+                while (i < str.length && /\d/.test(str[i])) { num += str[i]; i++; }
+                const mult = num ? parseInt(num, 10) : 1;
+                for (const k in sub) local[k] = (local[k] || 0) + sub[k] * mult;
+                continue;
+            }
+            const m = /^([A-Z][a-z]?)/.exec(str.slice(i));
+            if (m) {
+                i += m[1].length;
+                let num = '';
+                while (i < str.length && /\d/.test(str[i])) { num += str[i]; i++; }
+                local[m[1]] = (local[m[1]] || 0) + (num ? parseInt(num, 10) : 1);
+                continue;
+            }
+            i++;   // 跳过 = ≡ 等
+        }
+        return local;
+    };
+    return parseSeq();
+}
+
+// ---- 图 → 元素计数（含氢）----
+function moleculeFormulaCounts(g, hCounts) {
+    const c = {};
+    g.atoms.forEach(function (a) { c[a.el] = (c[a.el] || 0) + 1; });
+    hCounts.forEach(function (h) { if (h > 0) c.H = (c.H || 0) + h; });
+    return c;
+}
+
+// ---- 入口：SMILES → 结构简式（失败返回 null）----
+function smilesToCondensed(smiles) {
+    try {
+        const g = parseCondenseSmiles(smiles);
+        if (!g) return null;
+        const out = condenseGraph(g);
+        if (!out) return null;
+        const adj = condenseAdjacency(g.atoms, g.bonds);
+        const hCounts = condenseHCounts(g.atoms, adj);
+        if (hCounts.some(function (h) { return h < 0; })) return null;
+        const c1 = condensedToFormulaCounts(out);
+        const c2 = moleculeFormulaCounts(g, hCounts);
+        if (!c1 || !c2) return null;
+        const keys = {};
+        Object.keys(c1).forEach(function (k) { keys[k] = 1; });
+        Object.keys(c2).forEach(function (k) { keys[k] = 1; });
+        for (const k in keys) if ((c1[k] || 0) !== (c2[k] || 0)) return null;
+        return out;
+    } catch (e) { return null; }
+}
+        /* CONDENSE_END */
+        // 展示用：结构简式里的全部数字转 Unicode 下标（含 (CH3)2 末尾的 2；此函数不能用了
+        // toSubscriptFormula 的正则，它只处理“元素+数字”，不会处理右括号后的计数）。
+        function toSubscriptCondensed(str) {
+            return String(str || '').replace(/\d/g, d => SUBSCRIPT_DIGITS[Number(d)] || d);
+        }
+        window.__smilesToCondensed = smilesToCondensed;
+        window.__toSubscriptCondensed = toSubscriptCondensed;
         function parseFormula(str) {
             const s = normalizeFormulaDigits(str).trim();
             if (!/^[A-Z][a-z]?(?:\d*[A-Z][a-z]?\d*)+$/.test(s) && !/^[A-Z][a-z]?\d*$/.test(s)) return null;
@@ -7421,7 +7934,7 @@ const ZH_NAME_FIX = {
                     if (/deuterio|tritio|isotop/i.test(name)) continue;
                     if (seen.has(smi)) continue;
                     seen.add(smi);
-                    items.push({ cid: x.CID, name: name || smi, smiles: smi, formula: x.MolecularFormula || formula });
+                    items.push({ cid: x.CID, name: name || smi, smiles: smi, formula: x.MolecularFormula || formula, cond: smilesToCondensed(smi) });
                 }
                 items.sort((a, b) => a.name.localeCompare(b.name, 'en'));
                 return { ok: true, formula, items };
@@ -7595,10 +8108,34 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 cb.type = 'checkbox'; cb.value = String(idx);
                 cb.style.cssText = 'accent-color:#ffd28a; flex-shrink:0;';
                 const info = document.createElement('span');
-                info.style.cssText = 'font-size:13px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-                info.textContent = it.name + '   (' + toSubscriptFormula(it.formula) + ')  ' + it.smiles;
-                info.title = it.smiles;
-                row.appendChild(cb); row.appendChild(info);
+                info.style.cssText = 'font-size:13px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = it.name + '   (' + toSubscriptFormula(it.formula) + ')';
+                info.appendChild(nameSpan);
+                if (it.cond) {
+                    const condSpan = document.createElement('span');
+                    condSpan.textContent = toSubscriptCondensed(it.cond);
+                    condSpan.style.cssText = 'color:#ffd28a; margin-left:10px;';
+                    info.appendChild(condSpan);
+                }
+                const smiSpan = document.createElement('span');
+                smiSpan.textContent = it.smiles;
+                smiSpan.style.cssText = 'color:#93a1b5; margin-left:10px;';
+                info.appendChild(smiSpan);
+                info.title = (it.cond ? it.cond + '   |   ' : '') + it.smiles;
+                // 键线式缩略图（PubChem 2D 描绘，懒加载；离线或失败时自动隐藏）
+                const thumbWrap = document.createElement('span');
+                thumbWrap.style.cssText = 'width:72px; height:54px; background:#fff; border-radius:6px; flex-shrink:0; overflow:hidden; display:inline-flex; align-items:center; justify-content:center;';
+                const thumb = document.createElement('img');
+                thumb.loading = 'lazy';
+                thumb.decoding = 'async';
+                thumb.draggable = false;
+                thumb.alt = '';
+                thumb.src = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/' + it.cid + '/PNG?image_size=150x110';
+                thumb.style.cssText = 'width:100%; height:100%; object-fit:contain; transform:scale(1.55);';
+                thumb.onerror = () => { thumbWrap.style.display = 'none'; };
+                thumbWrap.appendChild(thumb);
+                row.appendChild(cb); row.appendChild(info); row.appendChild(thumbWrap);
                 row.addEventListener('click', () => { cb.checked = !cb.checked; updateIsomerCount(); });
                 list.appendChild(row);
             });
