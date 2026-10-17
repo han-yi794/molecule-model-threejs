@@ -552,10 +552,7 @@
             border-color: #ffaa66;
             transform: scale(1.02);
         }
-        /* 隐藏"生成测试分子"相关功能（2026-08：示例下拉/生成按钮/自动测试/π自测入口） */
-        #molecule-select, #btn-generate-molecule, #btn-run-all-tests, #btn-pi-test {
-            display: none !important;
-        }
+        /* 原「生成测试分子」相关控件（示例下拉/生成按钮/自动测试/π自测入口）已于 2026-10-17 从原子库整体移除 */
         /* 名称 / SMILES 输入生成模块（2026-08，Task 4.3） */
         .molecule-input-row {
             margin-top: 10px;
@@ -666,6 +663,33 @@
             width: 100%;
             margin-top: 8px;
         }
+        /* ============ 分子式小键盘（2026-09 新增；2026-10-17 布局优化 + 防溢出）============ */
+        #formula-keypad {
+            position: fixed;
+            z-index: 999;
+            box-sizing: border-box;          /* max-height/width 按边框盒计算（2026-10-17：否则 content-box 下总高 = maxH + padding + border，仍会溢出） */
+            width: 232px;
+            max-height: calc(100vh - 16px);   /* 兜底：任何视口下不高于屏幕（内容超高时面板内滚动） */
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            background: rgba(16, 20, 26, 0.97);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 10px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+        }
+        .fkp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .fkp-head b { color: #fff; font-size: 13px; }
+        .fkp-sect { font-size: 11px; color: #8b97a8; margin: 6px 0 4px; }
+        .fkp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+        .fkp-key {
+            text-align: center; cursor: pointer; padding: 6px 0; border-radius: 6px;
+            font-size: 13px; color: #fff; background: rgba(255, 255, 255, 0.06);
+            user-select: none; transition: background 0.12s, transform 0.06s;
+        }
+        .fkp-key:hover { background: rgba(255, 255, 255, 0.14); }
+        .fkp-key:active { background: rgba(255, 210, 138, 0.4); transform: scale(0.96); }
+        .fkp-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
         /* ============ 响应式布局（2026-09 新增）============ */
         /* ============ 按比例缩放适配（2026-10 重写：统一横屏布局，组件随视口比例缩放）============ */
         /* 原则：不切换布局（始终左右侧栏横屏式），窄屏时所有组件尺寸用 min(px, vw) 等比缩小。
@@ -695,7 +719,7 @@
             /* 浮层限宽防溢出 */
             #isomer-panel { width: min(640px, 94vw); max-height: 86vh; }
             #isomer-list { max-height: none; }
-            #formula-keypad { width: min(230px, 92vw); }
+            #formula-keypad { width: min(232px, 92vw); }
             #candidate-panel { max-width: min(440px, 92vw); }
             #toast-message { max-width: 92vw; white-space: normal; }
             #drag-hud, #torsion-hud { max-width: 92vw; }
@@ -720,6 +744,10 @@
             /* 侧栏：贴边纵向条，从顶部面板下方开始（不垂直居中，避免与顶部/徽章重叠） */
             #group-sidebar { left: min(8px, 2vw); top: 104px; transform: none; bottom: 16px; max-height: none; }
             #sidebar { right: min(8px, 2vw); top: 104px; transform: none; bottom: 16px; max-height: none; }
+            /* 分子式小键盘：加宽键位 + 触摸友好高度，宽度恒不超出视口 */
+            #formula-keypad { width: min(300px, calc(100vw - 16px)); padding: 8px; }
+            .fkp-key { min-height: 34px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+            .fkp-sect { margin: 5px 0 3px; }
             /* 徽章帮助：底部居中避让两侧栏 */
             #mode-badge { left: 50%; transform: translateX(-50%); right: auto; bottom: 8px; font-size: 10px; padding: 5px 9px; }
             #btn-help { left: calc(50% + 30px); right: auto; bottom: 42px; }
@@ -942,14 +970,17 @@
             </label>
         </div>
     </div>
-    <div id="formula-keypad" style="display:none; position:fixed; width:230px; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:12px; z-index:999; padding:10px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <b style="color:#fff; font-size:13px;">分子式键盘</b>
+    <!-- 分子式小键盘（2026-09 新增；2026-10-17 布局优化：元素/数字分区 + 定位夹取视口 + 防手机溢出；样式在 <style> 内 #formula-keypad / .fkp-* 规则） -->
+    <div id="formula-keypad" style="display:none;">
+        <div class="fkp-head">
+            <b>分子式键盘</b>
             <span id="formula-keypad-close" data-icon="x" data-size="14" style="cursor:pointer; color:#9ab; line-height:1; display:inline-flex;"></span>
         </div>
-        <div style="font-size:12px; color:#9ab; margin-bottom:4px;">点击元素追加到分子式框</div>
-        <div id="formula-keypad-keys" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px;"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+        <div class="fkp-sect">元素</div>
+        <div id="formula-keypad-els" class="fkp-grid"></div>
+        <div class="fkp-sect">数字（下标）</div>
+        <div id="formula-keypad-nums" class="fkp-grid"></div>
+        <div class="fkp-actions">
             <span id="formula-keypad-backspace" style="cursor:pointer; color:#ffd28a; font-size:13px; border:1px solid rgba(255,210,138,0.4); border-radius:8px; padding:2px 8px; user-select:none; display:inline-flex; align-items:center; gap:4px;"><span class="ui-ic" data-icon="delete" data-size="13"></span>退格</span>
             <span id="formula-keypad-clear" style="cursor:pointer; color:#e8886a; font-size:13px; border:1px solid rgba(232,136,106,0.4); border-radius:8px; padding:2px 8px; user-select:none;">清空</span>
             <span id="formula-keypad-ok" style="cursor:pointer; color:#1a1f27; background:#e8b44c; font-size:13px; font-weight:bold; border-radius:8px; padding:2px 12px; user-select:none;">生成</span>
@@ -987,26 +1018,10 @@
                 <option value="gizmo-lock">手柄 + 起始轴锁</option>
             </select>
         </div>
-        <div class="action-btn" id="btn-toggle-pi"><span class="ui-ic" data-icon="eye" data-size="13"></span> 显示离域π键</div>
-        <div class="action-btn" id="btn-pi-test">离域π键自测</div>
-        <select id="molecule-select" style="width:100%; border-radius:12px; padding:6px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.06);">
-            <option value="">生成测试分子</option>
-            <option value="methane">甲烷 CH4</option>
-            <option value="ethane">乙烷 C2H6</option>
-            <option value="propane">丙烷 C3H8</option>
-            <option value="ethylene">乙烯 C2H4</option>
-            <option value="acetylene">乙炔 C2H2</option>
-            <option value="benzene">苯 C6H6</option>
-            <option value="cyclohexane">环己烷 C6H12 (平面示例)</option>
-            <option value="cyclopropane">环丙烷 C3H6 (应力环)</option>
-            <option value="cyclobutane">环丁烷 C4H8 (应力环)</option>
-            <option value="distortedButane">畸变丁烷 C4H10 (用于角度优化测试)</option>
-            <option value="butene2">2-丁烯 CH3CH=CHCH3 (顺反异构演示)</option>
-            <option value="bondtest">键长测试 (多对 C–C)</option>
-        </select>
-        <div class="action-btn" id="btn-generate-molecule">生成</div>
-        <div class="action-btn" id="btn-delete-atom">删除选中</div>
-        <div class="action-btn" id="btn-run-all-tests">自动测试全部</div>
+        <!-- 2026-10-17 原子库清理：除原子卡片外的按钮/下拉全部移除（显示离域π键、π自测、示例下拉、
+             生成、删除选中、自动测试全部）。π 高亮开关在左上「设置」面板；删除原子用原子右上角
+             垃圾桶图标或 Delete/Backspace 键；示例分子/自测走控制台 window.__diag.generate /
+             window.runAllExamplesAndTests()。 -->
         <div class="hint"><i>按住拖至空间释放</i></div>
     </div>
 
@@ -4675,7 +4690,7 @@ isOptimizing = false;
             window.__setDelocPiMode(DELOCAL_PI_ENABLED);
         });
         document.getElementById('btn-toggle-pi').addEventListener('click', (e) => { e.preventDefault(); try { togglePiSystems(); showToast(showPiSystems ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); } catch (e) { showToast('离域π检测失败: ' + e, 2500); } });
-        document.getElementById('btn-pi-test').addEventListener('click', () => { const rs = runPiSystemTests(); showToast(`离域π自测: ${rs.filter(r => r.pass).length}/${rs.length} 通过`, 2500); });
+        // （2026-10-17 原子库清理：btn-pi-test 自测按钮已移除，π 自测改为控制台 window.runPiSystemTests()）
         const styleSelect = document.getElementById('atom-style-select');
         if (styleSelect) styleSelect.addEventListener('change', function() {
             const want = this.value;
@@ -5676,30 +5691,10 @@ isOptimizing = false;
             console.log('bond distance test distances:', distances, 'current bonds:', bonds.map(b=>({len: b.atomA.position.distanceTo(b.atomB.position), type: b.type}))); 
         }
 
-        function generateSelectedMolecule() {
-            const sel = document.getElementById('molecule-select');
-            const v = sel.value;
-            if (!v) { showToast('请选择分子', 1200); return; }
-            if (v === 'methane') generateMethane();
-            else if (v === 'ethane') generateEthane();
-            else if (v === 'propane') generatePropane();
-            else if (v === 'ethylene') generateEthylene();
-            else if (v === 'acetylene') generateAcetylene();
-            else if (v === 'benzene') generateBenzene();
-            else if (v === 'butene2') generateButene2();
-            else if (v === 'cyclohexane') generateCyclohexane();
-            else if (v === 'bondtest') generateBondDistanceTest();
-            else showToast('未实现该分子', 1200);
-        }
-
-        document.getElementById('btn-generate-molecule').addEventListener('click', generateSelectedMolecule);
         document.getElementById('btn-clear-molecule').addEventListener('click', clearMolecule);
-        document.getElementById('btn-delete-atom').addEventListener('click', () => {
-            if (!selectedAtom) { showToast('请先选中一个原子', 1200); return; }
-            const type = selectedAtom.userData?.atomType || '';
-            removeAtom(selectedAtom);
-            showToast(`已删除 ${type} 原子`, 1200);
-        });
+        // 2026-10-17 原子库清理：generateSelectedMolecule / btn-generate-molecule / #molecule-select /
+        // btn-delete-atom 按钮已移除——删除原子改由选中原子右上角垃圾桶图标或 Delete/Backspace 键触发
+        // （removeAtom 逻辑不变），示例分子生成走控制台 window.__diag.generate()。
 
         // --- 测试与测量工具（在控制台可调用） ---
         function measureDistance(a, b) {
@@ -9039,19 +9034,20 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // ============ 分子式小键盘（2026-09 新增）============
         const FORMULA_KEY_GROUPS = ['C','H','N','O','S','P','F','Cl','Br','I','Na','K','Ca','Mg','Fe','Cu','Zn','B','Si'];
         function initFormulaKeypad() {
-            const grid = document.getElementById('formula-keypad-keys');
-            if (!grid) return;
-            grid.innerHTML = '';
+            const els = document.getElementById('formula-keypad-els');
+            const nums = document.getElementById('formula-keypad-nums');
+            if (!els || !nums) return;
+            els.innerHTML = ''; nums.innerHTML = '';
             const mk = (label, val) => {
                 const b = document.createElement('span');
+                b.className = 'fkp-key';   // 样式在 <style> .fkp-key（2026-10-17 从内联迁出，便于移动端媒体查询调整触摸高度）
                 b.textContent = label;
-                b.style.cssText = 'text-align:center; cursor:pointer; padding:5px 0; border-radius:6px; font-size:13px; color:#fff; background:rgba(255,255,255,0.06); user-select:none;';
                 b.addEventListener('click', () => appendFormulaInput(val));
                 return b;
             };
-            for (const el of FORMULA_KEY_GROUPS) grid.appendChild(mk(el, el));
+            for (const el of FORMULA_KEY_GROUPS) els.appendChild(mk(el, el));
             // 数字键输入 Unicode 下标（₀-₉），配合 SUBSCRIPT_DIGITS 归一化解析（2026-09）
-            for (let d = 0; d <= 9; d++) grid.appendChild(mk(SUBSCRIPT_DIGITS[d], SUBSCRIPT_DIGITS[d]));
+            for (let d = 0; d <= 9; d++) nums.appendChild(mk(SUBSCRIPT_DIGITS[d], SUBSCRIPT_DIGITS[d]));
         }
         function appendFormulaInput(val) {
             const input = document.getElementById('formula-input');
@@ -9060,22 +9056,36 @@ if (smilesInput) smilesInput.value = smilesToUse;
             input.focus();
             syncInputClearButtons();
         }
+        // 小键盘定位（2026-10-17 重写）：优先输入框正下方；视口放不下时翻到输入框上方，
+        // 仍放不下则钉在视口内（max-height 限高，内容超高时面板内滚动）——手机/横屏均不超出屏幕。
         function positionFormulaKeypad() {
             const kp = document.getElementById('formula-keypad');
             const input = document.getElementById('formula-input');
             if (!kp || !input) return;
+            const MARGIN = 8, GAP = 4;
+            const vv = window.visualViewport;
+            const vw = window.innerWidth;
+            const vh = vv ? vv.height : window.innerHeight;   // 手机软键盘弹出时用 visualViewport 的真实可视高
             const r = input.getBoundingClientRect();
-            const kpw = 230;
-            let left = r.left;
-            if (left + kpw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - kpw - 8);
+            const kpw = kp.offsetWidth || 232;
+            let kpH = kp.offsetHeight || 0;
+            const maxH = Math.max(120, vh - MARGIN * 2);
+            kp.style.maxHeight = maxH + 'px';                 // 兜底：任何情况下不高于视口
+            if (kpH > maxH) kpH = maxH;                       // 超限时实际渲染高度会被 max-height 压缩
+            const left = Math.max(MARGIN, Math.min(r.left, vw - kpw - MARGIN));
+            let top = r.bottom + GAP;
+            if (top + kpH > vh - MARGIN) {
+                const above = r.top - GAP - kpH;              // 优先翻到输入框上方
+                top = above >= MARGIN ? above : Math.max(MARGIN, vh - MARGIN - kpH);
+            }
             kp.style.left = left + 'px';
-            kp.style.top = (r.bottom + 4) + 'px';
+            kp.style.top = top + 'px';
         }
         function showFormulaKeypad() {
             const kp = document.getElementById('formula-keypad');
             if (!kp) return;
+            kp.style.display = 'block';   // 先显示再测量（display:none 时 offsetWidth/offsetHeight 为 0）
             positionFormulaKeypad();
-            kp.style.display = 'block';
         }
         function hideFormulaKeypad() {
             const kp = document.getElementById('formula-keypad');
@@ -9086,6 +9096,16 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!kp) return;
             if (kp.style.display === 'none') showFormulaKeypad(); else hideFormulaKeypad();
         }
+        // 视口变化（横竖屏切换 / 手机软键盘弹出收起 / 窗口缩放）时保持小键盘在屏内（2026-10-17）
+        const _repositionKeypad = () => {
+            const kp = document.getElementById('formula-keypad');
+            if (kp && kp.style.display !== 'none') positionFormulaKeypad();
+        };
+        window.addEventListener('resize', _repositionKeypad);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', _repositionKeypad);
+        window.__showFormulaKeypad = showFormulaKeypad;
+        window.__hideFormulaKeypad = hideFormulaKeypad;
+        window.__positionFormulaKeypad = positionFormulaKeypad;
         initFormulaKeypad();
         const _kFIn = document.getElementById('formula-input');
         if (_kFIn) {
@@ -9182,6 +9202,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!panel || !body) return;
             panel.classList.toggle('open', open);
             body.style.display = open ? '' : 'none';
+            if (!open) hideFormulaKeypad();   // 收起输入面板时同步收起分子式小键盘（2026-10-17 防悬空浮层）
             setCornerCaret(tgl, open);
         }
         window.__setInputPanelOpen = setInputPanelOpen;
@@ -10044,9 +10065,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
         } catch (e) { console.warn('export to window failed', e); }
 
         // 绑定 UI 按钮
-        document.getElementById('btn-run-all-tests').addEventListener('click', () => {
-            runAllExamplesAndTests();
-        });
+        // （2026-10-17：btn-run-all-tests 按钮已随原子库清理移除；自测仍可用 window.runAllExamplesAndTests() 触发）
 
         function startNewDrag(type, clientX, clientY) {
             if (isDragging) return;
