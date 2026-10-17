@@ -1,4 +1,5 @@
 // 异构体面板：结构简式 + 键线式缩略图 验证（2026-10）
+// 2026-10-17：缩略图/大图改为本地 SmilesDrawer v1.2.0 渲染（画布，非 PubChem 图片；离线可用、羟基合并 OH）
 const { chromium } = require('playwright');
 (async () => {
     const results = [];
@@ -32,6 +33,25 @@ const { chromium } = require('playwright');
     const sub = await page.evaluate(() => window.__toSubscriptCondensed('CH3CH(CH3)2'));
     ok('B2 展示下标化 (CH3)2', sub === 'CH\u2083CH(CH\u2083)\u2082', sub);
 
+    // 1b) 本地键线式渲染器（SmilesDrawer 内联）：有笔画 + 红色 O 标签（元素配色）
+    const skel = await page.evaluate(() => {
+        const cv = document.createElement('canvas');
+        cv.width = 144; cv.height = 108;
+        cv.style.cssText = 'position:fixed; left:-9999px; top:0;';
+        document.body.appendChild(cv);
+        const drawn = window.__skeletalRender(cv, 'CCO', 144, 108);
+        const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+        let inked = 0, red = 0;
+        for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] > 12 && (d[i] < 245 || d[i + 1] < 245 || d[i + 2] < 245)) inked++;
+            if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110) red++;
+        }
+        const flag = cv.dataset.rendered === '1';
+        cv.remove();
+        return { drawn, inked, red, flag };
+    });
+    ok('B3 本地渲染（乙醇：笔画 ' + skel.inked + 'px + 红色 O 标签 ' + skel.red + 'px）', skel.drawn === true && skel.flag && skel.inked > 80 && skel.red > 15, skel);
+
     // 2) 真实流程：C2H6O → 面板
     await page.evaluate(() => window.__setInputPanelOpen(true));
     await page.fill('#formula-input', 'C2H6O');
@@ -40,21 +60,23 @@ const { chromium } = require('playwright');
         const p = document.getElementById('isomer-panel');
         return p && p.style.display === 'flex';
     }, { timeout: 40000 });
+    // 缩略图为本地画布（懒渲染：行进入视口后 data-rendered='1'）
     await page.waitForFunction(() => {
-        const imgs = Array.from(document.querySelectorAll('#isomer-list img'));
-        return imgs.length >= 2 && imgs.every(i => i.complete && i.naturalWidth > 0);
-    }, { timeout: 30000 }).catch(() => {});
+        const cvs = Array.from(document.querySelectorAll('#isomer-list [data-role="skeletal-thumb"] canvas'));
+        return cvs.length >= 2 && cvs.every(c => c.dataset.rendered === '1');
+    }, null, { timeout: 30000 }).catch(() => {});
     const stat = await page.evaluate(() => {
         const rows = Array.from(document.querySelectorAll('#isomer-list label'));
         const texts = rows.map(r => r.textContent);
-        const imgs = Array.from(document.querySelectorAll('#isomer-list img'));
+        const cvs = Array.from(document.querySelectorAll('#isomer-list [data-role="skeletal-thumb"] canvas'));
         const condSpans = Array.from(document.querySelectorAll('#isomer-list span[style*="255, 210, 138"]')).map(s => s.textContent);
         return {
             rows: rows.length,
             texts: texts,
             condSpans: condSpans,
-            imgs: imgs.length,
-            loaded: imgs.filter(i => i.complete && i.naturalWidth > 0).length,
+            cvs: cvs.length,
+            rendered: cvs.filter(c => c.dataset.rendered === '1').length,
+            nativeImgs: document.querySelectorAll('#isomer-list img').length,
         };
     });
     ok('C1 行数=2（乙醇/甲醚）', stat.rows === 2, stat.rows);
@@ -62,7 +84,7 @@ const { chromium } = require('playwright');
     ok('C2 行含下标结构简式 CH₃CH₂OH', joined.includes('CH\u2083CH\u2082OH'), stat.condSpans);
     ok('C3 行含下标结构简式 CH₃OCH₃', joined.includes('CH\u2083OCH\u2083'));
     ok('C4 行含下标分子式 C₂H₆O', joined.includes('C\u2082H\u2086O'));
-    ok('C5 键线式缩略图 2/2 加载', stat.imgs === 2 && stat.loaded === 2, { imgs: stat.imgs, loaded: stat.loaded });
+    ok('C5 键线式缩略图 2/2 本地画布渲染（零 PubChem 图片）', stat.cvs === 2 && stat.rendered === 2 && stat.nativeImgs === 0, { canvases: stat.cvs, rendered: stat.rendered, nativeImgs: stat.nativeImgs });
 
     await page.screenshot({ path: 'verify_isomer_condensed.png' });
 
@@ -75,18 +97,30 @@ const { chromium } = require('playwright');
         await page.mouse.click(cx, cy);
         const lbOpen = await page.waitForFunction(() => {
             const lb = document.getElementById('skeletal-lightbox');
-            const img = document.getElementById('skeletal-lightbox-img');
-            return lb && lb.style.display === 'flex' && img && img.complete && img.naturalWidth > 0 && img.style.visibility === 'visible';
+            const cv = document.getElementById('skeletal-lightbox-canvas');
+            const load = document.getElementById('skeletal-lightbox-loading');
+            return lb && lb.style.display === 'flex' && cv && cv.dataset.rendered === '1'
+                && cv.width >= 600 && load && load.style.display === 'none';
         }, null, { timeout: 30000 }).then(() => true).catch(() => false);
-        ok('F1 点击缩略图弹出大图并加载', lbOpen);
+        ok('F1 点击缩略图弹出大图并本地渲染', lbOpen);
         const lbStat = await page.evaluate(() => {
-            const img = document.getElementById('skeletal-lightbox-img');
+            const cv = document.getElementById('skeletal-lightbox-canvas');
             const cap = document.getElementById('skeletal-lightbox-caption');
             const cbAfter = document.querySelectorAll('#isomer-list input[type="checkbox"]:checked').length;
             const cnt = document.getElementById('isomer-count');
-            return { w: img.naturalWidth, h: img.naturalHeight, cap: cap ? cap.textContent : '', checked: cbAfter, count: cnt ? cnt.textContent : '' };
+            // 回归保护：内容应充满大部分画布（防"CSS/后备尺寸不一致导致缩放失控画成一小团"回归）
+            const dd = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+            let minX = 1e9, maxX = -1;
+            for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+                const i = (y * cv.width + x) * 4;
+                if (dd[i + 3] > 12 && (dd[i] < 245 || dd[i + 1] < 245 || dd[i + 2] < 245)) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                }
+            }
+            return { w: cv.width, h: cv.height, inkW: maxX >= minX ? maxX - minX : 0, cap: cap ? cap.textContent : '', checked: cbAfter, count: cnt ? cnt.textContent : '' };
         });
-        ok('F2 大图分辨率 ' + lbStat.w + 'x' + lbStat.h + '（>300 即非缩略图）', lbStat.w >= 300);
+        ok('F2 大图后备分辨率 ' + lbStat.w + 'x' + lbStat.h + '，内容宽 ' + lbStat.inkW + 'px（缩放正常）', lbStat.w >= 300 && lbStat.inkW >= 400);
         ok('F3 图说含名称/分子式/结构简式', lbStat.cap.includes('ethanol') && lbStat.cap.includes('C\u2082H\u2086O') && lbStat.cap.includes('CH\u2083CH\u2082OH'), lbStat.cap);
         ok('F4 点缩略图不改变勾选（前 ' + cbBefore + ' 后 ' + lbStat.checked + '，' + lbStat.count + '）', cbBefore === 0 && lbStat.checked === 0 && /已选 0 个/.test(lbStat.count));
         await page.screenshot({ path: 'verify_isomer_lightbox.png' });
@@ -112,8 +146,8 @@ const { chromium } = require('playwright');
         await page.mouse.click(cx, cy);
         await page.waitForFunction(() => {
             const lb = document.getElementById('skeletal-lightbox');
-            const img = document.getElementById('skeletal-lightbox-img');
-            return lb && lb.style.display === 'flex' && img && img.complete && img.naturalWidth > 0 && img.style.visibility === 'visible';
+            const cv = document.getElementById('skeletal-lightbox-canvas');
+            return lb && lb.style.display === 'flex' && cv && cv.dataset.rendered === '1';
         }, null, { timeout: 30000 }).catch(() => {});
         const g1 = await page.evaluate(() => {
             const idx = document.getElementById('skeletal-lightbox-index');
@@ -125,7 +159,7 @@ const { chromium } = require('playwright');
                 cap: cap ? cap.textContent : '',
                 pickShown: pick ? getComputedStyle(pick).display !== 'none' : false,
                 pickChecked: cb ? cb.checked : null,
-                src: document.getElementById('skeletal-lightbox-img').src,
+                smiles: window.__skeletalLightbox.state().smiles,
             };
         });
         ok('G1 放大界面位置指示 1/2 + 勾选框初始未选', g1.idx === '1 / 2' && g1.idxShown && g1.cap.includes('ethanol') && g1.pickShown && g1.pickChecked === false, { idx: g1.idx, cap: g1.cap.slice(0, 40), pickShown: g1.pickShown, pickChecked: g1.pickChecked });
@@ -135,18 +169,18 @@ const { chromium } = require('playwright');
         let g2 = null;
         if (nextBox) {
             await page.mouse.click(nextBox.x + nextBox.width / 2, nextBox.y + nextBox.height / 2);
-            await page.waitForFunction((prevSrc) => {
-                const img = document.getElementById('skeletal-lightbox-img');
+            await page.waitForFunction((prevSmiles) => {
+                const st = window.__skeletalLightbox.state();
                 const idx = document.getElementById('skeletal-lightbox-index');
-                return img && img.src !== prevSrc && idx && idx.textContent === '2 / 2';
-            }, g1.src, { timeout: 15000 }).catch(() => {});
+                return st.smiles !== prevSmiles && idx && idx.textContent === '2 / 2';
+            }, g1.smiles, { timeout: 15000 }).catch(() => {});
             g2 = await page.evaluate(() => ({
                 idx: document.getElementById('skeletal-lightbox-index').textContent,
                 cap: document.getElementById('skeletal-lightbox-caption').textContent,
-                src: document.getElementById('skeletal-lightbox-img').src,
+                smiles: window.__skeletalLightbox.state().smiles,
             }));
         }
-        ok('G2 点 › 切换下一项（2/2，图说与图源变化）', !!g2 && g2.idx === '2 / 2' && g2.src !== g1.src && !g2.cap.includes('ethanol'), g2 ? { idx: g2.idx, cap: g2.cap.slice(0, 40) } : null);
+        ok('G2 点 › 切换下一项（2/2，图说与结构变化）', !!g2 && g2.idx === '2 / 2' && g2.smiles !== g1.smiles && !g2.cap.includes('ethanol'), g2 ? { idx: g2.idx, smiles: g2.smiles, cap: g2.cap.slice(0, 40) } : null);
         // 点 ‹ 回退 + 向左环绕
         const prevBox = await page.locator('#skeletal-lightbox-prev').boundingBox();
         let g3 = null;

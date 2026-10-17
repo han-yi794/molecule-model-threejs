@@ -37,6 +37,25 @@ const path = require('path');
             return { ok: r && r.ok, atoms: r && r.atomCount };
         });
     } catch (e) { smoke = { fail: String(e).slice(0, 150) }; }
-    console.log(JSON.stringify({ fileUrl: fileUrl.slice(0, 60) + '...', state, smoke, blockedHttpRequests: blockedNet, errors: errs.slice(0, 6) }, null, 1));
+    // 键线式本地渲染离线冒烟（2026-10-17 内联 SmilesDrawer v1.2.0：缩略图/大图不再依赖 PubChem 图片）
+    let skel = null;
+    try {
+        skel = await page.evaluate(() => {
+            const cv = document.createElement('canvas');
+            cv.width = 144; cv.height = 108;
+            cv.style.cssText = 'position:fixed; left:-9999px; top:0;';
+            document.body.appendChild(cv);
+            const drawn = typeof window.__skeletalRender === 'function' && window.__skeletalRender(cv, 'CCO', 144, 108);
+            const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+            let inked = 0, red = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] > 12 && (d[i] < 245 || d[i + 1] < 245 || d[i + 2] < 245)) inked++;
+                if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110) red++;
+            }
+            cv.remove();
+            return { lib: typeof SmilesDrawer, drawn: !!drawn, inked, red };
+        });
+    } catch (e) { skel = { fail: String(e).slice(0, 150) }; }
+    console.log(JSON.stringify({ fileUrl: fileUrl.slice(0, 60) + '...', state, smoke, skel, blockedHttpRequests: blockedNet, errors: errs.slice(0, 6) }, null, 1));
     await browser.close();
 })().catch(e => { console.error('FATAL', String(e).slice(0, 300)); process.exit(1); });
