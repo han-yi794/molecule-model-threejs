@@ -1,0 +1,53 @@
+# HANDOFF — 交接文档（分子建模器项目）
+
+> 最后更新：2026-10-17（master `5ee33fd` 交付后）
+> **维护约定（用户长期要求）**：每完成一项任务后更新本文件，并随 `master` 提交、推送。
+> 本文件**不进 gh-pages**（gh-pages 必须恰为 `index.html` + `README.md` 两文件，见 `AGENTS.md`「gh-pages 同步陷阱与正确姿势」）。
+
+---
+
+## 0. 项目速览
+
+单文件 Three.js 分子建模应用，唯一主干文件 **`球棍模型4.html`**（约 2.4MB；内联 Three.js / SmilesDrawer / Lucide；无构建系统、无依赖清单；双击 `file://` 完全离线可用）。所有产品改动都在这一个文件里。
+
+**权威文档是仓库根目录的 `AGENTS.md`**——功能细节、已知陷阱（必读）、几何优化关键函数、名称 / SMILES / 分子式输入管线、全部验证脚本矩阵、gh-pages 同步姿势都在那里。本文档只记录「当前状态」与「接手动作」，细节一律引用，不重复。
+
+在线版：https://han-yi794.github.io/molecule-model-threejs/
+
+## 1. 当前状态
+
+- 分支策略：直接在 `master` 开发 / 提交 / 推送；`gh-pages` 只放发布产物。
+- `master`：已推送（最近功能提交 `5ee33fd`；本文档、AGENTS.md 登记与进度文件删除的提交紧随其后——看 `git log --oneline -6`）；`gh-pages` = `bcd4b14`（已推送，与 master 的 4.html / README blob 一致，远端恰 2 文件）；工作区干净。
+- 杂项：过期的 `球棍模型4_PROGRESS.md`（2026-08 旧进度记录，内容已被 `AGENTS.md` 取代）已删除。
+- **无进行中任务**。最近三项已交付（细节看提交信息 + `AGENTS.md` 对应条目）：
+  1. `36c51d3` 删除 2 / 3 号副本；青蒿素名称生成修复（`ZH_NAME_FIX` + 精确 CID 优先 PubChem 3D）。
+  2. `5326c01` 原子库精简（仅剩 8 张原子卡 + 提示）；分子式小键盘分区布局 + 移动端防溢出（`box-sizing` 陷阱）。
+  3. `5ee33fd` 删除原子库「拖动方式」下拉（改右下角徽章单击循环 / Tab / Shift+Tab）；`verify_keypad_ui.js` 扩到 12 项。
+- 回归基线（最近一次全绿）：`verify_keypad_ui` 12/12 · `verify_foolproof` 22/22 · `verify_icons` 8/8 · `verify_ui_input` 7/7 · `verify_corners` 9/9 · 33 几何自测 33/33（`playwright-verify.js`）。
+
+## 2. 接手动作清单
+
+1. 先读 `AGENTS.md`（至少「运行与验证」「已知陷阱（必读）」两节）。
+2. 起静态服务器：仓库根目录 `python -m http.server 8000`。
+3. 改动后跑相关验证脚本：`cmd /c "node verify_x.js > _run_x.json 2>&1"`，timeout 恒 900000ms（PowerShell 直接重定向会损坏 JSON，必须走 cmd）。
+4. 自测完成判定：轮询 `window.lastRunResults.results.length === 33`（首屏不自动跑测试）；勿用 `__AUTOTEST_DONE__`（陷阱见 AGENTS.md）。
+5. 收尾三件事：**更新本 HANDOFF** → 提交推送 `master` → 若动了 `球棍模型4.html` / `README.md` 再按 AGENTS.md 的 plumbing 法同步 gh-pages 并做三项校验（恰 2 文件 / `index.html` blob == master 4.html blob / README diff 0 行）。
+
+## 3. 发布流程（速记，完整版见 AGENTS.md）
+
+- 同步工具（位于 `%TEMP%\opencode\`，可能已被系统清理，可按 AGENTS.md 步骤重建）：`ghp_sync.js`（plumbing 法同步）、`ghp_check.js`（推送后校验）。
+- 铁律：gh-pages 上**绝不 `git add -A`**（2026-10 事故：误提交 188 个本地文件，随后 checkout 把工作区文件清光）；一律用临时 `GIT_INDEX_FILE` + `commit-tree` 的 plumbing 法。
+
+## 4. 遗留 / 待办
+
+见 `AGENTS.md`「待办需求」节（胰岛素等蛋白大分子的 SMILES 路线缺口、血红素 Fe 配位、SMILES 本地管线无支链烷烃头部塌缩缺陷未修）。不在此重复。
+
+## 5. Suggested skills（建议按需加载）
+
+| 技能 | 何时使用 |
+| --- | --- |
+| `handoff` | 每完成一项任务后更新本文件（用户长期要求） |
+| `writing-for-agents` | 修改 `AGENTS.md` / 本文件时（保持给 agent 的指令有效、精简） |
+| `browser-automation` | 对 `球棍模型4.html` 做 Playwright 真实鼠标 / UI 验证时 |
+| `diagnosing-bugs` | 几何不收敛、回归失败等硬 bug 排查（配合 `node probe_trace.js <seed> <example>` 单例复现） |
+| `docs-generator` | 用户要求出正式报告 / writeup 时 |

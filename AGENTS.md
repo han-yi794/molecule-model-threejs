@@ -117,3 +117,7 @@ Issues 和 spec 存放在 GitHub Issues,用 `gh` CLI 操作。注意:仓库当�
 ### Domain docs
 
 单上下文布局:根目录 `CONTEXT.md` + `docs/adr/`(当前均不存在,按规范静默跳过,由 /domain-modeling 按需惰性创建)。See `docs/agents/domain.md`.
+
+### Handoff
+
+交接文档:`docs/HANDOFF.md`。**每完成一项任务后更新它,并随 `master` 提交推送**(用户 2026-10-17 长期要求);gh-pages 保持恰为两文件,勿同步 handoff。See `docs/HANDOFF.md`.
