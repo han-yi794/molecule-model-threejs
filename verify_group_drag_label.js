@@ -23,7 +23,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
 
         // 真实鼠标:从 COOR 卡片拖到画布
         const card = await page.locator('#drag-group-ester').boundingBox();
-        const canvas = await page.locator('canvas').boundingBox();
+        const canvas = await page.locator('canvas[data-engine]').boundingBox();
         const startX = card.x + card.width / 2, startY = card.y + card.height / 2;
         const endX = canvas.x + canvas.width / 2, endY = canvas.y + canvas.height / 2;
         await page.mouse.move(startX, startY);

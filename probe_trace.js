@@ -7,8 +7,9 @@ const path = require('path');
   const ex = process.argv[3] || 'ethane';
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.goto('http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B2.html');
-  await page.waitForFunction(() => window.__AUTOTEST_DONE__ === true, { timeout: 900000 }).catch(() => {});
+  await page.goto('http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1');
+  // 4 号首屏不自动跑测试：等待页面初始化完成（__diag 就绪）即可开始单例追踪
+  await page.waitForFunction(() => window.__diag && typeof window.__diag.generate === 'function', null, { timeout: 120000 }).catch(() => {});
   const out = await page.evaluate(({ seed, ex }) => {
     const s = seed;
     Math.random = (() => { let x = s; return () => { x = (x * 1664525 + 1013904223) % 4294967296; return x / 4294967296; }; })();

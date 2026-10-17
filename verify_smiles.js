@@ -209,7 +209,7 @@ const CASES = [
     { name: '17 未闭合括号 C(：报错', smiles: 'C(', check(r, a) { a.hasError(r); }},
     { name: '18 未闭合环 C1C：报错', smiles: 'C1C', check(r, a) { a.hasError(r); }},
     { name: '19 自环 C11：报错', smiles: 'C11', check(r, a) { a.hasError(r); }},
-    { name: '20 断键 C.C：报错', smiles: 'C.C', check(r, a) { a.hasError(r); }},
+    { name: '20 片段 C.C：两片段解析（血红素同机制）', smiles: 'C.C', check(r, a) { a.noError(r); a.eq(r.atoms.length, 2, '原子数'); a.eq(r.bonds.length, 0, '无键'); }},
     { name: '21 不支持的芳香原子 b1ccccc1：报错', smiles: 'b1ccccc1', check(r, a) { a.hasError(r); }},
 ];
 

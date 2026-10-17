@@ -4,15 +4,14 @@ const { chromium } = require('playwright-core');
     const browser = await chromium.launch();
     const page = await browser.page ?? (await browser.newPage());
 
-    const URL_EXTRA = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1';
-    const URL_MAIN = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B2.html?noauto=1';
-    const URL_PI = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B3.html?noauto=1';
+    // 2/3 号副本已移除：36 基团方位 + 33 几何 + 23 π 全部在 4 号上跑
+    const PAGE_URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1';
 
-    const report = { initErrors: [], consoleErrors: [], groups: {}, reg4: null, reg2: null, reg3: null };
+    const report = { initErrors: [], consoleErrors: [], groups: {}, reg4: null };
     page.on('console', m => { if (m.type() === 'error') report.consoleErrors.push(m.text().slice(0, 300)); });
     page.on('pageerror', e => report.consoleErrors.push('PAGEERROR: ' + String(e).slice(0, 300)));
 
-    await page.goto(URL_EXTRA, { waitUntil: 'networkidle', timeout: 60000 });
+    await page.goto(PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
     await page.waitForTimeout(1500);
     report.initErrors = (await page.evaluate(() => window.__INIT_ERRORS || [])).slice(0, 20);
 
@@ -80,29 +79,29 @@ const { chromium } = require('playwright-core');
         report.groups[key].angleCheck = ang;
     }
 
-    // 4 号回归
-    report.dir4 = await page.evaluate(async () => {
-        const r = {};
-        try { r.lr = typeof (window.lastRunResults) === 'string' ? window.lastRunResults : JSON.stringify(window.lastRunResults || null); } catch (e) { r.lr = 'ERR ' + e; }
-        return r;
+    // 4 号回归：33 几何 + 23 π（4 号首屏不自动执行，需显式触发）
+    report.reg4 = await page.evaluate(async () => {
+        const out = {};
+        try {
+            await window.runAllExamplesAndTests();
+            const lr = window.lastRunResults;
+            out.geom = {
+                total: lr && lr.results ? lr.results.length : null,
+                passed: lr && lr.results ? lr.results.filter(r => r && r.pass).length : null,
+                fails: lr && lr.results ? lr.results.filter(r => r && !r.pass).map(r => r.example) : []
+            };
+        } catch (e) { out.geom = { error: String(e).slice(0, 300) }; }
+        try {
+            await window.__runPiSystemTests();
+            const pr = JSON.parse(localStorage.getItem('PI_TEST_REPORT') || '{}');
+            out.pi = {
+                total: pr.summary ? pr.summary.length : null,
+                passed: pr.summary ? pr.summary.filter(s => s.pass).length : null,
+                fails: pr.summary ? pr.summary.filter(s => !s.pass).map(s => s.key) : []
+            };
+        } catch (e) { out.pi = { error: String(e).slice(0, 300) }; }
+        return out;
     });
-    await page.evaluate(() => { try { window.__runPiSystemTests(); } catch (e) {} });
-    report.state4 = await page.evaluate(() => ({
-        piReport: (localStorage.getItem('PI_TEST_REPORT') || '').slice(0, 600)
-    }));
-
-    await page.goto(URL_MAIN, { waitUntil: 'networkidle', timeout: 60000 });
-    await page.waitForTimeout(12000);
-    report.reg2 = await page.evaluate(() => ({
-        done: !!window.__AUTOTEST_DONE__,
-        lr: (localStorage.getItem('LAST_AUTOTEST_REPORT') || '').slice(0, 1200)
-    }));
-
-    await page.goto(URL_PI, { waitUntil: 'networkidle', timeout: 60000 });
-    await page.waitForTimeout(5000);
-    report.reg3 = await page.evaluate(() => ({
-        pi: (localStorage.getItem('PI_TEST_REPORT') || '').slice(0, 1400)
-    }));
 
     await browser.close();
     console.log(JSON.stringify(report, null, 1));
