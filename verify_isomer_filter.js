@@ -268,6 +268,44 @@ const { chromium } = require('playwright');
     const r4 = await page.evaluate(() => window.__isomerFilter.rows());
     ok('M20 C4H8 重置全显', r4.every(r => r.vis), r4.filter(r => r.vis).length);
 
+    // M21 筛选后放大界面切换仅在本筛选可见项内（C4H8 环筛选 → 2 项循环，不越界到 5 项）
+    await page.click('#isomer-group-chips .isof-chip[data-scope="g"][data-key="ring"]');
+    const m21a = await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('#isomer-list label'));
+        return { vis: rows.filter(r => r.style.display !== 'none').length, firstIdx: rows.findIndex(r => r.style.display !== 'none') };
+    });
+    const m21 = { vis: m21a.vis };
+    if (m21a.firstIdx >= 0) {
+        const tb = await page.locator('#isomer-list label').nth(m21a.firstIdx).locator('[data-role="skeletal-thumb"]').boundingBox();
+        if (tb) {
+            await page.mouse.click(tb.x + tb.width / 2, tb.y + tb.height / 2);
+            await page.waitForFunction(() => {
+                const lb = document.getElementById('skeletal-lightbox');
+                const idx = document.getElementById('skeletal-lightbox-index');
+                return lb && lb.style.display === 'flex' && idx && idx.textContent === '1 / 2';
+            }, null, { timeout: 15000 }).catch(() => {});
+            const s1 = await page.evaluate(() => window.__skeletalLightbox.state());
+            const nb = await page.locator('#skeletal-lightbox-next').boundingBox();
+            let s2 = null;
+            if (nb) {
+                await page.mouse.click(nb.x + nb.width / 2, nb.y + nb.height / 2);
+                await page.waitForTimeout(160);
+                s2 = await page.evaluate(() => ({ idx: document.getElementById('skeletal-lightbox-index').textContent, name: window.__skeletalLightbox.state().name }));
+            }
+            m21.s1 = { idx: s1.indexText, total: s1.total, name: s1.name };
+            m21.s2 = s2;
+            await page.keyboard.press('Escape');
+            await page.waitForFunction(() => document.getElementById('skeletal-lightbox').style.display === 'none', null, { timeout: 8000 }).catch(() => {});
+        }
+    }
+    const ringRowNames = c4.filter(r => r.an && r.an.groups.includes('ring')).map(r => r.name);
+    const nameInRing = (nm) => !!nm && ringRowNames.some(t => t.indexOf(nm) >= 0);
+    ok('M21 筛选后放大切换仅在本筛选可见项内（' + (m21.s1 ? m21.s1.total : '?') + ' 项循环）',
+        !!m21.s1 && m21.s1.idx === '1 / 2' && m21.s1.total === expRing && m21.s1.total === 2 && nameInRing(m21.s1.name)
+        && !!m21.s2 && m21.s2.idx === '2 / 2' && nameInRing(m21.s2.name) && m21.s2.name !== m21.s1.name,
+        m21);
+    await page.click('#isomer-filter-reset');
+
     // ============ D1 页面 33 例几何自测回归（3 参 waitForFunction） ============
     await page.evaluate(() => { document.getElementById('isomer-panel-close').click(); });
     await page.evaluate(() => { window.lastRunResults = null; setTimeout(() => { try { runAllExamplesAndTests(); } catch (e) {} }, 0); });

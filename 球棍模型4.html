@@ -473,6 +473,24 @@
         }
         #skeletal-lightbox-close:hover { background: rgba(255, 80, 80, 0.2); color: #b3261e; }
         #skeletal-lightbox-loading { color: #8a94a3; font-size: 13px; margin-top: 8px; }
+        /* 放大查看器：‹ › 切换 + 位置指示 + 「生成此分子」勾选（2026-10-17） */
+        #skeletal-lightbox-prev, #skeletal-lightbox-next {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+            background: rgba(0, 0, 0, 0.06); color: #333a45;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #skeletal-lightbox-prev { left: 6px; }
+        #skeletal-lightbox-next { right: 6px; }
+        #skeletal-lightbox-prev:hover, #skeletal-lightbox-next:hover { background: #ffe9c9; color: #b06f00; }
+        #skeletal-lightbox-prev.slb-nav-off, #skeletal-lightbox-next.slb-nav-off { opacity: 0.3; pointer-events: none; }
+        #skeletal-lightbox-index { color: #8a94a3; font-size: 12px; margin-top: 2px; }
+        #skeletal-lightbox-pick {
+            display: none; align-items: center; gap: 6px; margin-top: 6px; cursor: pointer;
+            color: #333a45; font-size: 13px; user-select: none;
+        }
+        #skeletal-lightbox-pick input { accent-color: #b06f00; cursor: pointer; margin: 0; }
+        #skeletal-lightbox-picked { color: #8a94a3; font-size: 12px; }
         /* 异构体筛选（2026-10）：官能团 chips + ¹H NMR 条件 */
         #isomer-filter {
             display: flex; flex-direction: column; gap: 6px; padding: 8px 9px 9px; margin-bottom: 8px;
@@ -909,10 +927,18 @@
     </div>
     <div id="skeletal-lightbox">
         <div id="skeletal-lightbox-card">
+            <span id="skeletal-lightbox-prev" data-icon="chevron-left" data-size="18" title="上一个（←）"></span>
+            <span id="skeletal-lightbox-next" data-icon="chevron-right" data-size="18" title="下一个（→）"></span>
             <span id="skeletal-lightbox-close" data-icon="x" data-size="16" title="关闭"></span>
             <img id="skeletal-lightbox-img" alt="键线式大图" draggable="false" />
             <span id="skeletal-lightbox-loading" style="display:none;">大图加载中…</span>
             <div id="skeletal-lightbox-caption"></div>
+            <div id="skeletal-lightbox-index"></div>
+            <label id="skeletal-lightbox-pick" title="勾选后随「生成选中」一起生成">
+                <input type="checkbox" id="skeletal-lightbox-pick-cb" />
+                <span>生成此分子</span>
+                <span id="skeletal-lightbox-picked"></span>
+            </label>
         </div>
     </div>
     <div id="formula-keypad" style="display:none; position:fixed; width:230px; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:12px; z-index:999; padding:10px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
@@ -1077,6 +1103,8 @@
             'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2" /> <path d="M12 18h.01" />',
             'chevron-down': '<path d="m6 9 6 6 6-6" />',
             'chevron-up': '<path d="m18 15-6-6-6 6" />',
+            'chevron-left': '<path d="m15 18-6-6 6-6" />',
+            'chevron-right': '<path d="m9 18 6-6-6-6" />',
             'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
             'grid-3x3': '<rect width="18" height="18" x="3" y="3" rx="2" /> <path d="M3 9h18" /> <path d="M3 15h18" /> <path d="M9 3v18" /> <path d="M15 3v18" />',
             'orbit': '<path d="M20.341 6.484A10 10 0 0 1 10.266 21.85" /> <path d="M3.659 17.516A10 10 0 0 1 13.74 2.152" /> <circle cx="12" cy="12" r="3" /> <circle cx="19" cy="5" r="2" /> <circle cx="5" cy="19" r="2" />',
@@ -8721,12 +8749,48 @@ if (smilesInput) smilesInput.value = smilesToUse;
             updateIsomerCount();
         }
         // ---- 键线式放大查看器（2026-10）：点击列表缩略图弹大图（Esc/点背景/✕ 关闭）----
-        function openSkeletalLightbox(it) {
-            const lb = document.getElementById('skeletal-lightbox');
+        // 2026-10-17 扩展：‹ › / ←→ 左右切换（范围=当前筛选可见行，循环）+「生成此分子」勾选（与列表行双向同步）
+        let _slbList = [];    // [{it, row}]：row=对应列表行（外来回退项为 null）
+        let _slbIndex = 0;
+        function slbVisibleEntries() {
+            const list = document.getElementById('isomer-list');
+            const all = Array.isArray(_isomerItems) ? _isomerItems : [];
+            const out = [];
+            if (list) {
+                Array.from(list.children).forEach((row, idx) => {
+                    if (!all[idx] || row.style.display === 'none') return;   // 行与 _isomerItems 严格同序
+                    out.push({ it: all[idx], row: row });
+                });
+            }
+            return out;
+        }
+        function slbRowCheckbox(entry) {
+            return entry && entry.row ? entry.row.querySelector('input[type="checkbox"]') : null;
+        }
+        function slbRefreshPick() {
+            const entry = _slbList[_slbIndex];
+            const wrap = document.getElementById('skeletal-lightbox-pick');
+            const cb = document.getElementById('skeletal-lightbox-pick-cb');
+            const cnt = document.getElementById('skeletal-lightbox-picked');
+            const rowCb = slbRowCheckbox(entry);
+            if (wrap) wrap.style.display = rowCb ? 'flex' : 'none';
+            if (cb) cb.checked = !!(rowCb && rowCb.checked);
+            if (cnt) {
+                const list = document.getElementById('isomer-list');
+                const n = list ? list.querySelectorAll('input[type="checkbox"]:checked').length : 0;
+                cnt.textContent = '（已选 ' + n + ' 个）';
+            }
+        }
+        function slbRenderCurrent() {
             const img = document.getElementById('skeletal-lightbox-img');
             const cap = document.getElementById('skeletal-lightbox-caption');
             const load = document.getElementById('skeletal-lightbox-loading');
-            if (!lb || !img || !it) return;
+            const idxEl = document.getElementById('skeletal-lightbox-index');
+            const prevBtn = document.getElementById('skeletal-lightbox-prev');
+            const nextBtn = document.getElementById('skeletal-lightbox-next');
+            const entry = _slbList[_slbIndex];
+            if (!img || !entry) return;
+            const it = entry.it;
             const base = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/' + it.cid + '/PNG?image_size=';
             img.dataset.tries = '0';
             img.style.visibility = 'hidden';
@@ -8754,6 +8818,30 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 ss.textContent = it.smiles;
                 cap.appendChild(ss);
             }
+            const total = _slbList.length;
+            if (idxEl) {
+                idxEl.style.display = total >= 2 ? 'block' : 'none';
+                idxEl.textContent = (_slbIndex + 1) + ' / ' + total;
+            }
+            const navOff = total < 2;
+            if (prevBtn) prevBtn.classList.toggle('slb-nav-off', navOff);
+            if (nextBtn) nextBtn.classList.toggle('slb-nav-off', navOff);
+            slbRefreshPick();
+        }
+        function slbNavigate(dir) {
+            if (_slbList.length < 2) return;
+            _slbIndex = (_slbIndex + dir + _slbList.length) % _slbList.length;   // 循环切换
+            slbRenderCurrent();
+        }
+        function openSkeletalLightbox(it) {
+            const lb = document.getElementById('skeletal-lightbox');
+            if (!lb || !it) return;
+            let entries = slbVisibleEntries();
+            let idx = entries.findIndex(e => e.it === it);
+            if (idx < 0) { entries = [{ it: it, row: null }]; idx = 0; }   // 外来对象：单元素回退
+            _slbList = entries;
+            _slbIndex = idx;
+            slbRenderCurrent();
             lb.style.display = 'flex';
         }
         function hideSkeletalLightbox() {
@@ -8764,14 +8852,46 @@ if (smilesInput) smilesInput.value = smilesToUse;
         }
         window.__openSkeletalLightbox = openSkeletalLightbox;
         window.__hideSkeletalLightbox = hideSkeletalLightbox;
+        window.__skeletalLightbox = {
+            state: () => {
+                const lb = document.getElementById('skeletal-lightbox');
+                const entry = _slbList[_slbIndex];
+                const cb = document.getElementById('skeletal-lightbox-pick-cb');
+                const idxEl = document.getElementById('skeletal-lightbox-index');
+                return {
+                    open: !!lb && lb.style.display !== 'none',
+                    index: _slbIndex,
+                    total: _slbList.length,
+                    name: entry ? entry.it.name : null,
+                    checked: cb ? cb.checked : null,
+                    indexText: idxEl ? idxEl.textContent : '',
+                };
+            },
+            next: () => slbNavigate(1),
+            prev: () => slbNavigate(-1),
+        };
         (function initSkeletalLightbox() {
             const lb = document.getElementById('skeletal-lightbox');
             if (!lb) return;
             const closeBtn = document.getElementById('skeletal-lightbox-close');
             if (closeBtn) closeBtn.addEventListener('click', hideSkeletalLightbox);
+            const prevBtn = document.getElementById('skeletal-lightbox-prev');
+            const nextBtn = document.getElementById('skeletal-lightbox-next');
+            if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); slbNavigate(-1); });
+            if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); slbNavigate(1); });
+            // 勾选「生成此分子」：只走 change（勿加 click 翻转，防 label 双重翻转）
+            const pickCb = document.getElementById('skeletal-lightbox-pick-cb');
+            if (pickCb) pickCb.addEventListener('change', () => {
+                const rowCb = slbRowCheckbox(_slbList[_slbIndex]);
+                if (rowCb) { rowCb.checked = pickCb.checked; updateIsomerCount(); }
+                slbRefreshPick();
+            });
             lb.addEventListener('click', (e) => { if (e.target === lb) hideSkeletalLightbox(); });   // 点暗背景关闭
             window.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && lb.style.display !== 'none') { e.preventDefault(); hideSkeletalLightbox(); }
+                if (lb.style.display === 'none') return;
+                if (e.key === 'Escape') { e.preventDefault(); hideSkeletalLightbox(); }
+                else if (e.key === 'ArrowLeft') { e.preventDefault(); slbNavigate(-1); }
+                else if (e.key === 'ArrowRight') { e.preventDefault(); slbNavigate(1); }
             });
         })();
         function hideIsomerPanel() {
