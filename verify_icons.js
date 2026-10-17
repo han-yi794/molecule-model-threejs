@@ -126,7 +126,7 @@ class AssertionCollector {
                 '#help-card svg[data-icon="keyboard"]',
                 '#help-card svg[data-icon="hand"]',
                 '#help-card svg[data-icon="lightbulb"]',
-                'div.action-btn#btn-toggle-pi svg[data-icon="eye"]'
+                '#settings-body svg[data-icon="eye"]'
             ];
             const missing = await page.evaluate((sels) => sels.filter(s => !document.querySelector(s)), sels);
             const ac = new AssertionCollector();
@@ -176,7 +176,7 @@ class AssertionCollector {
             const ac = new AssertionCollector();
             ac.ok(r3.bad.length === 0, `无残留符号（发现：${r3.bad.join(' | ')}）`);
             ac.ok(r3.helpBtnText === '', `btn-help 文本为空（实际 "${r3.helpBtnText}"）`);
-            ac.ok(r3.bothPi.length === 2, `两处 btn-toggle-pi 均无符号（"${r3.bothPi.join(' / ')}"）`);
+            ac.ok(r3.bothPi.length === 1, `唯一 btn-toggle-pi（设置面板）无符号（"${r3.bothPi.join(' / ')}"）`);
             push('I3 文本无残留 emoji/符号', ac.failed === 0,
                 `pi="${r3.bothPi.join(' / ')}" help="${r3.helpBtnText}" | ${ac.failures.join('；')}`);
         }
