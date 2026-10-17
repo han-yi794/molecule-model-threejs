@@ -1009,19 +1009,10 @@
         <div class="atom-card atom-chlorine" id="drag-chlorine" data-atom="Cl">Cl<small>氯</small></div>
         <div class="atom-card atom-bromine" id="drag-bromine" data-atom="Br">Br<small>溴</small></div>
         <div class="atom-card atom-iodine" id="drag-iodine" data-atom="I">I<small>碘</small></div>
-        <div class="drag-mode-row">
-            <div style="font-size:12px; color:#9ab; margin-bottom:4px;">拖动方式</div>
-            <select id="drag-mode-select" style="width:100%; border-radius:12px; padding:6px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.06);">
-                <option value="plane">平面自由拖</option>
-                <option value="gizmo">三轴手柄</option>
-                <option value="lockstart">起始轴锁</option>
-                <option value="gizmo-lock">手柄 + 起始轴锁</option>
-            </select>
-        </div>
-        <!-- 2026-10-17 原子库清理：除原子卡片外的按钮/下拉全部移除（显示离域π键、π自测、示例下拉、
-             生成、删除选中、自动测试全部）。π 高亮开关在左上「设置」面板；删除原子用原子右上角
-             垃圾桶图标或 Delete/Backspace 键；示例分子/自测走控制台 window.__diag.generate /
-             window.runAllExamplesAndTests()。 -->
+        <!-- 2026-10-17 原子库清理：除原子卡片与提示文字外全部控件移除（显示离域π键、π自测、示例下拉、
+             生成、删除选中、自动测试全部、拖动方式下拉）。拖动方式改右下角徽章单击循环（Shift+点击反向）
+             或 Tab/Shift+Tab；π 高亮开关在左上「设置」面板；删除原子用原子右上角垃圾桶图标或
+             Delete/Backspace 键；示例分子/自测走控制台 window.__diag.generate / window.runAllExamplesAndTests()。 -->
         <div class="hint"><i>按住拖至空间释放</i></div>
     </div>
 

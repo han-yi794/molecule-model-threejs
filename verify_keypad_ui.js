@@ -13,9 +13,10 @@
 //   K6 极矮 375×300（横屏场景）：max-height 生效、整体仍在屏内
 //   K7 视口缩放（1440×900→800×360）后自动重定位、仍在屏内
 //   K8 收起输入面板时键盘同步收起
-//   S1 原子库只剩原子卡片（8 张）+ 拖动方式下拉，.action-btn 数量 0
+//   S1 原子库只剩原子卡片（8 张）+ 提示文字，按钮/下拉（含拖动方式）数量 0
 //   S2 已移除元素不存在；#btn-toggle-pi 全文档唯一且在设置面板内
 //   S3 设置面板 π 开关仍可切换；原子生成/自测入口无回归（__diag.generate + window.runAllExamplesAndTests）
+//   S5 拖动方式仍可切换（右下角徽章点击循环 + Tab 快捷键）
 //   S4 控制台零错误
 // 运行：cmd /c "node verify_keypad_ui.js > verify_keypad_ui.json 2>&1"
 const { chromium } = require('playwright-core');
@@ -196,21 +197,21 @@ class AssertionCollector {
             const r = await page.evaluate(() => ({
                 atoms: document.querySelectorAll('#sidebar .atom-card').length,
                 actionBtns: document.querySelectorAll('#sidebar .action-btn').length,
-                dragSelect: !!document.getElementById('drag-mode-select'),
+                selects: document.querySelectorAll('#sidebar select').length,
                 hint: !!document.querySelector('#sidebar .hint'),
-                removed: ['molecule-select', 'btn-generate-molecule', 'btn-run-all-tests', 'btn-pi-test'].filter(id => document.getElementById(id)),
+                removed: ['molecule-select', 'btn-generate-molecule', 'btn-run-all-tests', 'btn-pi-test', 'drag-mode-select'].filter(id => document.getElementById(id)),
                 piCount: document.querySelectorAll('#btn-toggle-pi').length,
                 piInSettings: !!document.querySelector('#settings-panel #btn-toggle-pi')
             }));
             const ac = new AssertionCollector();
             ac.ok(r.atoms === 8, `8 张原子卡片（实际 ${r.atoms}）`);
             ac.ok(r.actionBtns === 0, `原子库内无 .action-btn（实际 ${r.actionBtns}）`);
-            ac.ok(r.dragSelect, '拖动方式下拉保留');
+            ac.ok(r.selects === 0, `原子库内无下拉（实际 ${r.selects}）`);
             ac.ok(r.hint, '提示文字保留');
             ac.ok(r.removed.length === 0, `已移除元素确认不存在（残留 ${r.removed.join(',') || '无'}）`);
             ac.ok(r.piCount === 1 && r.piInSettings, `#btn-toggle-pi 全文档唯一且在设置面板（count=${r.piCount}）`);
-            push('S1/S2 原子库只剩原子+拖动方式，重复按钮消失', ac.failed === 0,
-                `atoms=${r.atoms} actionBtn=${r.actionBtns} pi=${r.piCount} | ${ac.failures.join('；')}`);
+            push('S1/S2 原子库只剩原子+提示，按钮/下拉全部消失', ac.failed === 0,
+                `atoms=${r.atoms} actionBtn=${r.actionBtns} select=${r.selects} pi=${r.piCount} | ${ac.failures.join('；')}`);
         }
 
         // ---------- S3 功能无回归 ----------
@@ -230,6 +231,23 @@ class AssertionCollector {
             ac.ok(hasRun, 'window.runAllExamplesAndTests 可调用');
             push('S3 设置面板 π 开关 / 生成入口无回归', ac.failed === 0,
                 `chk ${before}→${after} atoms=${gen} runAll=${hasRun} | ${ac.failures.join('；')}`);
+        }
+
+        // ---------- S5 拖动方式仍可切换（徽章点击循环 + Tab 快捷键） ----------
+        {
+            const m0 = await page.evaluate(() => window.__dragMode.get());
+            await page.click('#mode-badge');
+            await page.waitForTimeout(120);
+            const m1 = await page.evaluate(() => window.__dragMode.get());
+            await page.keyboard.press('Tab');
+            await page.waitForTimeout(120);
+            const m2 = await page.evaluate(() => window.__dragMode.get());
+            await page.evaluate((m) => window.__dragMode.set(m), m0);   // 恢复原模式
+            const ac = new AssertionCollector();
+            ac.ok(!!m1 && m1 !== m0, `徽章点击切换（${m0} → ${m1}）`);
+            ac.ok(!!m2 && m2 !== m1, `Tab 键继续循环（${m1} → ${m2}）`);
+            push('S5 徽章/Tab 切换拖动方式（替代已删下拉）', ac.failed === 0,
+                `m0=${m0} badge=${m1} tab=${m2} | ${ac.failures.join('；')}`);
         }
 
         await page.screenshot({ path: '_kp_desktop.png' });
