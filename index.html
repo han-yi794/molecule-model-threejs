@@ -7393,7 +7393,10 @@ const ZH_NAME_FIX = {
             // 2026-09 修复：MyMemory 把"环辛四烯"误译 Cyclooctadecene（环十八碳烯，18 元环），
             // 导致名称输入生成错误分子（应为 cyclooctatetraene，8 元环交替双键）
             '环辛四烯': 'cyclooctatetraene', '环辛烯': 'cyclooctene', '环辛烷': 'cyclooctane',
-            '环丁二烯': 'cyclobutadiene', '环戊二烯': 'cyclopentadiene'
+            '环丁二烯': 'cyclobutadiene', '环戊二烯': 'cyclopentadiene',
+            // 2026-10 修复：MyMemory 首选候选 "Artemisinin" 被回译校验拒绝（其反译首选"苦艾内酯"，与原名重叠 0），
+            // 实际落到长句候选 → PubChem not_found（verify_3d 青蒿素用例失败）→ 修正表直连。
+            '青蒿素': 'artemisinin'
         };
         async function translateZhToEn(name) {
             // 修正表优先（离线、零延迟、术语准确）
@@ -8607,6 +8610,7 @@ function smilesToCondensed(smiles) {
                 let usedName = false;
                 let used3D = false;
                 let finalCount = 0;
+                let resolvedCid = 0;
                 if (!smiles) {
                     usedName = true;
                     const pre = precheckNameInput(name);
@@ -8619,8 +8623,10 @@ function smilesToCondensed(smiles) {
                     if (r && r.error === 'network') { showToast('网络错误，已尝试内置库，请检查连接后重试', 2800); return false; }
                     if (!r || !r.smiles) { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
                     smilesToUse = r.smiles;
-                    // 名称路径统一在下方按 smilesToUse 优先 PubChem 3D（不依赖
-                    // 名称在线查询是否返回 cid；内置库命中同样优先 3D）。
+                    resolvedCid = r.cid ? Number(r.cid) : 0;
+                    // 名称路径统一在下方优先 PubChem 3D：有精确 CID 时先按 CID 取
+                    // （按拓扑 SMILES 检索可能命中无 3D 记录的重复条目，如青蒿素
+                    // 68827 主条目 vs 2240 无立体条目）；内置库命中无 CID，走 SMILES。
 } else {
                     smilesToUse = smiles;
                     // SMILES 输入路径统一在下方优先 PubChem 3D。
@@ -8630,7 +8636,9 @@ function smilesToCondensed(smiles) {
                 // 网络失败/解析失败静默回退下方本地 SMILES 管线。
                 if (smilesToUse && !used3D) {
                     try {
-                        const struct = await fetchPubChem3D('smiles', smilesToUse);
+                        // 名称解析给出精确 CID 时按 CID 优先（避开无 3D 记录的重复条目）
+                        let struct = resolvedCid ? await fetchPubChem3D('cid', String(resolvedCid)) : null;
+                        if (!struct) struct = await fetchPubChem3D('smiles', smilesToUse);
                         if (struct) {
                             finalCount = generateFrom3D(struct);
                             used3D = true;
