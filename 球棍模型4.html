@@ -473,6 +473,37 @@
         }
         #skeletal-lightbox-close:hover { background: rgba(255, 80, 80, 0.2); color: #b3261e; }
         #skeletal-lightbox-loading { color: #8a94a3; font-size: 13px; margin-top: 8px; }
+        /* 异构体筛选（2026-10）：官能团 chips + ¹H NMR 条件 */
+        #isomer-filter {
+            display: flex; flex-direction: column; gap: 6px; padding: 8px 9px 9px; margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px;
+        }
+        .isof-row { display: flex; align-items: center; gap: 5px 8px; flex-wrap: wrap; font-size: 12px; color: #9ab; }
+        .isof-cap { color: #8b97a8; flex-shrink: 0; }
+        .isof-chip {
+            cursor: pointer; user-select: none; padding: 1px 8px; border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.16); color: #cfd6e2; background: rgba(255, 255, 255, 0.04);
+            font-size: 12px; line-height: 17px; white-space: nowrap;
+            transition: background 0.12s, color 0.12s, border-color 0.12s;
+        }
+        .isof-chip:hover { border-color: rgba(255, 210, 138, 0.55); color: #ffe1ad; }
+        .isof-chip.on { background: #e8b44c; border-color: #e8b44c; color: #1a1f27; font-weight: bold; }
+        #isomer-nmr-count {
+            width: 92px; box-sizing: border-box; background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; color: #e8eefc;
+            font-size: 12px; padding: 2px 6px; outline: none;
+        }
+        #isomer-nmr-count.isof-invalid { border-color: #ff6b6b; }
+        #isomer-filter-mode { background: rgba(16, 22, 38, 0.9); color: #e8eefc; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; font-size: 12px; padding: 2px 4px; }
+        .isof-status { margin-left: auto; color: #8fa0b8; }
+        .isof-reset { cursor: pointer; color: #ffd28a; }
+        .isof-reset:hover { text-decoration: underline; }
+        .isof-check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: #9ab; white-space: nowrap; }
+        .isof-check input { accent-color: #ffd28a; }
+        .isof-tags { font-size: 11px; color: #8b97a8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .isof-tags .tg-g { color: #ffd28a; }
+        .isof-tags .tg-n { color: #9fd0ff; }
+        .isof-tags .tg-sep { color: #5a6472; }
         #sidebar::-webkit-scrollbar {
             width: 4px;
         }
@@ -643,8 +674,8 @@
             #sidebar select, #group-sidebar select { width: min(120px, 12vw); font-size: min(12px, 1.2vw); }
             #sidebar .action-btn, #group-sidebar .action-btn { font-size: min(12px, 1.2vw); padding: min(6px, 0.6vw); }
             /* 浮层限宽防溢出 */
-            #isomer-panel { width: min(480px, 94vw); max-height: 82vh; }
-            #isomer-list { max-height: calc(82vh - 90px); }
+            #isomer-panel { width: min(640px, 94vw); max-height: 86vh; }
+            #isomer-list { max-height: none; }
             #formula-keypad { width: min(230px, 92vw); }
             #candidate-panel { max-width: min(440px, 92vw); }
             #toast-message { max-width: 92vw; white-space: normal; }
@@ -841,12 +872,31 @@
             </div>
         </div>
     </div>
-    <div id="isomer-panel" style="display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:480px; max-height:70vh; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:14px; z-index:1000; padding:14px; box-shadow:0 8px 40px rgba(0,0,0,0.6); overflow:hidden; flex-direction:column;">
+    <div id="isomer-panel" style="display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:640px; max-height:76vh; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:14px; z-index:1000; padding:14px; box-shadow:0 8px 40px rgba(0,0,0,0.6); overflow:hidden; flex-direction:column;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <b style="color:#fff; font-size:14px;"><span id="isomer-panel-title">异构体</span></b>
             <span id="isomer-panel-close" data-icon="x" data-size="16" style="cursor:pointer; color:#9ab; line-height:1; display:inline-flex;"></span>
         </div>
-        <div id="isomer-list" style="overflow-y:auto; flex:1; max-height:calc(70vh - 90px);"></div>
+        <div id="isomer-filter">
+            <div class="isof-row">
+                <span class="isof-cap">官能团</span>
+                <span id="isomer-group-chips" style="display:flex; flex-wrap:wrap; gap:4px 6px;"></span>
+            </div>
+            <div class="isof-row">
+                <span class="isof-cap">¹H NMR</span>
+                <span>峰组数</span>
+                <input type="text" id="isomer-nmr-count" placeholder="如 3 / ≥3 / 2-4" title="支持 =n、>n、<n、a-b 区间；默认不计时全部" autocomplete="off" />
+                <label class="isof-check"><input type="checkbox" id="isomer-nmr-noexch" />排除活泼氢</label>
+                <span id="isomer-nmr-types" style="display:flex; flex-wrap:wrap; gap:4px 6px;"></span>
+            </div>
+            <div class="isof-row">
+                <span class="isof-cap">多条件</span>
+                <select id="isomer-filter-mode"><option value="all">满足全部</option><option value="any">满足任一</option></select>
+                <span class="isof-reset" id="isomer-filter-reset">重置筛选</span>
+                <span class="isof-status" id="isomer-filter-status"></span>
+            </div>
+        </div>
+        <div id="isomer-list" style="overflow-y:auto; flex:1 1 auto; min-height:0;"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
             <label style="color:#9ab; font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;">
                 <input type="checkbox" id="isomer-select-all" style="accent-color:#ffd28a;" /> 全选
@@ -7909,6 +7959,470 @@ function smilesToCondensed(smiles) {
     } catch (e) { return null; }
 }
         /* CONDENSE_END */
+        /* ISOFILTER_BEGIN */
+        /* ---- 异构体结构筛选（2026-10）：候选 SMILES → 官能团 + ¹H NMR 特征 ----
+           analyzeIsomerStructure(smiles) 为纯函数、失败返回 null 不抛错。
+           · 官能团/结构：羟基、醛基、羧基、酯基、醚键、酮羰基、氨基、酰胺、氰基、
+             硝基、苯环、芳香环、环、甲基、C=C、C≡C、卤素（图模式匹配）。
+           · ¹H NMR：Weisfeiler-Lehman 迭代精化求 H 环境等价类（"几组氢"），
+             组内质子数按最大公约数化简为积分比；活泼氢（O-H/N-H/S-H）可单独排除。
+           · Kekulé 式芳环（PubChem ConnectivitySMILES 常见写法，如 C1=CC=CC=C1）
+             按环内键级交替规则识别，归一为芳香（避免苯环 H 被误判为烯氢）。
+           已知限制：方括号内电荷不参与价态修正（候选列表本身已过滤含 '[' 的 SMILES）。 */
+        const ISOF_GROUP_DEFS = [
+            { key: 'oh',       label: '羟基',   tip: 'O–H（醇 / 酚 / 羧酸）' },
+            { key: 'ald',      label: '醛基',   tip: '–CHO' },
+            { key: 'cooh',     label: '羧基',   tip: '–COOH' },
+            { key: 'ester',    label: '酯基',   tip: '–COO–' },
+            { key: 'ether',    label: '醚键',   tip: 'C–O–C' },
+            { key: 'ketone',   label: '酮羰基', tip: 'C=O（两侧均为碳）' },
+            { key: 'amine',    label: '氨基',   tip: 'N–H（非酰胺）' },
+            { key: 'amide',    label: '酰胺',   tip: '–CO–N' },
+            { key: 'nitrile',  label: '氰基',   tip: 'C≡N' },
+            { key: 'nitro',    label: '硝基',   tip: '–NO₂' },
+            { key: 'benzene',  label: '苯环',   tip: '六元碳芳环' },
+            { key: 'aromatic', label: '芳香环', tip: '含杂原子的芳环也算' },
+            { key: 'ring',     label: '环',     tip: '任意环（脂环 / 芳环）' },
+            { key: 'methyl',   label: '甲基',   tip: '–CH₃（连碳）' },
+            { key: 'c=c',      label: 'C=C',    tip: '碳碳双键（非芳环内）' },
+            { key: 'c#c',      label: 'C≡C',    tip: '碳碳三键' },
+            { key: 'halogen',  label: '卤素',   tip: 'F / Cl / Br / I' },
+        ];
+        const ISOF_H_TYPE_DEFS = [
+            { key: 'ald',  label: '醛氢',   tip: 'δ≈8–10（醛基 / 甲酸酯 CHO）' },
+            { key: 'ar',   label: '芳香氢', tip: 'δ≈6.5–8.5' },
+            { key: 'ene',  label: '烯氢',   tip: 'δ≈4.5–6.5' },
+            { key: 'yne',  label: '炔氢',   tip: 'δ≈1.5–3' },
+            { key: 'cooh', label: '羧酸氢', tip: 'δ≈10–13（宽）' },
+            { key: 'oh',   label: '羟基氢', tip: 'δ≈1–5（宽）' },
+            { key: 'nh',   label: '氨基氢', tip: 'δ≈1–3（宽）' },
+            { key: 'sh',   label: '硫醇氢', tip: 'δ≈1–1.5（宽）' },
+        ];
+        const ISOF_VALENCE = { C: 4, N: 3, O: 2, S: 2, P: 3, B: 3, F: 1, Cl: 1, Br: 1, I: 1, Si: 4, H: 1 };
+        const ISOF_HALOGENS = ['F', 'Cl', 'Br', 'I'];
+
+        function isofBondKey(a, b) { return a < b ? a + '_' + b : b + '_' + a; }
+
+        // ---- 全部基本环（长度 ≤ maxLen，按顶点集合去重）----
+        function isofFindRings(adj, maxLen) {
+            const n = adj.length, out = [], seen = Object.create(null);
+            for (let s = 0; s < n; s++) {
+                const path = [s], inPath = new Array(n).fill(false);
+                inPath[s] = true;
+                const dfs = (u) => {
+                    if (path.length > maxLen) return;
+                    for (const e of adj[u]) {
+                        const v = e.j;
+                        if (v === s) {
+                            if (path.length >= 3) {
+                                const key = path.slice().sort((a, b) => a - b).join('_');
+                                if (!seen[key]) { seen[key] = 1; out.push(path.slice()); }
+                            }
+                        } else if (v > s && !inPath[v]) {
+                            inPath[v] = true; path.push(v);
+                            dfs(v);
+                            path.pop(); inPath[v] = false;
+                        }
+                    }
+                };
+                dfs(s);
+            }
+            return out;
+        }
+
+        // ---- 价态推定隐含 H（芳香键按 1.5；方括号显式 H 取较大者）----
+        function isofHCounts(atoms, adj) {
+            return atoms.map((a, i) => {
+                let sum = 0;
+                for (const e of adj[i]) sum += e.order;
+                const v = ISOF_VALENCE[a.type];
+                const base = (v === undefined) ? 0 : Math.max(0, v - sum);
+                return (a.explicitH !== undefined) ? Math.max(a.explicitH, base) : base;
+            });
+        }
+
+        // ---- 环芳香判定：5/6 元 C/N/O/S 环，三条互斥分支 ----
+        // ① 全 1.5 键（芳香记号写法）；② 环内 Kekulé 交替（每环碳恰 1 条环内双键）；
+        // ③ 稠合 Kekulé（萘的"2 双键环"等）：每个环碳恰 1 条双键（环内或环外均算），
+        //    双键伙伴必须是碳且自身在某个环中（排除富烯/亚甲基环己二烯的孤立外双键）；
+        //    C=O 外双键（醌型）因伙伴非碳被排除。
+        function isofRingAromCandidate(ring, atoms, orderOf, adj, ringAtomSet) {
+            const sz = ring.length;
+            if (sz !== 5 && sz !== 6) return false;
+            for (const i of ring) if (['C', 'N', 'O', 'S'].indexOf(atoms[i].type) < 0) return false;
+            const orders = ring.map((i, k) => orderOf(i, ring[(k + 1) % sz]));
+            if (orders.some(o => o === null)) return false;
+            if (orders.every(o => Math.abs(o - 1.5) < 0.01)) return true;
+            const dblIn = orders.filter(o => Math.abs(o - 2) < 0.01).length;
+            // 分支②：环内交替
+            if (orders.every(o => (Math.abs(o - 1) < 0.01 || Math.abs(o - 2) < 0.01)) && dblIn === Math.floor(sz / 2)) {
+                let ok = true;
+                for (let k = 0; k < sz; k++) {
+                    const prevO = orders[(k - 1 + sz) % sz], nextO = orders[k];
+                    const d = (Math.abs(prevO - 2) < 0.01 ? 1 : 0) + (Math.abs(nextO - 2) < 0.01 ? 1 : 0);
+                    if (d > 1 || (atoms[ring[k]].type === 'C' && d !== 1)) { ok = false; break; }
+                }
+                if (ok) return true;
+            }
+            // 分支③：稠合 Kekulé（每个环碳恰 1 条双键；双键伙伴为碳且在环中）
+            if (dblIn < 2) return false;
+            for (const i of ring) {
+                const el = atoms[i].type;
+                const dbls = adj[i].filter(e => Math.abs(e.order - 2) < 0.01);
+                if (el === 'C') {
+                    if (dbls.length !== 1) return false;
+                    if (!(dbls[0] && atoms[dbls[0].j].type === 'C' && ringAtomSet.has(dbls[0].j))) return false;
+                } else if (dbls.length > 1) return false;
+            }
+            return true;
+        }
+
+        function isofAnalyzeStructure(smiles) {
+            try {
+                const p = parseSmiles(smiles);
+                if (!p || p.error || !p.atoms || !p.atoms.length) return null;
+                const atoms = p.atoms, bonds = p.bonds, n = atoms.length;
+                const adj = atoms.map(() => []);
+                const bondIdx = Object.create(null);
+                bonds.forEach((b, bi) => {
+                    adj[b[0]].push({ j: b[1], order: b[2], bi: bi });
+                    adj[b[1]].push({ j: b[0], order: b[2], bi: bi });
+                    bondIdx[isofBondKey(b[0], b[1])] = bi;
+                });
+                const orderOf = (a, b) => {
+                    const bi = bondIdx[isofBondKey(a, b)];
+                    return bi === undefined ? null : bonds[bi][2];
+                };
+                const hC = isofHCounts(atoms, adj);
+                const isC = i => atoms[i].type === 'C';
+
+                // ---- 环枚举 + 芳香归一（Kekulé → 芳环标记；不改键级，避免影响 H 计数）----
+                const rings = isofFindRings(adj, 12);
+                const aromMark = atoms.map(a => a.aromatic === true);
+                const aromRingBond = new Set();
+                const ringAtomSet = new Set();
+                rings.forEach(r => r.forEach(i => ringAtomSet.add(i)));
+                const aromCandidate = (ring) => isofRingAromCandidate(ring, atoms, orderOf, adj, ringAtomSet);
+                rings.forEach(ring => {
+                    if (!aromCandidate(ring)) return;
+                    ring.forEach(i => { aromMark[i] = true; });
+                    ring.forEach((i, k) => {
+                        const bi = bondIdx[isofBondKey(i, ring[(k + 1) % ring.length])];
+                        if (bi !== undefined) aromRingBond.add(bi);
+                    });
+                });
+                const hasBenzene = rings.some(r => r.length === 6 && r.every(isC) && aromCandidate(r));
+
+                // ---- 官能团 ----
+                const G = Object.create(null);
+                const dblO = i => adj[i].filter(e => atoms[e.j].type === 'O' && Math.abs(e.order - 2) < 0.01);
+                const oNb = i => adj[i].filter(e => atoms[e.j].type === 'O');
+                const cNb = i => adj[i].filter(e => isC(e.j));
+                for (let i = 0; i < n; i++) {
+                    const el = atoms[i].type;
+                    if (el === 'O' && hC[i] >= 1 && adj[i].some(e => isC(e.j) && e.order < 1.9)) G.oh = true;
+                    if (isC(i) && !aromMark[i] && hC[i] >= 1 && dblO(i).length === 1) {
+                        // 醛基：C(=O)H，除羰基 O 外只允许碳邻居（排除甲酰胺/甲酸酯）
+                        if (oNb(i).length === 1 && adj[i].every(e => atoms[e.j].type === 'O' ? Math.abs(e.order - 2) < 0.01 : isC(e.j))) G.ald = true;
+                    }
+                    if (isC(i) && dblO(i).length >= 1 && adj[i].some(e => atoms[e.j].type === 'O' && e.order < 1.9 && hC[e.j] >= 1)) G.cooh = true;
+                    if (isC(i) && dblO(i).length >= 1 && adj[i].some(e => atoms[e.j].type === 'O' && e.order < 1.9 && hC[e.j] === 0
+                        && adj[e.j].some(e2 => isC(e2.j) && e2.order < 1.9))) G.ester = true;
+                    if (el === 'O' && !aromMark[i] && hC[i] === 0 && adj[i].length === 2 && adj[i].every(e => isC(e.j) && e.order < 1.9 && dblO(e.j).length === 0)) G.ether = true;
+                    if (isC(i) && hC[i] === 0 && oNb(i).length === 1 && Math.abs(oNb(i)[0].order - 2) < 0.01 && cNb(i).length === 2) G.ketone = true;
+                    if (el === 'N' && !aromMark[i] && hC[i] >= 1 && !adj[i].some(e => isC(e.j) && dblO(e.j).length >= 1)) G.amine = true;
+                    if (isC(i) && dblO(i).length >= 1 && adj[i].some(e => atoms[e.j].type === 'N')) G.amide = true;
+                    if (el === 'N' && dblO(i).length >= 1 && oNb(i).length >= 2) G.nitro = true;
+                    if (isC(i) && hC[i] === 3 && cNb(i).some(e => e.order < 1.9)) G.methyl = true;
+                    if (ISOF_HALOGENS.indexOf(el) >= 0) G.halogen = true;
+                }
+                bonds.forEach(b => {
+                    const a = b[0], c = b[1], o = b[2];
+                    if (isC(a) && isC(c)) {
+                        if (o > 1.9 && o < 2.1 && !aromRingBond.has(bondIdx[isofBondKey(a, c)])) G['c=c'] = true;
+                        if (o > 2.9) G['c#c'] = true;
+                    }
+                    if (o > 2.9 && ((atoms[a].type === 'C' && atoms[c].type === 'N') || (atoms[a].type === 'N' && atoms[c].type === 'C'))) G.nitrile = true;
+                });
+                if (aromMark.some(Boolean)) G.aromatic = true;
+                if (hasBenzene) G.benzene = true;
+                if (rings.length) G.ring = true;
+                if (!G.ring) {
+                    // >12 元大环兜底：按连通分量 E≥V 判定存在环
+                    const comp = new Array(n).fill(-1);
+                    let cc = 0;
+                    for (let i = 0; i < n; i++) {
+                        if (comp[i] >= 0) continue;
+                        const st = [i]; comp[i] = cc;
+                        while (st.length) { const u = st.pop(); adj[u].forEach(e => { if (comp[e.j] < 0) { comp[e.j] = cc; st.push(e.j); } }); }
+                        cc++;
+                    }
+                    const eCount = new Array(cc).fill(0), vCount = new Array(cc).fill(0);
+                    for (let i = 0; i < n; i++) vCount[comp[i]]++;
+                    bonds.forEach(b => eCount[comp[b[0]]]++);
+                    for (let c = 0; c < cc; c++) if (vCount[c] > 2 && eCount[c] >= vCount[c]) { G.ring = true; break; }
+                }
+
+                // ---- ¹H 环境等价类（Weisfeiler-Lehman 迭代精化）----
+                const canon = (arr) => {
+                    const m = new Map();
+                    return arr.map(s => { if (!m.has(s)) m.set(s, m.size); return m.get(s); });
+                };
+                let idArr = canon(atoms.map((a, i) => (aromMark[i] ? 'a' : '') + a.type + '|' + hC[i]));
+                let nCls = new Set(idArr).size;
+                for (let it = 0; it < n + 2; it++) {
+                    // 芳环内键按等效 1.5 计：Kekulé 写法的 2/1 交替会破坏对称性（如吡啶 α/β 碳分不开）
+                    const effO = (e) => aromRingBond.has(e.bi) ? 1.5 : e.order;
+                    const sig = atoms.map((a, i) => idArr[i] + '[' + adj[i].map(e => effO(e) + ':' + idArr[e.j]).sort().join(',') + ']');
+                    idArr = canon(sig);
+                    const c2 = new Set(idArr).size;
+                    if (c2 === nCls) break;
+                    nCls = c2;
+                }
+                const hTypeOf = (i) => {
+                    const el = atoms[i].type;
+                    if (el === 'O') return adj[i].some(e => isC(e.j) && e.order < 1.9 && dblO(e.j).length >= 1) ? 'cooh' : 'oh';
+                    if (el === 'N') return 'nh';
+                    if (el === 'S') return 'sh';
+                    if (aromMark[i]) return 'ar';
+                    if (dblO(i).length >= 1) return 'ald';
+                    if (adj[i].some(e => e.order > 2.9 && isC(e.j))) return 'yne';
+                    if (adj[i].some(e => e.order > 1.9 && e.order < 2.1 && isC(e.j))) return 'ene';
+                    return 'sat';
+                };
+                const hClasses = [];
+                const byId = new Map();
+                for (let i = 0; i < n; i++) {
+                    if (hC[i] <= 0) continue;
+                    let cls = byId.get(idArr[i]);
+                    if (!cls) {
+                        cls = { protons: 0, nAtoms: 0, rep: i, type: hTypeOf(i) };
+                        cls.exch = (atoms[i].type === 'O' || atoms[i].type === 'N' || atoms[i].type === 'S');
+                        byId.set(idArr[i], cls);
+                        hClasses.push(cls);
+                    }
+                    cls.protons += hC[i];   // 同一等价类可能含多个原子（如苯环 6×1H → 6H）
+                    cls.nAtoms += 1;
+                }
+                const gcd = (a, b) => b ? gcd(b, a % b) : a;
+                const ratioOf = (list) => {
+                    const ps = list.map(c => c.protons);
+                    if (!ps.length) return '';
+                    if (ps.length === 1) return ps[0] + 'H';
+                    let g = ps.reduce((x, y) => gcd(x, y));
+                    if (!g) g = 1;
+                    return ps.map(p => p / g).join(':');
+                };
+                const hTypes = {};
+                ISOF_H_TYPE_DEFS.forEach(d => { hTypes[d.key] = false; });
+                hClasses.forEach(c => {
+                    if (c.type === 'cooh') { hTypes.cooh = true; hTypes.oh = true; }
+                    else if (hTypes[c.type] !== undefined) hTypes[c.type] = true;
+                });
+                const noExchCls = hClasses.filter(c => !c.exch);
+                return {
+                    groups: ISOF_GROUP_DEFS.filter(d => G[d.key]).map(d => d.key),
+                    groupSet: G,
+                    hClasses: hClasses.map(c => ({ protons: c.protons, type: c.type, exch: c.exch })),
+                    count: hClasses.length,
+                    countNoExch: noExchCls.length,
+                    ratio: ratioOf(hClasses),
+                    ratioNoExch: ratioOf(noExchCls),
+                    hTypes: hTypes,
+                    hTotal: hC.reduce((a, b) => a + b, 0),
+                };
+            } catch (e) { return null; }
+        }
+        window.__analyzeIsomerStructure = isofAnalyzeStructure;
+
+        // ---- 峰组数表达式：空=不限；n / =n / >n / >=n / <n / <=n / a-b 区间；非法返回 undefined ----
+        function isofParseCountExpr(raw) {
+            let s = String(raw == null ? '' : raw).trim();
+            if (!s) return null;
+            s = s.replace(/[组个]/g, '').trim()
+                 .replace(/≤/g, '<=').replace(/≥/g, '>=')
+                 .replace(/＜/g, '<').replace(/＞/g, '>');
+            const m = s.match(/^([<>=]{1,2})?\s*(\d{1,3})(?:\s*[-~～–—至到]\s*(\d{1,3}))?$/);
+            if (!m) return undefined;
+            const op = m[1] || '=';
+            const a = parseInt(m[2], 10);
+            if (m[3] !== undefined) {
+                if (op !== '=') return undefined;
+                const b = parseInt(m[3], 10);
+                return { kind: 'range', lo: Math.min(a, b), hi: Math.max(a, b) };
+            }
+            if (['=', '>=', '<=', '>', '<'].indexOf(op) < 0) return undefined;
+            return { kind: 'cmp', op: op, n: a };
+        }
+        function isofMatchCount(expr, v) {
+            if (!expr) return true;
+            if (expr.kind === 'range') return v >= expr.lo && v <= expr.hi;
+            const n = expr.n;
+            if (expr.op === '=') return v === n;
+            if (expr.op === '>=') return v >= n;
+            if (expr.op === '<=') return v <= n;
+            if (expr.op === '>') return v > n;
+            if (expr.op === '<') return v < n;
+            return true;
+        }
+
+        // ---- 筛选状态 + 面板接线 ----
+        const _isofState = { groups: new Set(), types: new Set(), countRaw: '', noExch: false, mode: 'all' };
+        let _isofInited = false;
+
+        function isofRowMatches(an, expr) {
+            const f = _isofState;
+            if (!f.groups.size && !f.types.size && !expr) return true;   // 无筛选条件：全部显示（含分析不可用的行）
+            if (!an) return false;                                       // 有筛选条件但结构分析不可用：无法匹配
+            const conds = [];
+            f.groups.forEach(k => conds.push(an.groupSet[k] === true));
+            f.types.forEach(k => conds.push(!!an.hTypes[k]));
+            if (expr) conds.push(isofMatchCount(expr, f.noExch ? an.countNoExch : an.count));
+            return f.mode === 'all' ? conds.every(Boolean) : conds.some(Boolean);
+        }
+        function isofApplyFilter() {
+            const list = document.getElementById('isomer-list');
+            const rows = list ? Array.from(list.children) : [];
+            const expr = isofParseCountExpr(_isofState.countRaw);
+            const cnt = document.getElementById('isomer-nmr-count');
+            if (cnt) cnt.classList.toggle('isof-invalid', expr === undefined);
+            const eff = (expr === undefined || expr === null) ? null : expr;
+            let shown = 0;
+            rows.forEach(row => {
+                const vis = isofRowMatches(row._an, eff);
+                // 注意：可见时须显式写回 'flex'——设为 '' 会删除行元素的内联 display:flex（label 退回 inline，行布局崩塌）
+                row.style.display = vis ? 'flex' : 'none';
+                if (vis) shown++;
+            });
+            const st = document.getElementById('isomer-filter-status');
+            if (st) st.textContent = rows.length ? ('显示 ' + shown + ' / ' + rows.length) : '';
+            return { shown: shown, total: rows.length };
+        }
+        function isofUpdateRowTags() {
+            const list = document.getElementById('isomer-list');
+            if (!list) return;
+            Array.from(list.children).forEach(row => {
+                const tag = row.querySelector('.isof-tags');
+                if (!tag) return;
+                tag.textContent = '';
+                const an = row._an;
+                if (!an) { tag.textContent = '结构分析不可用'; return; }
+                const labels = (an.groups || []).map(k => {
+                    const d = ISOF_GROUP_DEFS.find(x => x.key === k);
+                    return d ? d.label : k;
+                });
+                const gs = document.createElement('span');
+                gs.className = 'tg-g';
+                gs.textContent = labels.length ? labels.join(' · ') : '—';
+                tag.appendChild(document.createTextNode('基团：'));
+                tag.appendChild(gs);
+                const sep = document.createElement('span');
+                sep.className = 'tg-sep';
+                sep.textContent = '  ｜  ';
+                tag.appendChild(sep);
+                const nn = _isofState.noExch ? an.countNoExch : an.count;
+                const rr = _isofState.noExch ? an.ratioNoExch : an.ratio;
+                const ns = document.createElement('span');
+                ns.className = 'tg-n';
+                ns.textContent = '¹H NMR：' + (nn ? (nn + ' 组 (' + rr + ')') : '无氢') + (_isofState.noExch ? ' · 不含活泼氢' : '');
+                tag.appendChild(ns);
+            });
+        }
+        function isofSyncUI() {
+            document.querySelectorAll('#isomer-group-chips .isof-chip').forEach(c => c.classList.toggle('on', _isofState.groups.has(c.dataset.key)));
+            document.querySelectorAll('#isomer-nmr-types .isof-chip').forEach(c => c.classList.toggle('on', _isofState.types.has(c.dataset.key)));
+            const cnt = document.getElementById('isomer-nmr-count');
+            if (cnt) { cnt.value = _isofState.countRaw; cnt.classList.toggle('isof-invalid', isofParseCountExpr(_isofState.countRaw) === undefined); }
+            const nx = document.getElementById('isomer-nmr-noexch');
+            if (nx) nx.checked = _isofState.noExch;
+            const md = document.getElementById('isomer-filter-mode');
+            if (md) md.value = _isofState.mode;
+        }
+        function isofResetFilter() {
+            _isofState.groups.clear(); _isofState.types.clear();
+            _isofState.countRaw = ''; _isofState.noExch = false; _isofState.mode = 'all';
+            isofSyncUI();
+            isofUpdateRowTags();
+            return isofApplyFilter();
+        }
+        function isofBuildChips() {
+            const gWrap = document.getElementById('isomer-group-chips');
+            const tWrap = document.getElementById('isomer-nmr-types');
+            if (!gWrap || !tWrap || gWrap.childElementCount) return;
+            ISOF_GROUP_DEFS.forEach(d => {
+                const chip = document.createElement('span');
+                chip.className = 'isof-chip';
+                chip.dataset.scope = 'g';
+                chip.dataset.key = d.key;
+                chip.textContent = d.label;
+                chip.title = d.tip || '';
+                chip.addEventListener('click', () => {
+                    if (_isofState.groups.has(d.key)) _isofState.groups.delete(d.key); else _isofState.groups.add(d.key);
+                    chip.classList.toggle('on', _isofState.groups.has(d.key));
+                    isofApplyFilter();
+                });
+                gWrap.appendChild(chip);
+            });
+            ISOF_H_TYPE_DEFS.forEach(d => {
+                const chip = document.createElement('span');
+                chip.className = 'isof-chip';
+                chip.dataset.scope = 't';
+                chip.dataset.key = d.key;
+                chip.textContent = d.label;
+                chip.title = d.tip || '';
+                chip.addEventListener('click', () => {
+                    if (_isofState.types.has(d.key)) _isofState.types.delete(d.key); else _isofState.types.add(d.key);
+                    chip.classList.toggle('on', _isofState.types.has(d.key));
+                    isofApplyFilter();
+                });
+                tWrap.appendChild(chip);
+            });
+        }
+        function isofInitUI() {
+            if (_isofInited) return;
+            _isofInited = true;
+            isofBuildChips();
+            const cnt = document.getElementById('isomer-nmr-count');
+            if (cnt) cnt.addEventListener('input', () => { _isofState.countRaw = cnt.value; isofApplyFilter(); });
+            const nx = document.getElementById('isomer-nmr-noexch');
+            if (nx) nx.addEventListener('change', () => { _isofState.noExch = nx.checked; isofUpdateRowTags(); isofApplyFilter(); });
+            const md = document.getElementById('isomer-filter-mode');
+            if (md) md.addEventListener('change', () => { _isofState.mode = md.value; isofApplyFilter(); });
+            const rs = document.getElementById('isomer-filter-reset');
+            if (rs) rs.addEventListener('click', () => isofResetFilter());
+        }
+        window.__isomerFilter = {
+            analyze: isofAnalyzeStructure,
+            groupKeys: ISOF_GROUP_DEFS.map(d => d.key),
+            typeKeys: ISOF_H_TYPE_DEFS.map(d => d.key),
+            parseCount: isofParseCountExpr,
+            matchCount: isofMatchCount,
+            state: () => ({ groups: Array.from(_isofState.groups), types: Array.from(_isofState.types), countRaw: _isofState.countRaw, noExch: _isofState.noExch, mode: _isofState.mode }),
+            set: (p) => {
+                if (p) {
+                    if (p.groups) _isofState.groups = new Set(p.groups);
+                    if (p.types) _isofState.types = new Set(p.types);
+                    if (typeof p.countRaw === 'string') _isofState.countRaw = p.countRaw;
+                    if (typeof p.noExch === 'boolean') _isofState.noExch = p.noExch;
+                    if (p.mode) _isofState.mode = p.mode;
+                }
+                isofSyncUI();
+                isofUpdateRowTags();
+                return isofApplyFilter();
+            },
+            reset: isofResetFilter,
+            apply: isofApplyFilter,
+            rows: () => Array.from(document.querySelectorAll('#isomer-list label')).map(r => {
+                const cb = r.querySelector('input[type="checkbox"]');
+                return {
+                    name: r.textContent,
+                    vis: r.style.display !== 'none',
+                    checked: !!(cb && cb.checked),
+                    an: r._an ? { groups: r._an.groups, count: r._an.count, countNoExch: r._an.countNoExch, ratio: r._an.ratio, ratioNoExch: r._an.ratioNoExch, hTypes: r._an.hTypes } : null,
+                };
+            }),
+        };
+        /* ISOFILTER_END */
         // 展示用：结构简式里的全部数字转 Unicode 下标（含 (CH3)2 末尾的 2；此函数不能用了
         // toSubscriptFormula 的正则，它只处理“元素+数字”，不会处理右括号后的计数）。
         function toSubscriptCondensed(str) {
@@ -8138,21 +8652,35 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 const cb = document.createElement('input');
                 cb.type = 'checkbox'; cb.value = String(idx);
                 cb.style.cssText = 'accent-color:#ffd28a; flex-shrink:0;';
-                const info = document.createElement('span');
-                info.style.cssText = 'font-size:13px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;';
+                // 勾选状态变化同步计数。陷阱：行 label 上的 click 翻转 + label 原生激活 = 双重翻转净无效，
+                // 故此处置为"只监听 change"（点击行文字/勾选框均由浏览器原生激活产生一次 change）。
+                cb.addEventListener('change', updateIsomerCount);
+                const info = document.createElement('div');
+                info.style.cssText = 'font-size:13px; color:#fff; flex:1; min-width:0;';
+                const line1 = document.createElement('div');
+                line1.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
                 const nameSpan = document.createElement('span');
                 nameSpan.textContent = it.name + '   (' + toSubscriptFormula(it.formula) + ')';
-                info.appendChild(nameSpan);
+                line1.appendChild(nameSpan);
                 if (it.cond) {
                     const condSpan = document.createElement('span');
                     condSpan.textContent = toSubscriptCondensed(it.cond);
                     condSpan.style.cssText = 'color:#ffd28a; margin-left:10px;';
-                    info.appendChild(condSpan);
+                    line1.appendChild(condSpan);
                 }
                 const smiSpan = document.createElement('span');
                 smiSpan.textContent = it.smiles;
                 smiSpan.style.cssText = 'color:#93a1b5; margin-left:10px;';
-                info.appendChild(smiSpan);
+                line1.appendChild(smiSpan);
+                info.appendChild(line1);
+                // 第二行：官能团 + ¹H NMR 标签（筛选依据的可视化，isofUpdateRowTags 填充）
+                const line2 = document.createElement('div');
+                line2.className = 'isof-tags';
+                info.appendChild(line2);
+                if (it._an === undefined) {
+                    try { it._an = isofAnalyzeStructure(it.smiles); } catch (e) { it._an = null; }
+                }
+                row._an = it._an;
                 info.title = (it.cond ? it.cond + '   |   ' : '') + it.smiles;
                 // 键线式缩略图（PubChem 2D 描绘，懒加载；离线或失败时自动隐藏）
                 const thumbWrap = document.createElement('span');
@@ -8175,14 +8703,20 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 });
                 thumbWrap.appendChild(thumb);
                 row.appendChild(cb); row.appendChild(info); row.appendChild(thumbWrap);
-                row.addEventListener('click', () => { cb.checked = !cb.checked; updateIsomerCount(); });
                 list.appendChild(row);
             });
             const allEl = document.getElementById('isomer-select-all');
             if (allEl) allEl.addEventListener('change', () => {
-                list.querySelectorAll('input[type="checkbox"]').forEach(c => { c.checked = allEl.checked; });
+                // 全选/全不选只作用于"当前筛选可见"的行
+                Array.from(list.children).forEach(row => {
+                    if (row.style.display === 'none') return;
+                    const c = row.querySelector('input[type="checkbox"]');
+                    if (c) c.checked = allEl.checked;
+                });
                 updateIsomerCount();
             });
+            isofInitUI();
+            isofResetFilter();   // 新一批候选：清空上次筛选条件并应用
             if (panel) panel.style.display = 'flex';
             updateIsomerCount();
         }
