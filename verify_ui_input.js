@@ -127,10 +127,16 @@ class AssertionCollector {
             await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
             await page.fill('#name-input', 'ethanol');
             await page.click('#btn-molecule-from-input');
-            const n = await waitFor(async () => { const c = await atomCount(); return c === 9 ? c : null; }, 30000, 'ethanol 原子数');
+            // 完成信号必须用 toast（而非"原子数===9"）：场景 2 遗留的 9 原子乙醇会让该计数
+            // 在点击后首次轮询（~50ms）立即为真，而名称流程要走网络（~0.3-1.6s）→ 在流程中途
+            // 读 toast 得"正在解析名称…"（历史竞态假失败，HEAD 版同样偶发）。
+            const done = await waitFor(async () => {
+                const t = await toastText();
+                return /已从名称生成: ethanol/.test(t) ? t : null;
+            }, 60000, 'ethanol 生成完成');
+            ac.ok(!!done, 'toast 含名称生成文案（实际: ' + (done || await toastText()) + '）');
+            const n = await atomCount();
             ac.eq(n, 9, 'ethanol 生成后原子数（期望 9）');
-            const toast = await toastText();
-            ac.ok(/已从名称生成: ethanol/.test(toast), 'toast 含名称生成文案（实际: ' + toast + '）');
             const refilled = await page.evaluate(() => document.getElementById('smiles-input').value);
             ac.eq(refilled, 'CCO', 'SMILES 回填为 CCO');
             const pass = ac.failed === 0;

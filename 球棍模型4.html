@@ -450,6 +450,29 @@
             display: flex; align-items: center; justify-content: center;
         }
         #help-close:hover { background: rgba(255, 80, 80, 0.35); }
+        /* 键线式放大查看器（2026-10）：点击异构体列表缩略图弹大图 */
+        #skeletal-lightbox {
+            position: fixed; inset: 0; z-index: 1200; display: none;
+            background: rgba(0, 0, 6, 0.72); align-items: center; justify-content: center;
+            backdrop-filter: blur(3px);
+        }
+        #skeletal-lightbox-card {
+            width: min(560px, 92vw); max-height: 88vh; overflow: hidden;
+            background: #ffffff; border-radius: 16px; padding: 16px 16px 10px;
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65); position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        #skeletal-lightbox-img { width: min(516px, 84vw); max-height: 60vh; object-fit: contain; display: block; }
+        #skeletal-lightbox-caption { color: #333a45; font-size: 14px; margin-top: 8px; text-align: center; user-select: text; line-height: 1.5; }
+        #skeletal-lightbox-caption .lb-cond { color: #b06f00; font-weight: bold; }
+        #skeletal-lightbox-close {
+            position: absolute; top: 8px; right: 8px; width: 30px; height: 30px;
+            border-radius: 50%; background: rgba(0, 0, 0, 0.06); border: none; color: #333a45;
+            font-size: 16px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #skeletal-lightbox-close:hover { background: rgba(255, 80, 80, 0.2); color: #b3261e; }
+        #skeletal-lightbox-loading { color: #8a94a3; font-size: 13px; margin-top: 8px; }
         #sidebar::-webkit-scrollbar {
             width: 4px;
         }
@@ -832,6 +855,14 @@
                 <span id="isomer-count" style="color:#9ab; font-size:12px; margin-right:10px;"></span>
                 <button id="btn-isomer-generate" style="background:#e8b44c; color:#1a1f27; border:none; border-radius:10px; padding:6px 14px; font-weight:bold; cursor:pointer; font-size:13px;">生成选中</button>
             </div>
+        </div>
+    </div>
+    <div id="skeletal-lightbox">
+        <div id="skeletal-lightbox-card">
+            <span id="skeletal-lightbox-close" data-icon="x" data-size="16" title="关闭"></span>
+            <img id="skeletal-lightbox-img" alt="键线式大图" draggable="false" />
+            <span id="skeletal-lightbox-loading" style="display:none;">大图加载中…</span>
+            <div id="skeletal-lightbox-caption"></div>
         </div>
     </div>
     <div id="formula-keypad" style="display:none; position:fixed; width:230px; background:rgba(16,20,26,0.97); border:1px solid rgba(255,255,255,0.12); border-radius:12px; z-index:999; padding:10px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
@@ -8134,6 +8165,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 thumb.src = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/' + it.cid + '/PNG?image_size=150x110';
                 thumb.style.cssText = 'width:100%; height:100%; object-fit:contain; transform:scale(1.55);';
                 thumb.onerror = () => { thumbWrap.style.display = 'none'; };
+                thumbWrap.dataset.role = 'skeletal-thumb';
+                thumbWrap.title = '点击放大键线式';
+                thumbWrap.style.cursor = 'zoom-in';
+                // 点击放大：preventDefault 阻止 label 原生激活、stopPropagation 阻止行 click 翻转勾选
+                thumbWrap.addEventListener('click', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    openSkeletalLightbox(it);
+                });
                 thumbWrap.appendChild(thumb);
                 row.appendChild(cb); row.appendChild(info); row.appendChild(thumbWrap);
                 row.addEventListener('click', () => { cb.checked = !cb.checked; updateIsomerCount(); });
@@ -8147,9 +8186,64 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (panel) panel.style.display = 'flex';
             updateIsomerCount();
         }
+        // ---- 键线式放大查看器（2026-10）：点击列表缩略图弹大图（Esc/点背景/✕ 关闭）----
+        function openSkeletalLightbox(it) {
+            const lb = document.getElementById('skeletal-lightbox');
+            const img = document.getElementById('skeletal-lightbox-img');
+            const cap = document.getElementById('skeletal-lightbox-caption');
+            const load = document.getElementById('skeletal-lightbox-loading');
+            if (!lb || !img || !it) return;
+            const base = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/' + it.cid + '/PNG?image_size=';
+            img.dataset.tries = '0';
+            img.style.visibility = 'hidden';
+            if (load) { load.style.display = 'block'; load.textContent = '大图加载中…'; }
+            img.onload = () => { if (load) load.style.display = 'none'; img.style.visibility = 'visible'; };
+            img.onerror = () => {
+                const t = Number(img.dataset.tries || '0');
+                if (t === 0) { img.dataset.tries = '1'; img.src = base + '150x110'; }   // 大图失败 → 退缩略图
+                else { img.style.visibility = 'hidden'; if (load) { load.style.display = 'block'; load.textContent = '图片加载失败（请检查网络）'; } }
+            };
+            img.src = base + '600x450';
+            if (cap) {
+                cap.textContent = '';
+                const n = document.createElement('span');
+                n.textContent = it.name + '   (' + toSubscriptFormula(it.formula) + ')';
+                cap.appendChild(n);
+                if (it.cond) {
+                    const cs = document.createElement('span');
+                    cs.className = 'lb-cond';
+                    cs.textContent = '   ' + toSubscriptCondensed(it.cond);
+                    cap.appendChild(cs);
+                }
+                const ss = document.createElement('span');
+                ss.style.cssText = 'color:#8a94a3; margin-left:10px; font-size:12px;';
+                ss.textContent = it.smiles;
+                cap.appendChild(ss);
+            }
+            lb.style.display = 'flex';
+        }
+        function hideSkeletalLightbox() {
+            const lb = document.getElementById('skeletal-lightbox');
+            if (!lb || lb.style.display === 'none') return false;
+            lb.style.display = 'none';
+            return true;
+        }
+        window.__openSkeletalLightbox = openSkeletalLightbox;
+        window.__hideSkeletalLightbox = hideSkeletalLightbox;
+        (function initSkeletalLightbox() {
+            const lb = document.getElementById('skeletal-lightbox');
+            if (!lb) return;
+            const closeBtn = document.getElementById('skeletal-lightbox-close');
+            if (closeBtn) closeBtn.addEventListener('click', hideSkeletalLightbox);
+            lb.addEventListener('click', (e) => { if (e.target === lb) hideSkeletalLightbox(); });   // 点暗背景关闭
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && lb.style.display !== 'none') { e.preventDefault(); hideSkeletalLightbox(); }
+            });
+        })();
         function hideIsomerPanel() {
             const panel = document.getElementById('isomer-panel');
             if (panel) panel.style.display = 'none';
+            hideSkeletalLightbox();
         }
         function updateIsomerCount() {
             const list = document.getElementById('isomer-list');

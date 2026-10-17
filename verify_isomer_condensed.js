@@ -10,8 +10,6 @@ const { chromium } = require('playwright');
     page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
     await page.goto('http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html');
     await page.waitForFunction(() => window.__smilesToCondensed && window.__setInputPanelOpen, { timeout: 30000 });
-    // 4.html 的 AUTO_RUN_ALL_TESTS=false → 手动触发几何自测（后台跑，最后收结果）
-    await page.evaluate(() => { setTimeout(() => { try { runAllExamplesAndTests(); } catch (e) {} }, 0); });
 
     // 1) 函数电池（页面内）
     const battery = [
@@ -68,13 +66,62 @@ const { chromium } = require('playwright');
 
     await page.screenshot({ path: 'verify_isomer_condensed.png' });
 
-    // 3) 页面 33 例几何自测回归
-    const auto = await page.waitForFunction(() => window.lastRunResults, { timeout: 240000 }).then(h => h.jsonValue()).catch(() => null);
+    // 2b) 点击缩略图放大查看（2026-10 新增）
+    const thumbBox = await page.locator('#isomer-list [data-role="skeletal-thumb"]').first().boundingBox();
+    ok('F0 缩略图可定位', !!thumbBox, thumbBox ? { x: Math.round(thumbBox.x), y: Math.round(thumbBox.y) } : null);
+    if (thumbBox) {
+        const cx = thumbBox.x + thumbBox.width / 2, cy = thumbBox.y + thumbBox.height / 2;
+        const cbBefore = await page.evaluate(() => document.querySelectorAll('#isomer-list input[type="checkbox"]:checked').length);
+        await page.mouse.click(cx, cy);
+        const lbOpen = await page.waitForFunction(() => {
+            const lb = document.getElementById('skeletal-lightbox');
+            const img = document.getElementById('skeletal-lightbox-img');
+            return lb && lb.style.display === 'flex' && img && img.complete && img.naturalWidth > 0 && img.style.visibility === 'visible';
+        }, null, { timeout: 30000 }).then(() => true).catch(() => false);
+        ok('F1 点击缩略图弹出大图并加载', lbOpen);
+        const lbStat = await page.evaluate(() => {
+            const img = document.getElementById('skeletal-lightbox-img');
+            const cap = document.getElementById('skeletal-lightbox-caption');
+            const cbAfter = document.querySelectorAll('#isomer-list input[type="checkbox"]:checked').length;
+            const cnt = document.getElementById('isomer-count');
+            return { w: img.naturalWidth, h: img.naturalHeight, cap: cap ? cap.textContent : '', checked: cbAfter, count: cnt ? cnt.textContent : '' };
+        });
+        ok('F2 大图分辨率 ' + lbStat.w + 'x' + lbStat.h + '（>300 即非缩略图）', lbStat.w >= 300);
+        ok('F3 图说含名称/分子式/结构简式', lbStat.cap.includes('ethanol') && lbStat.cap.includes('C\u2082H\u2086O') && lbStat.cap.includes('CH\u2083CH\u2082OH'), lbStat.cap);
+        ok('F4 点缩略图不改变勾选（前 ' + cbBefore + ' 后 ' + lbStat.checked + '，' + lbStat.count + '）', cbBefore === 0 && lbStat.checked === 0 && /已选 0 个/.test(lbStat.count));
+        await page.screenshot({ path: 'verify_isomer_lightbox.png' });
+        await page.mouse.click(8, 8);
+        const closed1 = await page.waitForFunction(() => document.getElementById('skeletal-lightbox').style.display === 'none', null, { timeout: 6000 }).then(() => true).catch(() => false);
+        ok('F5 点暗背景关闭', closed1);
+        await page.mouse.click(cx, cy);
+        await page.waitForFunction(() => document.getElementById('skeletal-lightbox').style.display === 'flex', null, { timeout: 8000 }).catch(() => {});
+        await page.keyboard.press('Escape');
+        const closed2 = await page.waitForFunction(() => document.getElementById('skeletal-lightbox').style.display === 'none', null, { timeout: 6000 }).then(() => true).catch(() => false);
+        ok('F6 Escape 关闭', closed2);
+        await page.mouse.click(cx, cy);
+        await page.waitForFunction(() => document.getElementById('skeletal-lightbox').style.display === 'flex', null, { timeout: 8000 }).catch(() => {});
+        const closeBox = await page.locator('#skeletal-lightbox-close').boundingBox();
+        let closed3 = false;
+        if (closeBox) {
+            await page.mouse.click(closeBox.x + closeBox.width / 2, closeBox.y + closeBox.height / 2);
+            closed3 = await page.waitForFunction(() => document.getElementById('skeletal-lightbox').style.display === 'none', null, { timeout: 6000 }).then(() => true).catch(() => false);
+        }
+        ok('F7 ✕ 按钮关闭', closed3);
+    }
+
+    // 3) 页面 33 例几何自测回归（注意：waitForFunction 的 options 必须放第 3 个参数，
+    //    第 2 个参数是 arg——曾把 {timeout} 误传第 2 参导致默认 30s 超时截断 ~40s 的自测）
+    await page.evaluate(() => { setTimeout(() => { try { runAllExamplesAndTests(); } catch (e) {} }, 0); });
+    await page.waitForFunction(() => !!window.lastRunResults, null, { timeout: 240000 }).catch(() => {});
+    const auto = await page.evaluate(() => {
+        const lrr = window.lastRunResults;
+        if (!lrr || !Array.isArray(lrr.results)) return null;
+        return { n: lrr.results.length, fails: lrr.results.filter(r => !r.pass).map(r => r.example), ts: lrr.timestamp };
+    });
     if (auto) {
-        const list = auto.results || [];
-        const failCount = list.filter(r => !r.pass).length;
-        ok('D1 页面 33 例自测全过（' + (list.length - failCount) + '/' + list.length + '）', list.length >= 30 && failCount === 0);
-    } else ok('D1 页面自测结果可读', false);
+        const passCount = auto.n - auto.fails.length;
+        ok('D1 页面 33 例自测全过（' + passCount + '/' + auto.n + '）', auto.n >= 30 && auto.fails.length === 0, auto.fails.length ? auto.fails : undefined);
+    } else ok('D1 页面自测结果可读', false, { lastRunResults: 'missing' });
 
     ok('E1 零 console 错误', errs.length === 0, errs.slice(0, 3));
     console.log(results.join('\n'));
