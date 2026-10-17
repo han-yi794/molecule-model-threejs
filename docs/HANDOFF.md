@@ -1,6 +1,6 @@
 # HANDOFF — 交接文档（分子建模器项目）
 
-> 最后更新：2026-10-17（master `5ee33fd` 交付后）
+> 最后更新：2026-10-17（`27638c1` 交付后）
 > **维护约定（用户长期要求）**：每完成一项任务后更新本文件，并随 `master` 提交、推送。
 > 本文件**不进 gh-pages**（gh-pages 必须恰为 `index.html` + `README.md` 两文件，见 `AGENTS.md`「gh-pages 同步陷阱与正确姿势」）。
 
@@ -17,13 +17,14 @@
 ## 1. 当前状态
 
 - 分支策略：直接在 `master` 开发 / 提交 / 推送；`gh-pages` 只放发布产物。
-- `master`：已推送（最近功能提交 `5ee33fd`；本文档、AGENTS.md 登记与进度文件删除的提交紧随其后——看 `git log --oneline -6`）；`gh-pages` = `bcd4b14`（已推送，与 master 的 4.html / README blob 一致，远端恰 2 文件）；工作区干净。
+- `master`：已推送（最近功能提交 `27638c1`；更早提交见 `git log --oneline -8`）；`gh-pages` = `d3f7c20`（已推送，与 master 的 4.html / README blob 一致，远端恰 2 文件）；工作区干净。
 - 杂项：过期的 `球棍模型4_PROGRESS.md`（2026-08 旧进度记录，内容已被 `AGENTS.md` 取代）已删除。
-- **无进行中任务**。最近三项已交付（细节看提交信息 + `AGENTS.md` 对应条目）：
+- **无进行中任务**。最近四项已交付（细节看提交信息 + `AGENTS.md` 对应条目）：
   1. `36c51d3` 删除 2 / 3 号副本；青蒿素名称生成修复（`ZH_NAME_FIX` + 精确 CID 优先 PubChem 3D）。
   2. `5326c01` 原子库精简（仅剩 8 张原子卡 + 提示）；分子式小键盘分区布局 + 移动端防溢出（`box-sizing` 陷阱）。
   3. `5ee33fd` 删除原子库「拖动方式」下拉（改右下角徽章单击循环 / Tab / Shift+Tab）；`verify_keypad_ui.js` 扩到 12 项。
-- 回归基线（最近一次全绿）：`verify_keypad_ui` 12/12 · `verify_foolproof` 22/22 · `verify_icons` 8/8 · `verify_ui_input` 7/7 · `verify_corners` 9/9 · 33 几何自测 33/33（`playwright-verify.js`）。
+  4. `27638c1` 内联 SVG 原子 favicon（零网络请求、file:// 离线可用）+ 标题简化为「球棍模型」；新增 `verify_favicon.js` 6/6。
+- 回归基线（最近一次全绿）：`verify_keypad_ui` 12/12 · `verify_foolproof` 22/22 · `verify_icons` 8/8 · `verify_ui_input` 7/7 · `verify_corners` 9/9 · `verify_favicon` 6/6 · 33 几何自测 33/33（`playwright-verify.js`）。
 
 ## 2. 接手动作清单
 
