@@ -24,7 +24,7 @@
 - **几何引擎**:VSEPR 杂化推断 + 迭代优化(sp3 精确四面体模板、sp2 平面、sp 线性、环感知键角),33 例自动自测全绿(键长/键角/连通性)。
 - **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
 - **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构。
-- **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标。
+- **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**撤销/恢复**(左上角按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)。
 - **可视化**:青色水滴形孤对电子云(NEBOOK 风格)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮。
 - **自测体系**:页面内自动测试 + Playwright 回归脚本(33 几何 + 23 π + 36 基团方位,全绿)。
 
@@ -61,6 +61,7 @@
 - **单键旋转(二面角)**:选中单键 → 点任一端点原子设为"旋转侧"→ 按住空白处左右拖动,整侧子图绕键轴旋转(HUD 实时显示二面角),可换侧/取消。双键、芳香键、环内键会拒绝(提示原因)。
 - **顺反异构翻转**:选中双键 → 键菜单「⇄ 顺反」,一侧旋转 180° 交换两个取代基位置(顺式⇄反式),菜单可连点翻回。
 - **共轭桥保护**:离域π开启时,苯甲酸羧基-苯基、苯乙烯、联苯等共轭桥单键禁止旋转(toast 说明),保证共平面共轭;关闭离域π后可旋转。
+- **撤销 / 恢复**(左上角 `撤销`/`恢复` 按钮,或 Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y):快照式历史,覆盖分子生成、原子/基团拖拽、删除、键类型修改与顺反翻转、单键旋转、全局优化、一键补氢、清空、键盘微移(连续微移 400ms 内合并为一步)等操作;栈上限 50 步,新操作自动清空"恢复"链,空栈按钮置灰并提示。
 
 ### 4. 可视化与辅助
 
@@ -90,6 +91,8 @@
 | `verify_groups_fix.js` | 基团放置回归:9 组 × 4 方位 = 36 场景 |
 | `verify_isomer_condensed.js` | 异构体面板:结构简式转换器电池、真实弹窗(C2H6O)、键线式放大查看器(含 ‹›/←→ 切换、勾选"生成此分子"、本地画布渲染与缩放回归保护,25 项) |
 | `verify_isomer_filter.js` | 异构体候选筛选:分析器电池 39 例、峰组数表达式、真实 UI 筛选/全选/重置/C4H8 数据驱动/筛选内放大切换范围(26 项) |
+| `verify_history.js` | 撤销/恢复专项(12 项):按钮/图标/布局/初始置灰、空栈提示、拖拽/删除/移动/优化/清空/生成的提交点、复合操作恰记一条、键盘微移合并、redo 失效规则、快捷键、位置精确还原 |
+| `verify_corners.js` | 角落控件统一结构:桌面五件+右下角两件+撤销/恢复两键、移动端 375 两行图标键(10 项) |
 | `verify_foolproof.js` | 防呆测试:22 项边界/误操作场景(空状态、非法参数注入、状态机、极端几何、真实鼠标误操作) |
 | `verify_inline_offline.js` | 离线验证:file:// 打开 + 拦截全部网络请求,确认零 http 请求(Three.js/SmilesDrawer 内联、键线式本地渲染) |
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
@@ -124,7 +127,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ```
 
 - 自测报告读取:轮询 `window.lastRunResults`(33 例全跑完才写入);页面内 `window.runAllExamplesAndTests()` 可手动触发。
-- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**。
+- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;撤销/恢复 12 项、角控件 10 项、防呆 22 项等 UI 脚本全绿。
 
 ## 复现与分析
 
@@ -149,6 +152,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ## 调试接口(浏览器 Console)
 
 - `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`)、`window.lastRunResults`、`window._INIT_ERRORS`
+- `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)
 - `window.__dragMode`{project/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
 - `window.__lpStats`(孤对统计)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
 - 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
