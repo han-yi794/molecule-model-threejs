@@ -17,12 +17,13 @@
             touch-action: pan-y pinch-zoom;
         }
         /* ===== 角落控件统一结构（2026-10）=====
-           左上：[使用说明][设置][全局同步优化][清空]，右上：[名称 / SMILES]。
+           左上：[使用说明][设置][全局同步优化][清空][撤销][恢复]，右上：[名称 / SMILES]。
            统一结构：.corner-widget 外框（top:20 对齐，同圆角/内边距/阴影），
            .corner-head 头部（图标 + .corner-label 文字 + 可折叠的 .corner-caret，flex 居中 12px），
            .corner-body 内容区（展开态统一上分隔线）。可折叠头部 .corner-toggle 点击切换，
            caret 由 setCornerCaret() 翻转（收起 ▾ / 展开 ▴），单动作按钮仅头部。 */
-        #guide-panel, #settings-panel, #input-panel, #btn-optimize-all, #btn-clear-molecule {
+        #guide-panel, #settings-panel, #input-panel, #btn-optimize-all, #btn-clear-molecule,
+        #btn-undo, #btn-redo {
             position: absolute;
             top: 20px;
             border-radius: 18px;
@@ -37,11 +38,15 @@
             border: 1px solid rgba(255, 255, 255, 0.15);
             color: #fff;
         }
-        /* 定位：说明/设置/优化/清空横排 + 输入面板右上角 */
+        /* 定位：说明/设置/优化/清空/撤销/恢复横排 + 输入面板右上角 */
         #guide-panel { left: 20px; width: 130px; }
         #settings-panel { left: 170px; width: 130px; }
         #btn-optimize-all { left: 320px; width: 90px; margin-top: 0; cursor: pointer; }
         #btn-clear-molecule { left: 430px; width: 50px; margin-top: 0; cursor: pointer; }
+        /* 注意：角落控件为 content-box（实际宽 = width + 22px padding/border），
+           undo/redo 的 left 按"清空按钮实际右缘 502px"外推，保证与清空/彼此不留重叠 */
+        #btn-undo { left: 512px; width: 50px; margin-top: 0; cursor: pointer; }
+        #btn-redo { left: 594px; width: 50px; margin-top: 0; cursor: pointer; }
         #input-panel { right: 20px; width: 130px; }
         .corner-head {
             display: flex; align-items: center; justify-content: center; gap: 5px;
@@ -137,6 +142,9 @@
            外框见文件顶部，橙色语义配色保留 .action-btn 的 background/border/color） */
         #btn-optimize-all:hover { border-color: rgba(255, 170, 68, 0.6); color: #ffd78c; }
         #btn-clear-molecule:hover { border-color: rgba(255, 100, 100, 0.6); color: #ff6b6b; }
+        /* 撤销 / 恢复（2026-10-18）：青蓝 hover；栈空时半透明置灰（仍可点击，仅提示） */
+        #btn-undo:hover, #btn-redo:hover { border-color: rgba(120, 200, 255, 0.6); color: #8cd7ff; }
+        #btn-undo.hist-empty, #btn-redo.hist-empty { opacity: 0.45; }
         #sidebar {
             position: absolute;
             right: 20px;
@@ -704,12 +712,15 @@
             #group-sidebar, #sidebar { width: min(130px, 13vw); }
             #sidebar { right: min(20px, 2vw); }
             #group-sidebar { left: min(20px, 2vw); }
-            /* 左侧上方面板：说明+设置+优化+清空 横排等比缩（2026-10 统一结构后 padding 同步缩放） */
-            #guide-panel, #settings-panel, #input-panel, #btn-optimize-all, #btn-clear-molecule { padding: min(6px, 0.6vw) min(10px, 1vw); }
+            /* 左侧上方面板：说明+设置+优化+清空+撤销+恢复 横排等比缩（2026-10 统一结构后 padding 同步缩放） */
+            #guide-panel, #settings-panel, #input-panel, #btn-optimize-all, #btn-clear-molecule,
+            #btn-undo, #btn-redo { padding: min(6px, 0.6vw) min(10px, 1vw); }
             #guide-panel { left: min(20px, 2vw); width: min(130px, 13vw); }
             #settings-panel { left: min(170px, 17vw); width: min(130px, 13vw); }
             #btn-optimize-all { left: min(320px, 32vw); width: min(90px, 9vw); }
             #btn-clear-molecule { left: min(430px, 43vw); width: min(50px, 5vw); }
+            #btn-undo { left: min(512px, 50vw); width: min(50px, 5vw); }
+            #btn-redo { left: min(594px, 58vw); width: min(50px, 5vw); }
             /* 右上输入面板：等比缩 */
             #input-panel { right: min(20px, 2vw); top: min(20px, 2vw); width: min(130px, 13vw); max-width: 46vw; }
             /* 卡片与控件：按比例缩放（min 取 px 或 vw 的较小值） */
@@ -739,9 +750,14 @@
             #settings-panel { left: 46px; width: 40px; }
             #btn-optimize-all { left: 90px; width: 56px; }
             #btn-clear-molecule { left: 150px; width: 36px; }
+            /* 撤销 / 恢复：第一行 4 键（8~186px）已满，折为第二行纯图标键（避让右上输入面板） */
+            #btn-undo, #btn-redo { top: 46px; padding: 6px 2px; border-radius: 12px; box-sizing: border-box; height: 32px; }
+            #btn-undo { left: 8px; width: 40px; }
+            #btn-redo { left: 54px; width: 40px; }
             #guide-panel .corner-label, #guide-panel .corner-caret,
             #settings-panel .corner-label, #settings-panel .corner-caret,
-            #btn-optimize-all .corner-label, #btn-clear-molecule .corner-label { display: none; }
+            #btn-optimize-all .corner-label, #btn-clear-molecule .corner-label,
+            #btn-undo .corner-label, #btn-redo .corner-label { display: none; }
             #guide-panel .guide-body { display: none !important; }
             /* 右上输入面板：紧凑浮层（保留标题文字与 caret，位距与左侧四键一致） */
             #input-panel { top: 8px; right: 8px; width: 150px; max-width: 46vw; padding: 6px min(10px, 1vw); border-radius: 12px; box-sizing: border-box; z-index: 40; max-height: 52vh; overflow-y: auto; }
@@ -834,6 +850,9 @@
             <b>优化</b>
             <span class="key-hint">O</span> 优化选中<br/>
             <span class="key-hint">Shift+O</span> 全局同步优化<br/>
+            <b>撤销 / 恢复</b>
+            <span class="key-hint">Ctrl+Z</span> 撤销 ·
+            <span class="key-hint">Ctrl+Y</span> 恢复<br/>
             <b>其他</b>
             网格平面 (XZ)：<span class="key-hint">G</span> 开关<br/>
             拖原子靠近即成键
@@ -885,6 +904,8 @@
     </div>
     <div class="action-btn corner-widget corner-head" id="btn-optimize-all"><span class="ui-ic" data-icon="sparkles" data-size="13"></span><span class="corner-label">全局同步优化</span></div>
     <div class="action-btn corner-widget corner-head" id="btn-clear-molecule"><span class="ui-ic" data-icon="trash-2" data-size="13"></span><span class="corner-label">清空</span></div>
+    <div class="action-btn corner-widget corner-head" id="btn-undo" title="撤销 (Ctrl+Z)"><span class="ui-ic" data-icon="undo-2" data-size="13"></span><span class="corner-label">撤销</span></div>
+    <div class="action-btn corner-widget corner-head" id="btn-redo" title="恢复 (Ctrl+Y)"><span class="ui-ic" data-icon="redo-2" data-size="13"></span><span class="corner-label">恢复</span></div>
     <!-- 自测报告 DOM 已移除（结果仍写 window/lastRunResults/localStorage，供自动化读取）-->
     <div id="input-panel" class="corner-widget">
         <div class="corner-head corner-toggle" id="input-panel-toggle"><span class="ui-ic" data-icon="flask-conical" data-size="13"></span><span class="corner-label">名称 / SMILES</span><span class="ui-ic corner-caret" data-icon="chevron-down" data-size="12"></span></div>
@@ -1070,6 +1091,7 @@
                 <tr><td>G</td><td>网格吸附开 / 关（可对齐 0.25Å 网格）</td></tr>
                 <tr><td>0 / 1 / 2 / 3</td><td>杂化：自动 / sp³ / sp² / sp</td></tr>
                 <tr><td>O / Shift+O</td><td>优化单个原子 / 全局同步优化</td></tr>
+                <tr><td>Ctrl+Z / Ctrl+Y</td><td>撤销 / 恢复（Ctrl+Shift+Z 也可恢复）</td></tr>
                 <tr><td>Delete</td><td>删除选中原子</td></tr>
             </table>
             <h3><span class="ui-ic" data-icon="hand" data-size="15"></span> 拖动方式</h3>
@@ -1123,6 +1145,8 @@
         // 静态 HTML 用 <span class="ui-ic" data-icon="名字" data-size="13"></span> 占位，
         // 启动时 hydrateIcons() 填充；JS 动态文案用 iconSvg('名字', 尺寸) 拼 innerHTML。
         const LUCIDE_ICONS = {
+            'undo-2': '<path d="M9 14 4 9l5-5" /> <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />',
+            'redo-2': '<path d="m15 14 5-5-5-5" /> <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" />',
             'book-open': '<path d="M12 5v16" /> <path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z" />',
             'settings': '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /> <circle cx="12" cy="12" r="3" />',
             'sparkles': '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /> <path d="M20 2v4" /> <path d="M22 4h-4" /> <circle cx="4" cy="20" r="2" />',
@@ -4553,6 +4577,7 @@ isOptimizing = false;
                     const type = target.userData?.atomType || '';
                     removeAtom(target);
                     showToast(`已删除 ${type} 原子`, 1200);
+                    commitHistory();   // 撤销/恢复
                 }
             });
             const icon = new CSS2DObject(div);
@@ -4581,6 +4606,17 @@ isOptimizing = false;
             if (_tg && (_tg.tagName === 'INPUT' || _tg.tagName === 'TEXTAREA' || _tg.isContentEditable)) return;
             const key = e.key;
             const shift = e.shiftKey;
+            // 撤销 / 恢复：Ctrl+Z（Ctrl+Shift+Z 恢复）与 Ctrl+Y —— 必须在 z 轴微移判断之前
+            if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'Z')) {
+                e.preventDefault();
+                if (shift) redoAction(); else undoAction();
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && (key === 'y' || key === 'Y')) {
+                e.preventDefault();
+                redoAction();
+                return;
+            }
             let dx = 0, dy = 0, dz = 0;
             if (key === 'x' || key === 'X') dx = shift ? -MOVE_STEP : MOVE_STEP;
             else if (key === 'y' || key === 'Y') dy = shift ? -MOVE_STEP : MOVE_STEP;
@@ -4617,6 +4653,7 @@ isOptimizing = false;
                     if (selectedAtom && atomTypes[selectedAtom.userData.atomType]?.hybridizable) {
                         e.preventDefault();
                         optimizeSingleAtom(selectedAtom);
+                        commitHistory();   // 撤销/恢复：单原子优化
                     } else if (selectedAtom) {
                         showToast('该原子不支持杂化优化', 1000);
                     }
@@ -4625,6 +4662,7 @@ isOptimizing = false;
             } else return;
             e.preventDefault();
             moveSelectedAtom(dx, dy, dz);
+            commitHistoryDebounced();   // 撤销/恢复：键盘微移合并为一条（停顿后落记录）
         });
 
         // 支持 Delete / Backspace 删除选中原子
@@ -4636,6 +4674,7 @@ isOptimizing = false;
                 const type = selectedAtom.userData?.atomType || '';
                 removeAtom(selectedAtom);
                 showToast(`已删除 ${type} 原子`, 1200);
+                commitHistory();   // 撤销/恢复
             }
         });
 
@@ -4664,7 +4703,141 @@ isOptimizing = false;
                 } catch (e) { showToast('补氢失败: ' + e, 2500); }
             }
             optimizeAllAtoms();
+            commitHistory();   // 撤销/恢复：优化完成记一条（复合操作内部由 historySuppress 抑制）
         }
+
+        // ===== 撤销 / 恢复（2026-10-18 新增）=====
+        // 快照式历史：每次"用户可感知的改动"结束后调 commitHistory() 记一份全量快照
+        //（原子类型 + 坐标 + 键表；坐标四舍五入到 0.001Å 便于去重比对）。
+        // commitHistory 把"改动前状态"压入 undoStack；与当前状态 JSON 相同则跳过
+        //（单击没拖动 / 空输入框点优化等不会产生垃圾条目）。
+        // 分层规则：低层函数（removeAtom / addBondBetween / createCompleteAtom…）不记录；
+        // 复合操作（生成分子 = 清场 + 放置 + 优化）用 historySuppress 计数包成一条记录。
+        const HISTORY_LIMIT = 50;
+        let undoStack = [];            // 元素 = 序列化快照（改动前状态），字符串
+        let redoStack = [];
+        let historySuppress = 0;       // >0：处于复合操作内部，低层提交被抑制
+        let historyRestoring = false;  // 恢复快照过程中彻底禁止记录
+        let _lastHistoryJSON = null;   // 当前已知状态（去重基准）
+        let _histDebounceTimer = null;
+
+        function snapshotMoleculeState() {
+            const atoms = [], idx = new Map();
+            for (const c of atomsGroup.children) {
+                if (!c.userData || !c.userData.isAtom) continue;
+                idx.set(c, atoms.length);
+                atoms.push({
+                    t: c.userData.atomType,
+                    x: +c.position.x.toFixed(3), y: +c.position.y.toFixed(3), z: +c.position.z.toFixed(3)
+                });
+            }
+            const bs = [];
+            for (const b of bonds) {
+                const i = idx.get(b.atomA), j = idx.get(b.atomB);
+                if (i === undefined || j === undefined) continue;
+                bs.push([Math.min(i, j), Math.max(i, j), b.type]);
+            }
+            bs.sort((p, q) => (p[0] - q[0]) || (p[1] - q[1]) || (p[2] - q[2]));
+            return { atoms, bonds: bs };
+        }
+
+        function updateHistoryButtons() {
+            const u = document.getElementById('btn-undo');
+            const r = document.getElementById('btn-redo');
+            if (u) u.classList.toggle('hist-empty', undoStack.length === 0);
+            if (r) r.classList.toggle('hist-empty', redoStack.length === 0);
+        }
+
+        function commitHistory() {
+            if (historyRestoring || historySuppress > 0) return;
+            let json;
+            try { json = JSON.stringify(snapshotMoleculeState()); } catch (e) { return; }
+            if (json === _lastHistoryJSON) { updateHistoryButtons(); return; }
+            if (_lastHistoryJSON !== null) {
+                undoStack.push(_lastHistoryJSON);
+                if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+            }
+            redoStack.length = 0;   // 新动作使"恢复"栈失效
+            _lastHistoryJSON = json;
+            updateHistoryButtons();
+        }
+
+        // 连续小步操作（键盘微移）合并为一条：停顿 400ms 后才落一次记录
+        function commitHistoryDebounced() {
+            if (_histDebounceTimer) clearTimeout(_histDebounceTimer);
+            _histDebounceTimer = setTimeout(() => { _histDebounceTimer = null; commitHistory(); }, 400);
+        }
+
+        function cancelPendingHistoryCommit() {
+            if (_histDebounceTimer) { clearTimeout(_histDebounceTimer); _histDebounceTimer = null; }
+        }
+
+        function restoreHistorySnapshot(snap) {
+            historyRestoring = true;
+            try {
+                clearMolecule({ silent: true });
+                const atoms = snap.atoms.map(a => createCompleteAtom(a.t, new THREE.Vector3(a.x, a.y, a.z)));
+                for (const b of snap.bonds) {
+                    if (atoms[b[0]] && atoms[b[1]]) addBondBetween(atoms[b[0]], atoms[b[1]], b[2]);
+                }
+                updateBonds();
+                refreshLonePairVisuals(true);
+                try { setSelectedAtom(null); } catch (e) {}   // 取消选中（含删除图标）
+                try { selectedBond = null; } catch (e) {}
+                try { clearConnectHint(); clearDragHUD(); } catch (e) {}
+            } finally {
+                historyRestoring = false;
+            }
+        }
+
+        function undoAction() {
+            cancelPendingHistoryCommit();
+            if (undoStack.length === 0) { showToast('没有可撤销的操作', 1200); return false; }
+            const cur = JSON.stringify(snapshotMoleculeState());
+            const prev = undoStack.pop();
+            redoStack.push(cur);
+            restoreHistorySnapshot(JSON.parse(prev));
+            _lastHistoryJSON = prev;
+            updateHistoryButtons();
+            showToast(`已撤销（还可撤销 ${undoStack.length} 步）`, 1000);
+            return true;
+        }
+
+        function redoAction() {
+            cancelPendingHistoryCommit();
+            if (redoStack.length === 0) { showToast('没有可恢复的操作', 1200); return false; }
+            const cur = JSON.stringify(snapshotMoleculeState());
+            const next = redoStack.pop();
+            undoStack.push(cur);
+            restoreHistorySnapshot(JSON.parse(next));
+            _lastHistoryJSON = next;
+            updateHistoryButtons();
+            showToast(`已恢复（还可恢复 ${redoStack.length} 步）`, 1000);
+            return true;
+        }
+
+        // 启动基线 / 测试重置：清空两条栈，并把当前状态记为去重基准
+        function resetHistory() {
+            cancelPendingHistoryCommit();
+            undoStack = [];
+            redoStack = [];
+            _lastHistoryJSON = JSON.stringify(snapshotMoleculeState());
+            updateHistoryButtons();
+        }
+
+        document.getElementById('btn-undo').addEventListener('click', () => undoAction());
+        document.getElementById('btn-redo').addEventListener('click', () => redoAction());
+
+        window.__history = {
+            undo: () => undoAction(),
+            redo: () => redoAction(),
+            canUndo: () => undoStack.length > 0,
+            canRedo: () => redoStack.length > 0,
+            depth: () => ({ undo: undoStack.length, redo: redoStack.length }),
+            reset: () => resetHistory(),
+            commit: () => commitHistory(),
+            snapshot: () => snapshotMoleculeState()
+        };
 
         document.getElementById('btn-optimize-all').addEventListener('click', () => {
             optimizeAllWithAutoHydrogen();
@@ -4755,7 +4928,7 @@ isOptimizing = false;
         groupCardEls.forEach(card => bindGroupCardEvents(card, card.dataset.group));
 
         // --- 场景操作：清空与生成测试分子 ---
-        function clearMolecule() {
+        function clearMolecule(opts) {
             // 单键旋转状态清理（含旋转轴指示棒）
             clearTorsion();
             // 兜底：清空场景时强制结束任何残留的优化状态（若 isOptimizing 被
@@ -4797,7 +4970,8 @@ isOptimizing = false;
                     while (labelRenderer.domElement.firstChild) labelRenderer.domElement.removeChild(labelRenderer.domElement.firstChild);
                 }
             } catch (e) {}
-            showToast('场景已清空', 1000);
+            if (!(opts && opts.silent)) showToast('场景已清空', 1000);
+            commitHistory();   // 撤销/恢复：清空本身记一条（生成流程内部由 historySuppress 抑制）
         }
 
         // 删除指定原子（同时清理其键与标签）
@@ -6951,6 +7125,8 @@ const fSide = new Set();
             // 多分子共存（异构体并排）：keepExisting 时不清场，下一个分子向右平移
             // 避开已存在分子的包围盒。生成新分子前记录旧原子数，生成后平移新原子。
             const prevCount = atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length;
+            historySuppress++;   // 撤销/恢复：整段生成（清场 + 放置 + 补氢优化）合并为一条记录
+            try {
             generateFromSpec(spec, { keepExisting });
             // SMILES 生成语义总是补氢（不依赖用户 UI 开关）：临时置位后调用公共入口，随后恢复
             const prevHydro = HYDROGENATE_AUTO;
@@ -6972,6 +7148,10 @@ const fSide = new Set();
                 }
             }
             return { ok: true, spec, atomCount, prevCount };
+            } finally {
+                historySuppress--;
+                commitHistory();
+            }
         }
         window.__generateFromSmiles = generateFromSmiles;
 
@@ -7060,6 +7240,8 @@ const fSide = new Set();
         // 按 SDF 3D 结构直接生成：clearMolecule → 逐原子按真实坐标放置 → 逐键建立 → updateBonds + lp 重算。
         // 坐标已是优化构象，不再跑优化器（避免扰动真实几何）；返回原子总数。
         function generateFrom3D(struct, opts) {
+            historySuppress++;   // 撤销/恢复：整段生成（清场 + 放置 + 芳香化）合并为一条记录
+            try {
             const keepExisting = !!(opts && opts.keepExisting);
             const prevCount = keepExisting ? atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length : 0;
             if (!keepExisting) clearMolecule();
@@ -7083,6 +7265,10 @@ const fSide = new Set();
                 }
             }
             return meshes.length;
+            } finally {
+                historySuppress--;
+                commitHistory();
+            }
         }
         window.__parseSDF3D = parseSDF3D;
         window.__fetchPubChem3D = fetchPubChem3D;
@@ -7199,12 +7385,18 @@ const fSide = new Set();
         window.__fetchProteinPDB = fetchProteinPDB;
 
         function generateFromPDB(struct) {
-            clearMolecule();
-            const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
-            for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
-            updateBonds();
-            refreshLonePairVisuals(true);
-            return meshes.length;
+            historySuppress++;   // 撤销/恢复：整段生成合并为一条记录
+            try {
+                clearMolecule();
+                const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
+                for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
+                updateBonds();
+                refreshLonePairVisuals(true);
+                return meshes.length;
+            } finally {
+                historySuppress--;
+                commitHistory();
+            }
         }
         window.__generateFromPDB = generateFromPDB;
 
@@ -9279,6 +9471,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
         }
 
         function generateFromSpec(spec, opts) {
+            historySuppress++;   // 撤销/恢复：整段生成（清场 + 放置 + 居中）合并为一条记录
+            try {
             const keepExisting = !!(opts && opts.keepExisting);
             if (!keepExisting) clearMolecule();
             const n = spec.types.length;
@@ -9513,6 +9707,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
             }
             updateBonds();
             refreshLonePairVisuals(true);
+            } finally {
+                historySuppress--;
+                commitHistory();
+            }
         }
         // 诊断接口：raw spec 直接生成（含粗坐标阶段），供验证脚本复现假键/补氢问题
         window.__generateFromSpecRaw = (spec) => generateFromSpec(spec);
@@ -10260,6 +10458,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             dragStartClient = null;
             gizmoCenterDrag = false;
             controls.enabled = true;
+            commitHistory();   // 撤销/恢复：一次拖拽（放置/移动/成键）结束记一条（无变化自动去重）
         }
 
         function cancelDrag() {
@@ -10289,6 +10488,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             dragStartClient = null;
             gizmoCenterDrag = false;
             controls.enabled = true;
+            commitHistory();   // 撤销/恢复：取消拖拽若已改动位置也记一条（无变化自动去重）
         }
 
         canvas.addEventListener('pointermove', (e) => {
@@ -10458,6 +10658,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 if (btn.id === 'btn-flip-cistrans') {
                     // 顺反翻转：绕双键轴旋转一侧 180°（菜单保持打开可连点/换键）
                     if (selectedBond) flipCisTrans(selectedBond);
+                    commitHistory();   // 撤销/恢复：顺反翻转（被拒绝时无变化自动去重）
                     return;
                 }
                 const newTypeStr = e.target.dataset.bondType;
@@ -10483,6 +10684,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 }
                 bondMenu.style.display = 'none';
                 selectedBond = null;
+                commitHistory();   // 撤销/恢复：改键级（被化合价限制拒绝时无变化自动去重）
             });
         });
         window.addEventListener('mousedown', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) bondMenu.style.display = 'none'; });
@@ -10534,7 +10736,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             updateDrag(e.clientX, e.clientY);
         });
         window.addEventListener('mouseup', (e) => {
-            if (torsionDragging) { torsionDragging = false; controls.enabled = true; return; }
+            if (torsionDragging) { torsionDragging = false; controls.enabled = true; commitHistory(); return; }   // 撤销/恢复：单键旋转结束
             endDrag(e.clientX, e.clientY);
         });
         window.addEventListener('touchmove', (e) => {
@@ -10550,7 +10752,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (isDragging) { e.preventDefault(); if (e.touches.length === 1) updateDrag(e.touches[0].clientX, e.touches[0].clientY); }
         }, { passive: false });
         window.addEventListener('touchend', (e) => {
-            if (torsionDragging) { torsionDragging = false; controls.enabled = true; return; }
+            if (torsionDragging) { torsionDragging = false; controls.enabled = true; commitHistory(); return; }   // 撤销/恢复：单键旋转结束（触摸）
             if (isDragging) { e.preventDefault(); if (e.changedTouches.length > 0) endDrag(e.changedTouches[0].clientX, e.changedTouches[0].clientY); else cancelDrag(); }
         });
         window.addEventListener('touchcancel', (e) => { e.preventDefault(); cancelDrag(); });
@@ -11149,6 +11351,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera);
         }
+        resetHistory();   // 撤销/恢复：启动基线 = 空场景；同步两按钮置灰状态
         animate();
 
         window.addEventListener('resize', () => {

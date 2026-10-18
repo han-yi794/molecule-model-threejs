@@ -103,6 +103,8 @@ class AssertionCollector {
                 '#input-panel-toggle svg[data-icon="flask-conical"]',
                 '#btn-optimize-all svg[data-icon="sparkles"]',
                 '#btn-clear-molecule svg[data-icon="trash-2"]',
+                '#btn-undo svg[data-icon="undo-2"]',
+                '#btn-redo svg[data-icon="redo-2"]',
                 '#btn-help svg[data-icon="circle-help"]',
                 '#help-close svg[data-icon="x"]',
                 '#group-sidebar .title svg[data-icon="shapes"]',

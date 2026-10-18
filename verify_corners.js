@@ -1,7 +1,7 @@
-// verify_corners.js — 角落控件统一结构验证（2026-10；含右下角两件）
-// C1 桌面五控件统一外框  C2 头部同构（图标+文字+可选caret）  C3 caret 翻转/内容区显示
+// verify_corners.js — 角落控件统一结构验证（2026-10；含右下角两件 + 撤销/恢复两键）
+// C1 桌面五控件统一外框  C2 头部同构（图标+文字+可选caret，含撤销/恢复两键）  C3 caret 翻转/内容区显示
 // C4 内容区上分隔线一致  C5 收起恢复  C6 桌面右下角（徽章+帮助）同模板  C7 移动端 375 左四键纯图标行
-// C8 移动端 375 右下角位置  C9 零 console 错误
+// C7b 移动端 375 撤销/恢复第二行纯图标键  C8 移动端 375 右下角位置  C9 零 console 错误
 const { chromium } = require('playwright');
 const http = require('http');
 const PORT = 8051;
@@ -65,14 +65,16 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
                     caretCount: el.querySelectorAll('.corner-caret').length
                 };
             };
-            return { guide: readHead('guide-toggle'), settings: readHead('settings-toggle'), input: readHead('input-panel-toggle'), opt: readHead('btn-optimize-all'), clear: readHead('btn-clear-molecule') };
+            return { guide: readHead('guide-toggle'), settings: readHead('settings-toggle'), input: readHead('input-panel-toggle'), opt: readHead('btn-optimize-all'), clear: readHead('btn-clear-molecule'), undo: readHead('btn-undo'), redo: readHead('btn-redo') };
         });
         const c2ok = out.C2.guide.iconName === 'book-open' && out.C2.guide.iconSize === '13' && out.C2.guide.label === '使用说明' && out.C2.guide.caret === 'chevron-down'
             && out.C2.settings.iconName === 'settings' && out.C2.settings.label === '设置' && out.C2.settings.caret === 'chevron-down'
             && out.C2.input.iconName === 'flask-conical' && out.C2.input.label === '名称 / SMILES' && out.C2.input.caret === 'chevron-down'
             && out.C2.opt.iconName === 'sparkles' && out.C2.opt.label === '全局同步优化' && out.C2.opt.caretCount === 0
-            && out.C2.clear.iconName === 'trash-2' && out.C2.clear.label === '清空' && out.C2.clear.caretCount === 0;
-        step('C2 头部同构：三折叠头=图标+文字+caret，两按钮=图标+文字无caret', c2ok, out.C2);
+            && out.C2.clear.iconName === 'trash-2' && out.C2.clear.label === '清空' && out.C2.clear.caretCount === 0
+            && out.C2.undo.iconName === 'undo-2' && out.C2.undo.label === '撤销' && out.C2.undo.caretCount === 0
+            && out.C2.redo.iconName === 'redo-2' && out.C2.redo.label === '恢复' && out.C2.redo.caretCount === 0;
+        step('C2 头部同构：三折叠头=图标+文字+caret，四按钮=图标+文字无caret（含撤销/恢复）', c2ok, out.C2);
 
         // C3: caret 翻转 + 内容区显示
         out.C3 = await page.evaluate(() => {
@@ -183,6 +185,26 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
         const c7ok = out.C7.iconsOnly && !out.C7.overlap && out.C7.sameTop && out.C7.sameH && out.C7.inputLabelVisible;
         step('C7 移动端375：左四纯图标、五控件等高(top8/h32)同行不重叠、输入面板保留标题', c7ok, out.C7);
         await m.screenshot({ path: 'd_corners_mobile.png', clip: { x: 0, y: 0, width: 375, height: 90 } });
+
+        // C7b: 移动端撤销/恢复折为第二行纯图标键（top46、左 8/54、宽 40、高 32、无文字）
+        out.C7b = await m.evaluate(() => {
+            const rb = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), h: Math.round(r.height) }; };
+            const u = rb('btn-undo'), r = rb('btn-redo');
+            const uLabel = document.querySelector('#btn-undo .corner-label');
+            const rLabel = document.querySelector('#btn-redo .corner-label');
+            const input = document.getElementById('input-panel').getBoundingClientRect();
+            return {
+                u, r,
+                labelsHidden: (!uLabel || getComputedStyle(uLabel).display === 'none') && (!rLabel || getComputedStyle(rLabel).display === 'none'),
+                sameTop: u.t === r.t && u.t === 46,
+                noOverlap: u.r <= r.l && u.r <= Math.round(input.left),
+                uIcon: !!document.querySelector('#btn-undo svg[data-icon="undo-2"]'),
+                rIcon: !!document.querySelector('#btn-redo svg[data-icon="redo-2"]'),
+            };
+        });
+        const c7bok = out.C7b.labelsHidden && out.C7b.sameTop && out.C7b.noOverlap && out.C7b.uIcon && out.C7b.rIcon
+            && out.C7b.u.l === 8 && out.C7b.r.l === 54 && out.C7b.u.h === 32 && out.C7b.r.h === 32;
+        step('C7b 移动端375：撤销/恢复第二行纯图标键（top46/左8-54/高32/无文字不重叠）', c7bok, out.C7b);
 
         // C8: 移动端右下角两件位置（徽章底部居中 bottom8、帮助在其上方 bottom42、互不重叠）
         out.C8 = await m.evaluate(() => {
