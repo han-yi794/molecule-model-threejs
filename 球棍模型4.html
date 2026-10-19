@@ -142,9 +142,10 @@
            外框见文件顶部，橙色语义配色保留 .action-btn 的 background/border/color） */
         #btn-optimize-all:hover { border-color: rgba(255, 170, 68, 0.6); color: #ffd78c; }
         #btn-clear-molecule:hover { border-color: rgba(255, 100, 100, 0.6); color: #ff6b6b; }
-        /* 撤销 / 恢复（2026-10-18）：青蓝 hover；栈空时半透明置灰（仍可点击，仅提示） */
-        #btn-undo:hover, #btn-redo:hover { border-color: rgba(120, 200, 255, 0.6); color: #8cd7ff; }
-        #btn-undo.hist-empty, #btn-redo.hist-empty { opacity: 0.45; }
+        /* 撤销 / 恢复（2026-10-18；2026-10-19 配色对齐相邻按钮：悬停同「全局同步优化」琥珀色，
+           空栈不再整键置灰——观感与四个角落动作按钮完全一致，点击时以 toast 提示）。
+           `.hist-empty` 类仍由 updateHistoryButtons() 维护（空栈状态标记），仅不再产生视觉差异。 */
+        #btn-undo:hover, #btn-redo:hover { border-color: rgba(255, 170, 68, 0.6); color: #ffd78c; }
         #sidebar {
             position: absolute;
             right: 20px;

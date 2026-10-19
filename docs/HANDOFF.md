@@ -1,6 +1,6 @@
 # HANDOFF — 交接文档（分子建模器项目）
 
-> 最后更新：2026-10-18（`c80ee28` 撤销/恢复交付后）
+> 最后更新：2026-10-19（撤销/恢复按钮配色对齐后）
 > **维护约定（用户长期要求）**：每完成一项任务后更新本文件，并随 `master` 提交、推送。
 > 本文件**不进 gh-pages**（gh-pages 必须恰为 `index.html` + `README.md` 两文件，见 `AGENTS.md`「gh-pages 同步陷阱与正确姿势」）。
 
@@ -17,14 +17,15 @@
 ## 1. 当前状态
 
 - 分支策略：直接在 `master` 开发 / 提交 / 推送；`gh-pages` 只放发布产物。
-- `master`：已推送（最近功能提交 `c80ee28` 撤销/恢复；更早提交见 `git log --oneline -8`）；`gh-pages` 本轮已同步至与 master 4.html / README 相同 blob（同步提交哈希见 `git log gh-pages -1`）；工作区干净。
+- `master`：已推送（最近功能提交：撤销/恢复按钮配色对齐，本提交；上一功能提交 `c80ee28` 撤销/恢复；更早提交见 `git log --oneline -8`）；`gh-pages` 本轮已同步至与 master 4.html / README 相同 blob（同步提交哈希见 `git log gh-pages -1`）；工作区干净（根目录遗留未跟踪的旧 `HANDOFF.md` 除外，删除与否待用户决定）。
 - 杂项：过期的 `球棍模型4_PROGRESS.md`（2026-08 旧进度记录，内容已被 `AGENTS.md` 取代）已删除。
-- **无进行中任务**。最近五项已交付（细节看提交信息 + `AGENTS.md` 对应条目）：
+- **无进行中任务**。最近六项已交付（细节看提交信息 + `AGENTS.md` 对应条目）：
   1. `36c51d3` 删除 2 / 3 号副本；青蒿素名称生成修复（`ZH_NAME_FIX` + 精确 CID 优先 PubChem 3D）。
   2. `5326c01` 原子库精简（仅剩 8 张原子卡 + 提示）；分子式小键盘分区布局 + 移动端防溢出（`box-sizing` 陷阱）。
   3. `5ee33fd` 删除原子库「拖动方式」下拉（改右下角徽章单击循环 / Tab / Shift+Tab）；`verify_keypad_ui.js` 扩到 12 项。
   4. `27638c1` 内联 SVG 原子 favicon（零网络请求、file:// 离线可用）+ 标题简化为「球棍模型」；新增 `verify_favicon.js` 6/6。
   5. `c80ee28` 撤销 / 恢复（快照式历史栈 50 步）：左上角 undo/redo 按钮（Lucide 图标）+ Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y；覆盖生成/拖拽/删除/键改/旋转/优化/补氢/清空/微移（防抖合并），复合生成恰记一条；新增 `verify_history.js` 12/12；`verify_corners.js` 扩至 10/10（C2 含两新键 + C7b 移动端第二行）。
+  6. 撤销 / 恢复按钮配色对齐（2026-10-19，本提交）：悬停青蓝 → 琥珀（同「全局同步优化」），空栈不再整体置灰（`.hist-empty` 保留为纯状态标记）——四个角落动作按钮观感完全一致；`verify_history.js` H1 增补空栈/悬停配色一致性断言（12/12），`verify_corners.js` 10/10。
 - 回归基线（最近一次全绿）：`verify_history` 12/12 · `verify_corners` 10/10 · `verify_icons` 8/8 · `verify_keypad_ui` 12/12 · `verify_foolproof` 22/22 · `verify_delete_icon` 5/5 · `verify_ui_clear_help` ×2 · `verify_group_drag_label` 5/5 · `verify_guide_panel` 6/6 · `verify_autoH` 8/8（expected==got）· `verify_layout_move` 7/7 · 33 几何自测 33/33（`playwright-verify.js`）。
 
 ## 2. 接手动作清单

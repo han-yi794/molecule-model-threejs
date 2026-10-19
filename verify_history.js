@@ -1,5 +1,5 @@
 // verify_history.js — 撤销/恢复（快照式历史）真实验证（2026-10-18）
-// 覆盖：按钮/图标/布局/初始置灰、空栈提示、拖拽新原子、Delete 键与垃圾桶图标删除、
+// 覆盖：按钮/图标/布局/空栈标记与配色一致、空栈提示、拖拽新原子、Delete 键与垃圾桶图标删除、
 //       拖动移动的位置精确还原、键盘微移合并（debounce）、生成（复合操作恰一条）、
 //       新操作清空 redo、Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y、清空按钮、优化提交、零 console 错误。
 // 运行：cmd /c "node verify_history.js > verify_history.json 2>&1"（timeout 900000ms）
@@ -118,7 +118,7 @@ function posMatch(before, after, tol = 0.005) {
         });
         await page.waitForTimeout(250);
 
-        // ---------- H1 按钮：图标水合 / 标签 / 布局 / 初始置灰 ----------
+        // ---------- H1 按钮：图标水合 / 标签 / 布局 / 空栈标记 / 配色一致 ----------
         {
             const h1 = await page.evaluate(() => {
                 const u = document.getElementById('btn-undo'), r = document.getElementById('btn-redo');
@@ -126,6 +126,7 @@ function posMatch(before, after, tol = 0.005) {
                 const rb = (el) => { const b = el.getBoundingClientRect(); return { l: Math.round(b.left), t: Math.round(b.top), r: Math.round(b.right), h: Math.round(b.height) }; };
                 const iconPaths = (el, name) => { const s = el.querySelector('svg[data-icon="' + name + '"]'); return s ? s.querySelectorAll('path').length : 0; };
                 const label = u.querySelector('.corner-label');
+                const styleSig = (el) => { const cs = getComputedStyle(el); return [cs.backgroundColor, cs.borderColor, cs.color, cs.opacity].join(' | '); };
                 return {
                     ub: rb(u), rb2: rb(r), clb: rb(cl),
                     labelOverflow: label ? label.scrollWidth > label.clientWidth + 1 : false,
@@ -135,6 +136,7 @@ function posMatch(before, after, tol = 0.005) {
                     rLabel: (r.querySelector('.corner-label') || {}).textContent || '',
                     uTitle: u.getAttribute('title') || '', rTitle: r.getAttribute('title') || '',
                     uEmpty: u.classList.contains('hist-empty'), rEmpty: r.classList.contains('hist-empty'),
+                    oSig: styleSig(document.getElementById('btn-optimize-all')), uSig: styleSig(u), rSig: styleSig(r),
                     depth: window.__history.depth()
                 };
             });
@@ -146,8 +148,18 @@ function posMatch(before, after, tol = 0.005) {
             ac.ok(h1.ub.l >= h1.clb.r && h1.ub.r <= h1.rb2.l, `排在清空右侧且互不重叠（清空右缘 ${h1.clb.r} / 撤销 ${h1.ub.l}-${h1.ub.r} / 恢复 ${h1.rb2.l}-${h1.rb2.r}）`);
             ac.ok(!h1.labelOverflow, '按钮文字未被挤压溢出');
             ac.ok(h1.uCls.includes('corner-widget') && h1.uCls.includes('corner-head') && h1.rCls.includes('corner-widget') && h1.rCls.includes('corner-head'), '统一角落控件结构（corner-widget corner-head）');
-            ac.ok(h1.uEmpty && h1.rEmpty && h1.depth.undo === 0 && h1.depth.redo === 0, `初始空栈置灰（depth=${JSON.stringify(h1.depth)}）`);
-            push('H1 撤销/恢复按钮：图标/标签/布局/初始置灰', ac.failed === 0,
+            ac.ok(h1.uEmpty && h1.rEmpty && h1.depth.undo === 0 && h1.depth.redo === 0, `初始空栈标记 hist-empty（depth=${JSON.stringify(h1.depth)}）`);
+            ac.ok(h1.uSig === h1.oSig && h1.rSig === h1.oSig, `空栈时配色与「全局同步优化」完全一致（撤销 ${h1.uSig}）`);
+            // 悬停配色一致（2026-10-19 用户要求：撤销/恢复与相邻按钮风格一致）
+            await page.hover('#btn-undo');
+            await page.waitForTimeout(200);
+            const hovU = await page.evaluate(() => { const cs = getComputedStyle(document.getElementById('btn-undo')); return cs.borderColor + ' / ' + cs.color; });
+            await page.hover('#btn-optimize-all');
+            await page.waitForTimeout(200);
+            const hovO = await page.evaluate(() => { const cs = getComputedStyle(document.getElementById('btn-optimize-all')); return cs.borderColor + ' / ' + cs.color; });
+            ac.ok(hovU === hovO, `悬停配色与「全局同步优化」一致（撤销 ${hovU} vs 优化 ${hovO}）`);
+            await page.mouse.move(720, 420);
+            push('H1 撤销/恢复按钮：图标/标签/布局/空栈标记/配色一致', ac.failed === 0,
                 JSON.stringify({ ub: h1.ub, rb: h1.rb2, clb: h1.clb, depth: h1.depth }) + ' | ' + ac.failures.join('；'));
         }
 
