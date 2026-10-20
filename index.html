@@ -10705,6 +10705,39 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (e.target && e.target.closest && e.target.closest('select')) return;
             _collapseSelects();
         }, true);
+        // 角落下拉浮层点击别处自动收起（2026-10-20）：使用说明 / 设置 / 名称·SMILES 三个可折叠浮层
+        // 与分子式小键盘——点击浮层之外即收起；点击浮层内部（含小键盘按键）保持展开，控件可继续操作。
+        // 注意：分子式小键盘是 #input-panel 之外的独立浮层，必须与输入面板同组判断，
+        //       否则点小键盘按键会把输入面板一起收起（面板收起又会连带隐藏小键盘）。
+        const _collapseCornerDropdowns = (target) => {
+            if (!target || !target.closest) return;
+            const bodyOpen = (id) => { const el = document.getElementById(id); return !!(el && el.classList.contains('open')); };
+            // 名称 / SMILES 面板（分子式小键盘视为其附属浮层）
+            const inputPanel = document.getElementById('input-panel');
+            if (inputPanel && inputPanel.classList.contains('open')
+                && !target.closest('#input-panel') && !target.closest('#formula-keypad')) {
+                setInputPanelOpen(false);
+                try { if (navigator.webdriver !== true) localStorage.setItem('INPUT_PANEL_OPEN', '0'); } catch (e) {}
+            }
+            // 使用说明
+            if (bodyOpen('guide-body') && !target.closest('#guide-panel')) {
+                document.getElementById('guide-body').classList.remove('open');
+                setCornerCaret(document.getElementById('guide-toggle'), false);
+            }
+            // 设置
+            if (bodyOpen('settings-body') && !target.closest('#settings-panel')) {
+                document.getElementById('settings-body').classList.remove('open');
+                setCornerCaret(document.getElementById('settings-toggle'), false);
+            }
+            // 分子式小键盘：仅点击自身 / 分子式输入框 / 开关按钮时保留
+            const kp = document.getElementById('formula-keypad');
+            if (kp && kp.style.display !== 'none'
+                && !target.closest('#formula-keypad') && !target.closest('#formula-input') && !target.closest('#btn-open-keypad')) {
+                hideFormulaKeypad();
+            }
+        };
+        document.addEventListener('mousedown', (e) => _collapseCornerDropdowns(e.target), true);
+        document.addEventListener('touchstart', (e) => _collapseCornerDropdowns(e.target), true);
 
         // 杂化菜单事件
         document.querySelectorAll('[data-hybridization]').forEach(btn => {
@@ -11118,13 +11151,13 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return results;
         }
         window.__runPiSystemTests = runPiSystemTests;
-        // 用低透明度蓬松的青色电子云渲染孤对电子，模拟 nobook 电子云轮廓图风格：
-        // 每对孤对电子 = 一朵"云滴"形电子云轮廓（云心沿孤对方向、阔端朝外，青色素描风格
-        // 参考 atomCloud__C 页面 2p 轨道的 cloudMaterial：[0,1,1] 青、alpha≈0.13 透明云）
+        // 用低透明度蓬松的浅蓝色电子云渲染孤对电子，模拟 nobook 电子云轮廓图风格：
+        // 每对孤对电子 = 一朵"云滴"形电子云轮廓（云心沿孤对方向、阔端朝外，浅蓝色半透明描摹风格
+        // 参考 atomCloud__C 页面 2p 轨道的 cloudMaterial 低透明度透明云）
         // + 云内两个小亮点（代表一对电子）。
         let showLonePairs = (() => { try { return localStorage.getItem('LONE_PAIRS_VIS') !== '0'; } catch (e) { return true; } })();
-        const LP_COLOR = 0x00e0ff;          // 青色电子云（仿 nobook 2p 云，青蓝半透明）
-        const LP_OPACITY = 0.30;            // 低透明度，蓬松轻散的云团观感（nobook 云 α≈0.13，本场景加两档便于辨识）
+        const LP_COLOR = 0x9fd0ff;          // 浅蓝电子云（2026-10-20 用户要求：半透明浅蓝，替代原青色）
+        const LP_OPACITY = 0.72;            // 半透明：深色背景上浅蓝需较高不透明度才显轻亮，仍透出下层原子
         const LP_RADIUS = 0.42;             // 云基准半径
         const LP_DIST = 0.78;               // 云心距原子中心的距离
         const LP_TEAR_MAJOR = 1.4;          // 轮廓长轴（沿孤对方向），饱满椭圆体
