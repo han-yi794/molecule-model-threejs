@@ -233,6 +233,9 @@ class AssertionCollector {
             }));
 
             // 输入面板：webdriver 环境默认展开（chevron-up）→ 点击收起（down）→ 再点展开（up）
+            // 2026-10-20 手风琴：前面点开设置/说明会让输入面板自动收起，先显式展开再验开合
+            await page.evaluate(() => window.__setInputPanelOpen(true));
+            await page.waitForTimeout(120);
             detail.in0 = await page.evaluate(() => ({
                 up: !!document.querySelector('#input-panel-toggle svg[data-icon="chevron-up"]'),
                 open: document.getElementById('input-panel').classList.contains('open')

@@ -76,26 +76,30 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
             && out.C2.redo.iconName === 'redo-2' && out.C2.redo.label === '恢复' && out.C2.redo.caretCount === 0;
         step('C2 头部同构：三折叠头=图标+文字+caret，四按钮=图标+文字无caret（含撤销/恢复）', c2ok, out.C2);
 
-        // C3: caret 翻转 + 内容区显示
-        out.C3 = await page.evaluate(() => {
+        // C3: caret 翻转 + 内容区显示（手风琴：展开一个时其余自动收起）
+        const snapPanels = () => page.evaluate(() => {
             const ci = (id) => { const c = document.querySelector('#' + id + ' .corner-caret svg'); return c ? c.dataset.icon : null; };
-            return { before: { g: ci('guide-toggle'), s: ci('settings-toggle'), i: ci('input-panel-toggle') } };
-        });
-        await page.click('#guide-toggle');
-        await page.click('#settings-toggle');
-        await page.evaluate(() => window.__setInputPanelOpen(true));
-        await page.waitForTimeout(200);
-        out.C3.after = await page.evaluate(() => {
-            const ci = (id) => { const c = document.querySelector('#' + id + ' .corner-caret svg'); return c ? c.dataset.icon : null; };
+            const disp = (id) => getComputedStyle(document.getElementById(id)).display;
             return {
-                g: ci('guide-toggle'), s: ci('settings-toggle'), i: ci('input-panel-toggle'),
-                bodies: ['guide-body', 'settings-body', 'input-panel-body'].map(id => getComputedStyle(document.getElementById(id)).display)
+                carets: { g: ci('guide-toggle'), s: ci('settings-toggle'), i: ci('input-panel-toggle') },
+                bodies: { g: disp('guide-body'), s: disp('settings-body'), i: disp('input-panel-body') }
             };
         });
-        const c3ok = out.C3.before.g === 'chevron-down' && out.C3.before.s === 'chevron-down' && out.C3.before.i === 'chevron-down'
-            && out.C3.after.g === 'chevron-up' && out.C3.after.s === 'chevron-up' && out.C3.after.i === 'chevron-up'
-            && out.C3.after.bodies.every(d => d !== 'none');
-        step('C3 展开时 caret 翻上（▾→▴）且三内容区显示', c3ok, out.C3);
+        out.C3 = { before: await snapPanels(), steps: [] };
+        await page.click('#guide-toggle'); await page.waitForTimeout(180);
+        out.C3.steps.push(await snapPanels());
+        await page.click('#settings-toggle'); await page.waitForTimeout(180);
+        out.C3.steps.push(await snapPanels());
+        await page.click('#input-panel-toggle'); await page.waitForTimeout(180);
+        out.C3.steps.push(await snapPanels());
+        const [gStep, sStep, iStep] = out.C3.steps;
+        const c3ok = out.C3.before.carets.g === 'chevron-down' && out.C3.before.carets.s === 'chevron-down' && out.C3.before.carets.i === 'chevron-down'
+            && gStep.carets.g === 'chevron-up' && gStep.bodies.g !== 'none'
+            && sStep.carets.s === 'chevron-up' && sStep.bodies.s !== 'none'
+            && sStep.carets.g === 'chevron-down' && sStep.bodies.g === 'none'      // 手风琴：说明自动收起
+            && iStep.carets.i === 'chevron-up' && iStep.bodies.i !== 'none'
+            && iStep.carets.s === 'chevron-down' && iStep.bodies.s === 'none';     // 手风琴：设置自动收起
+        step('C3 展开时 caret 翻上（▾→▴）且内容区显示（同时只展开一个，前一个自动收起）', c3ok, out.C3);
 
         // C4: 内容区上分隔线/间距一致
         out.C4 = await page.evaluate(() => {
@@ -106,16 +110,21 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
             && out.C4.guide.bc === out.C4.settings.bc && out.C4.settings.bc === out.C4.input.bc;
         step('C4 三内容区上分隔线一致（8px/8px/1px 同色）', c4ok, out.C4);
 
-        // C5: 再收起恢复
-        await page.click('#guide-toggle');
-        await page.click('#settings-toggle');
-        await page.evaluate(() => window.__setInputPanelOpen(false));
-        await page.waitForTimeout(200);
+        // C5: 再收起恢复（逐个开→关）
+        await page.click('#input-panel-toggle'); await page.waitForTimeout(150);
+        await page.click('#guide-toggle'); await page.waitForTimeout(150);
+        await page.click('#guide-toggle'); await page.waitForTimeout(150);
+        await page.click('#settings-toggle'); await page.waitForTimeout(150);
+        await page.click('#settings-toggle'); await page.waitForTimeout(150);
         out.C5 = await page.evaluate(() => {
             const ci = (id) => { const c = document.querySelector('#' + id + ' .corner-caret svg'); return c ? c.dataset.icon : null; };
-            return { g: ci('guide-toggle'), s: ci('settings-toggle'), i: ci('input-panel-toggle') };
+            const disp = (id) => getComputedStyle(document.getElementById(id)).display;
+            return {
+                g: ci('guide-toggle'), s: ci('settings-toggle'), i: ci('input-panel-toggle'),
+                bodies: [disp('guide-body'), disp('settings-body'), disp('input-panel-body')]
+            };
         });
-        step('C5 再收起 caret 恢复朝下（▴→▾）', out.C5.g === 'chevron-down' && out.C5.s === 'chevron-down' && out.C5.i === 'chevron-down', out.C5);
+        step('C5 再收起 caret 恢复朝下（▴→▾）且内容区隐藏', out.C5.g === 'chevron-down' && out.C5.s === 'chevron-down' && out.C5.i === 'chevron-down' && out.C5.bodies.every(d => d === 'none'), out.C5);
 
         // C6: 右下角两件（模式徽章 + 帮助）与左上/右上同模板
         out.C6 = await page.evaluate(() => {
