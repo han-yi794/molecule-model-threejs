@@ -25,7 +25,7 @@
 - **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
 - **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构。
 - **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**撤销/恢复**(左上角按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)。
-- **可视化**:青色水滴形孤对电子云(NEBOOK 风格)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮。
+- **可视化**:浅蓝半透明水滴形孤对电子云(NEBOOK 风格)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮。
 - **自测体系**:页面内自动测试 + Playwright 回归脚本(33 几何 + 23 π + 36 基团方位,全绿)。
 
 ## 程序功能详解
@@ -66,7 +66,7 @@
 ### 4. 可视化与辅助
 
 - **离域π键**(`btn-toggle-deloc`):开启时杂化推断考虑共轭(苯酚/苯胺 lp 参与共轭→sp2),并可「显示离域π键」(`btn-toggle-pi`)高亮 π 体系;离域π自测可用控制台 `window.__runPiSystemTests()` 触发(页面内自测按钮已移除)。
-- **孤对电子**(`btn-toggle-lp`):每对孤对显示为青色水滴云 + 双黑点(NEBOOK 风格),方向随 VSEPR 模板实时更新(如水中 O 两对、氨中 N 一对)。
+- **孤对电子**(`btn-toggle-lp`):每对孤对显示为浅蓝半透明水滴云(尖端贴原子、圆肚朝外)+ 并排双黑点(NEBOOK H₂O 风格),方向随 VSEPR 模板实时更新(如水中 O 两对、氨中 N 一对)。
 - **原子材质**(设置面板「原子材质」下拉):自发光(霓虹,忽略场景光)/ 经典光泽 / 金属 / 卡通 四种风格,实时切换并记忆。
 - **拖拽辅助**:HUD 显示位移(轴拖显示单轴分量,平面拖显示 Δ 三分量)、悬停 gizmo/原子高亮与光标反馈、首次使用引导 toast。
 - **帮助面板**(右下角 ? 图标按钮):操作指南、快捷键、四种拖动方式图解。
@@ -154,7 +154,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`)、`window.lastRunResults`、`window._INIT_ERRORS`
 - `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)
 - `window.__dragMode`{project/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
-- `window.__lpStats`(孤对统计)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
+- `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
 - 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
 - 异构体/键线式:`window.__smilesToCondensed`/`__toSubscriptCondensed`/`__analyzeIsomerStructure`/`__isomerFilter`{analyze/state/set/reset/rows}、`window.__skeletalRender`/`__openSkeletalLightbox`/`__hideSkeletalLightbox`/`__skeletalLightbox`{state/next/prev}
 - 参数注入:`window.OPT_PARAMS`、`localStorage.OPT_PARAMS_OVERRIDE`(见 HTML 内 `DEFAULT_OPT_PARAMS`)

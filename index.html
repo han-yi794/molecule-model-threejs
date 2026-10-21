@@ -11151,20 +11151,50 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return results;
         }
         window.__runPiSystemTests = runPiSystemTests;
-        // 用低透明度蓬松的浅蓝色电子云渲染孤对电子，模拟 nobook 电子云轮廓图风格：
-        // 每对孤对电子 = 一朵"云滴"形电子云轮廓（云心沿孤对方向、阔端朝外，浅蓝色半透明描摹风格
-        // 参考 atomCloud__C 页面 2p 轨道的 cloudMaterial 低透明度透明云）
-        // + 云内两个小亮点（代表一对电子）。
+        // 用半透明浅蓝色电子云渲染孤对电子，模拟 nobook 电子云轮廓图风格：
+        // 每对孤对电子 = 一朵**水滴形**电子云轮廓（尖端贴原子表面、圆肚朝外，
+        // 参考 hx.nobook.com H₂O 页面：云呈水滴状，两个电子点在云体中段并排）
+        // + 云内两个小黑点（代表一对电子）。
         let showLonePairs = (() => { try { return localStorage.getItem('LONE_PAIRS_VIS') !== '0'; } catch (e) { return true; } })();
         const LP_COLOR = 0x9fd0ff;          // 浅蓝电子云（2026-10-20 用户要求：半透明浅蓝，替代原青色）
         const LP_OPACITY = 0.72;            // 半透明：深色背景上浅蓝需较高不透明度才显轻亮，仍透出下层原子
-        const LP_RADIUS = 0.42;             // 云基准半径
-        const LP_DIST = 0.78;               // 云心距原子中心的距离
-        const LP_TEAR_MAJOR = 1.4;          // 轮廓长轴（沿孤对方向），饱满椭圆体
-        const LP_TEAR_MINOR = 1.08;         // 轮廓短轴（垂直方向）。仿 nobook SO₃²⁻ 页云滴：bbox 长/短=1.5:1.158≈1.295，长1.4→短1.08
+        const LP_DROP_LEN = 1.28;           // 水滴总长（沿孤对方向；长/宽≈1.6，对齐 nobook H₂O 参考图）
+        const LP_DROP_RADIUS = 0.40;        // 水滴最大半径（圆肚处）→ 最大直径 0.80
+        const LP_DROP_TAPER = 0.5;          // 尖端收束指数：径向 × v^k（v=0 尖端 → 1 圆端）。k=0.5 时
+                                            // 轮廓 r∝v·√(1-v)：尖端为自然水滴锥（≈32°）、最宽处在 2/3 处
+        const LP_TIP_FACTOR = 0.9;          // 尖端距原子中心 = 原子视觉半径 × 该系数（略嵌入球面，云从原子表面长出）
+        const LP_TIP_MIN = 0.30;            // 尖端距原子中心下限（小原子也留出云头）
         const LPE_COLOR = 0x000000;         // 云内两个小球（代表 2 个电子）的颜色
-        const LPE_RADIUS = 0.1;             // 小球半径（仿 nobook SO₃²⁻ 页黑点尺寸）
-        const LPE_OFFSET = 0.3;             // 两个小球沿主方向相对云心的错开距离（仿 nobook SO₃²⁻ 页黑点间距 ±0.3，仍在云轮廓内部）
+        const LPE_RADIUS = 0.09;            // 小球半径（参考图黑点尺寸偏小）
+        const LPE_OFFSET = 0.15;            // 两球相对云轴的垂直半间距（并排、与中心原子等距）
+        const LPE_ALONG = 0.55;             // 电子点沿水滴轴的位置：自尖端起占总长的比例（参考图约中段）
+        // 水滴形轮廓：取球面顶点，按 v^k 收束径向（下端收成尖），再归一化到目标长/宽。
+        // 生成后 y ∈ [0, LP_DROP_LEN]：0 = 尖端（贴原子），LP_DROP_LEN = 圆肚端；轴为 +Y，
+        // 摆放时用四元数把 +Y 对齐孤对方向。geometry.parameters.radius 仍是 LP_DROP_RADIUS，
+        // 供 __lpStats（按半径区分云与小点）使用。
+        function createLonePairDropGeometry() {
+            const g = new THREE.SphereGeometry(LP_DROP_RADIUS, 30, 22);
+            const pos = g.attributes.position;
+            let maxR = 1e-6;
+            for (let i = 0; i < pos.count; i++) {
+                const v = (pos.getY(i) / LP_DROP_RADIUS + 1) / 2;   // 球面 y∈[-R,R] → v∈[0,1]
+                const f = Math.pow(Math.max(v, 1e-4), LP_DROP_TAPER);
+                const x = pos.getX(i) * f, z = pos.getZ(i) * f;
+                pos.setX(i, x); pos.setZ(i, z);
+                maxR = Math.max(maxR, Math.hypot(x, z));
+            }
+            const k = LP_DROP_RADIUS / maxR;                        // 把最宽处缩放回目标半径
+            for (let i = 0; i < pos.count; i++) {
+                pos.setX(i, pos.getX(i) * k);
+                pos.setZ(i, pos.getZ(i) * k);
+                pos.setY(i, (pos.getY(i) / LP_DROP_RADIUS + 1) * 0.5 * LP_DROP_LEN);  // 0 → LP_DROP_LEN
+            }
+            pos.needsUpdate = true;
+            g.computeVertexNormals();
+            g.computeBoundingBox();
+            g.computeBoundingSphere();
+            return g;
+        }
         function updateLonePairVisuals() {
             for (const child of atomsGroup.children) {
                 if (!child.userData || !child.userData.isAtom) continue;
@@ -11180,10 +11210,9 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     meshes = [];
                     dirs.forEach(() => {
                         const cloud = new THREE.Mesh(
-                            new THREE.SphereGeometry(LP_RADIUS, 22, 16),
+                            createLonePairDropGeometry(),
                             new THREE.MeshBasicMaterial({ color: LP_COLOR, transparent: true, opacity: LP_OPACITY, depthWrite: false })
                         );
-                        cloud.scale.set(LP_TEAR_MINOR, LP_TEAR_MAJOR, LP_TEAR_MINOR);
                         cloud.renderOrder = 1;
                         scene.add(cloud);
                         meshes.push(cloud);
@@ -11200,28 +11229,28 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     });
                     child.userData.__lpMeshes = meshes;
                 }
-                const vr = Math.max(0.3, (atomTypes[child.userData.atomType]?.radius || 0.5) / 4);
-                const dist = child.userData.__lpDist || LP_DIST;
+                const atomR = getVisualRadiusForType(child.userData.atomType, null);
+                const tipDist = child.userData.__lpDist || Math.max(LP_TIP_MIN, atomR * LP_TIP_FACTOR);
                 meshes.forEach((m, i) => {
                     const li = Math.floor(i / 3);
                     const d = dirs[li];
                     if (!d) { m.visible = false; return; }
                     m.visible = showLonePairs;
-                    const base = child.position.clone().add(d.clone().multiplyScalar(dist));
+                    const dn = d.clone().normalize();
                     if (i % 3 === 0) {
-                        // 水滴云：主轴对齐孤对方向（阔端朝外）
-                        m.position.copy(base);
-                        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize());
+                        // 水滴云：尖端锚在原子表面，+Y（尖端→圆肚）对齐孤对方向
+                        m.position.copy(child.position).add(dn.clone().multiplyScalar(tipDist));
+                        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dn);
                         return;
                     }
-                    // 亮点：在主方向垂直的对称平面内错开（两电子与中心原子等距，
-                    // 仿 nobook SO₃²⁻ 页黑点绕原子对称排布；若沿用主方向 ±off，两点
-                    // 距原子一端近一端远，不满足等距）
+                    // 电子点：并排在云体中段（垂直云轴错开，两点与中心原子等距；
+                    // 参考图黑点即为并排两点，而非沿云轴一前一后）
                     const up = new THREE.Vector3(0, 1, 0);
-                    let v = new THREE.Vector3().crossVectors(up, d);
-                    if (v.lengthSq() < 1e-6) v.set(1, 0, 0).cross(d);
+                    let v = new THREE.Vector3().crossVectors(up, dn);
+                    if (v.lengthSq() < 1e-6) v.set(1, 0, 0).cross(dn);
                     v.normalize();
-                    m.position.copy(base).add(v.multiplyScalar((i % 3 === 1 ? -1 : 1) * LPE_OFFSET));
+                    const dotCenter = child.position.clone().add(dn.clone().multiplyScalar(tipDist + LP_DROP_LEN * LPE_ALONG));
+                    m.position.copy(dotCenter).add(v.multiplyScalar((i % 3 === 1 ? -1 : 1) * LPE_OFFSET));
                 });
             }
         }
@@ -11371,6 +11400,36 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return info;
         }
         window.__lpStats = __lpStats;
+        // 调试钩子：返回第一朵孤对云的水滴轮廓剖面（尖端半径 / 最大半径 / 最宽位置 / 总长），
+        // 供 verify_lone_pairs.js 断言"水滴形"几何（尖端收尖、最宽处在中后段、长/宽≈1.6）。
+        window.__lpDropProfile = function () {
+            for (const child of atomsGroup.children) {
+                if (!child.userData || !child.userData.isAtom) continue;
+                const meshes = child.userData.__lpMeshes || [];
+                const cloud = meshes.find(m => m.geometry && m.geometry.parameters && m.geometry.parameters.radius > 0.3);
+                if (!cloud) continue;
+                const pos = cloud.geometry.attributes.position;
+                let minY = Infinity, maxY = -Infinity, maxR = 0, widestY = 0;
+                for (let i = 0; i < pos.count; i++) {
+                    const y = pos.getY(i), r = Math.hypot(pos.getX(i), pos.getZ(i));
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    if (r > maxR) { maxR = r; widestY = y; }
+                }
+                const len = (maxY - minY) || 1e-6;
+                let tipR = 0;
+                for (let i = 0; i < pos.count; i++) {
+                    if (pos.getY(i) - minY < 0.08 * len) {
+                        tipR = Math.max(tipR, Math.hypot(pos.getX(i), pos.getZ(i)));
+                    }
+                }
+                return {
+                    length: +len.toFixed(3), maxR: +maxR.toFixed(3), tipR: +tipR.toFixed(3),
+                    widestAt: +((widestY - minY) / len).toFixed(2), minY: +minY.toFixed(3), maxY: +maxY.toFixed(3)
+                };
+            }
+            return null;
+        };
 
         function animate() {
             requestAnimationFrame(animate);
