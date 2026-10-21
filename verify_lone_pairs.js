@@ -1,6 +1,7 @@
-// verify_lone_pairs.js — 孤对电子云「半透明浅蓝」材质验证（2026-10-20）
+// verify_lone_pairs.js — 孤对电子云「半透明浅蓝 + 水滴形」材质验证（2026-10-20 / 10-21）
 // 覆盖：甲醇 O 两朵浅蓝云（颜色/透明度/可见性）+ 云内 2×2 黑点、C/H 不误画、
-//       显示/隐藏开关、甲胺 N 一朵、苯（无孤对）零云、颜色确为浅蓝、零 console 错误。
+//       显示/隐藏开关、甲胺 N 一朵、苯（无孤对）零云、水滴形轮廓（尖端收尖/最宽处/长宽）、
+//       浅蓝色值、零 console 错误。
 // 运行：cmd /c "node verify_lone_pairs.js > verify_lone_pairs.json 2>&1"（timeout 900000ms）
 const { chromium } = require('playwright');
 const http = require('http');
@@ -59,6 +60,9 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             otherRows.length > 0 && otherRows.every(r => r.nLP === 0 && r.meshes.length === 0),
             { others: otherRows.map(r => ({ t: r.t, nLP: r.nLP, meshes: r.meshes.length })) });
 
+        // 记录水滴轮廓（此时甲醇云仍在画布上，末尾 L9 断言）
+        const drop = await page.evaluate(() => window.__lpDropProfile());
+
         // L4 显示/隐藏开关：关 → 全部不可见；开 → 全部恢复
         const off = await page.evaluate(() => { window.__toggleLonePairs(); return window.__lpStats().filter(r => r.meshes.length).flatMap(r => r.meshes.map(m => m.vis)); });
         await page.evaluate(() => window.__toggleLonePairs());
@@ -78,6 +82,13 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         const bz = await gen('benzene');
         const bzMeshes = bz.reduce((n, r) => n + r.meshes.length, 0);
         step('L6 苯：无孤对电子（零云、零电子点）', bz.length > 0 && bzMeshes === 0, { atoms: bz.length, meshes: bzMeshes });
+
+        // L9 水滴形轮廓（用户 2026-10-21 需求，参考 nobook H₂O）：尖端收尖、圆肚朝外、最宽处在中后段
+        step('L9 水滴轮廓：尖端半径 < 30% 最大半径、最宽处在 55%-80%、长≈1.28 / 最大半径≈0.40',
+            !!drop && Math.abs(drop.length - 1.28) < 0.02 && Math.abs(drop.maxR - 0.40) < 0.01
+            && drop.tipR < drop.maxR * 0.3 && drop.widestAt >= 0.55 && drop.widestAt <= 0.80
+            && drop.minY >= -0.001 && Math.abs(drop.maxY - drop.length) < 0.01,
+            drop);
 
         // L7 颜色确为「浅蓝」：蓝分量最高、整体亮度偏高、色相在蓝区
         const rgb = { r: parseInt(EXPECT_COLOR.slice(1, 3), 16), g: parseInt(EXPECT_COLOR.slice(3, 5), 16), b: parseInt(EXPECT_COLOR.slice(5, 7), 16) };
