@@ -49,11 +49,12 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             && oClouds.every(c => c.color === EXPECT_COLOR && Math.abs(c.opacity - EXPECT_OPACITY) < 1e-9 && c.vis),
             { nLP: oRow && oRow.nLP, clouds: oClouds });
 
-        // L2 云内电子点为金属材质（2026-10-21 用户要求）：MeshStandardMaterial、银灰 #c9d3e0、metalness 0.95、roughness 0.22
-        step('L2 甲醇 O：云内 2×2 金属电子点（MeshStandardMaterial / metalness 0.95 / #c9d3e0）',
+        // L2 云内电子点为金属材质（2026-10-21 用户要求）+ 近黑基色（10-22 用户要求"改成黑色"）：
+        // MeshStandardMaterial、黑铬 #15181c、metalness 0.95、roughness 0.22
+        step('L2 甲醇 O：云内 2×2 黑色金属电子点（MeshStandardMaterial / metalness 0.95 / #15181c）',
             oDots.length === 4 && oDots.every(d => d.type === 'MeshStandardMaterial'
                 && Math.abs(d.metalness - 0.95) < 1e-6 && Math.abs(d.roughness - 0.22) < 1e-6
-                && d.color === '#c9d3e0' && d.vis),
+                && d.color === '#15181c' && d.vis),
             { dots: oDots });
 
         // L3 C/H 不误画孤对
