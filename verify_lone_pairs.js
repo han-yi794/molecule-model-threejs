@@ -1,7 +1,7 @@
-// verify_lone_pairs.js — 孤对电子云「半透明浅蓝 + 水滴形」材质验证（2026-10-20 / 10-21）
-// 覆盖：甲醇 O 两朵浅蓝云（颜色/透明度/可见性）+ 云内 2×2 金属电子点、C/H 不误画、
+// verify_lone_pairs.js — 孤对电子云「半透明中蓝 + 水滴形 + 受光立体」材质验证（2026-10-20 / 10-21 / 10-23）
+// 覆盖：甲醇 O 两朵中蓝云（颜色/透明度/可见性/受光材质）+ 云内 2×2 金属电子点、C/H 不误画、
 //       显示/隐藏开关、甲胺 N 一朵、苯（无孤对）零云、水滴形轮廓（尖端收尖/最宽处/长宽）、
-//       浅蓝色值、零 console 错误。
+//       色值（蓝区）、零 console 错误。
 // 运行：cmd /c "node verify_lone_pairs.js > verify_lone_pairs.json 2>&1"（timeout 900000ms）
 const { chromium } = require('playwright');
 const http = require('http');
@@ -9,7 +9,7 @@ const { spawn } = require('child_process');
 
 const PORT = 8062;
 const PAGE_URL = `http://127.0.0.1:${PORT}/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1&v=lp1`;
-const EXPECT_COLOR = '#9fd0ff';
+const EXPECT_COLOR = '#5fa6e4';
 const EXPECT_OPACITY = 0.72;
 
 async function probe(url) { return new Promise(res => { const req = http.get(url, r => { r.resume(); res(true); }); req.on('error', () => res(false)); req.setTimeout(3000, () => { req.destroy(); res(false); }); }); }
@@ -44,7 +44,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         const me = await gen('methanol');
         const oRow = me.find(r => r.t === 'O');
         const oClouds = cloudsOf(oRow), oDots = dotsOf(oRow);
-        step('L1 甲醇 O：2 朵云颜色 #9fd0ff / α=0.72 / 可见',
+        step('L1 甲醇 O：2 朵云颜色 #5fa6e4 / α=0.72 / 可见',
             oRow && oRow.nLP === 2 && oClouds.length === 2
             && oClouds.every(c => c.color === EXPECT_COLOR && Math.abs(c.opacity - EXPECT_OPACITY) < 1e-9 && c.vis),
             { nLP: oRow && oRow.nLP, clouds: oClouds });
@@ -93,7 +93,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             && drop.minY >= -0.001 && Math.abs(drop.maxY - drop.length) < 0.01,
             drop);
 
-        // L7 颜色确为「浅蓝」：蓝分量最高、整体亮度偏高、色相在蓝区
+        // L7 颜色确为蓝色：蓝分量最高、色相在蓝区、明度足够（深一档后仍 > 0.6）
         const rgb = { r: parseInt(EXPECT_COLOR.slice(1, 3), 16), g: parseInt(EXPECT_COLOR.slice(3, 5), 16), b: parseInt(EXPECT_COLOR.slice(5, 7), 16) };
         const mx = Math.max(rgb.r, rgb.g, rgb.b), mn = Math.min(rgb.r, rgb.g, rgb.b);
         let hue = 0;
@@ -103,9 +103,14 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             if (hue < 0) hue += 360;
         }
         const light = (mx + mn) / 2 / 255;
-        step('L7 色值为浅蓝（B 最高、色相 200-230°、明度 > 0.6）',
+        step('L7 色值为蓝色（B 最高、色相 200-230°、明度 > 0.6）',
             rgb.b > rgb.g && rgb.g > rgb.r && rgb.b >= 200 && hue >= 200 && hue <= 230 && light > 0.6,
             { hex: EXPECT_COLOR, rgb, hue: +hue.toFixed(1), light: +light.toFixed(2) });
+
+        // L10 电子云为受光材质 → 有明暗渐变，避免 MeshBasicMaterial 的平面感
+        step('L10 电子云受光立体渲染（MeshLambertMaterial）',
+            oClouds.length === 2 && oClouds.every(c => c.type === 'MeshLambertMaterial'),
+            { types: oClouds.map(c => c.type) });
 
         // L8 零 console 错误
         step('L8 零 console 错误', report.consoleErrors.length === 0, report.consoleErrors);
