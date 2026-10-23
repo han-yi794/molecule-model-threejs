@@ -11151,13 +11151,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return results;
         }
         window.__runPiSystemTests = runPiSystemTests;
-        // 用半透明浅蓝色电子云渲染孤对电子，模拟 nobook 电子云轮廓图风格：
+        // 用半透明中蓝电子云渲染孤对电子，模拟 nobook 电子云轮廓图风格（Lambert 受光 → 立体感）：
         // 每对孤对电子 = 一朵**水滴形**电子云轮廓（尖端贴原子表面、圆肚朝外，
         // 参考 hx.nobook.com H₂O 页面：云呈水滴状，两个电子点在云体中段并排）
-        // + 云内两个小黑点（代表一对电子）。
+        // + 云内两个黑铬金属点（代表一对电子）。
         let showLonePairs = (() => { try { return localStorage.getItem('LONE_PAIRS_VIS') !== '0'; } catch (e) { return true; } })();
-        const LP_COLOR = 0x9fd0ff;          // 浅蓝电子云（2026-10-20 用户要求：半透明浅蓝，替代原青色）
-        const LP_OPACITY = 0.72;            // 半透明：深色背景上浅蓝需较高不透明度才显轻亮，仍透出下层原子
+        const LP_COLOR = 0x5fa6e4;          // 电子云基色：中蓝（2026-10-23 用户要求"蓝色再深一点"，原 0x9fd0ff 浅蓝）
+        const LP_EMISSIVE = 0x0a1c2e;       // 自发光：托底阴影侧，避免背光面发黑（配合 Lambert 受光）
+        const LP_OPACITY = 0.72;            // 半透明：仍透出下层原子（2026-10-20 用户要求半透明）
         const LP_DROP_LEN = 1.28;           // 水滴总长（沿孤对方向；长/宽≈1.6，对齐 nobook H₂O 参考图）
         const LP_DROP_RADIUS = 0.40;        // 水滴最大半径（圆肚处）→ 最大直径 0.80
         const LP_DROP_TAPER = 0.5;          // 尖端收束指数：径向 × v^k（v=0 尖端 → 1 圆端）。k=0.5 时
@@ -11235,7 +11236,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     dirs.forEach(() => {
                         const cloud = new THREE.Mesh(
                             createLonePairDropGeometry(),
-                            new THREE.MeshBasicMaterial({ color: LP_COLOR, transparent: true, opacity: LP_OPACITY, depthWrite: false })
+                            new THREE.MeshLambertMaterial({
+                                color: LP_COLOR, emissive: LP_EMISSIVE,
+                                transparent: true, opacity: LP_OPACITY, depthWrite: false
+                            })
                         );
                         cloud.renderOrder = 1;
                         scene.add(cloud);
