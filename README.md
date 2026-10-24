@@ -40,6 +40,7 @@
   - *SMILES*:输入结构式(如 CCO / c1ccccc1),优先取 PubChem 3D 坐标(含 H、几何好),失败回退本地管线。
   - *分子式*:输入化学式(如 C6H6O / O2),自动弹出**同分异构体选择面板**(在线枚举,排除氘代/同位素/组合物),每行显示名称、结构简式与**键线式缩略图**(SmilesDrawer 本地渲染、离线可用;羟基/氨基按教材习惯合写为一个标签,不再拆成 -O-H),**点缩略图可放大查看**——大图界面可用 ‹/› 或 ←/→ 左右切换候选、并直接勾选"生成此分子",✕/点背景/Esc 关闭;可单选或多选并排生成;**小键盘**输入元素+数字(下角标显示如 C₆H₆;元素/数字分区,移动端自动限宽限高不超出屏幕;Esc 或 ✕ 收起)。
     - *候选筛选*:面板顶部可按**官能团**(羟基/醛基/羧基/酯基/醚键/酮羰基/氨基/酰胺/氰基/硝基/苯环/芳香环/环/甲基/C=C/C≡C/卤素)与 **¹H NMR 特征**筛选候选——峰组数表达式(如 `3` / `≥3` / `2-4`)、可排除活泼氢、氢类型(醛氢/芳香氢/烯氢/炔氢/羧酸氢/羟基氢/氨基氢/硫醇氢);多条件支持"满足全部/任一";每行下方实时显示该分子的基团与 ¹H NMR(组数+积分比,如 `3 组 (3:2:1)`),"全选"只勾选当前可见行。
+    - *大分子式：检索前筛选*:候选超过 400 个的分子式(如 C₁₂H₁₃N₃O₂,PubChem 上有一万多条记录)不再一次性全量拉取(旧版会因请求超时报"请求失败"),而是先弹出**检索前筛选**面板——同样按官能团 / ¹H NMR 条件收窄,并可选每次上限(30/60/120 个);检索从前往后扫描、命中达到上限即停,顶部实时显示"已扫描 / 总数 · 命中数";结果面板可点**继续检索更多**往后取下一批,预筛选条件会自动带入结果面板的筛选条(可再收窄)。小分子式(≤400 候选)仍直接出结果。
   - *蛋白质序列*:输入氨基酸序列(中文名/三字母/单字母混合均可,≤400 残基),经 **ESMFold** 在线预测 3D 结构(必须联网)。
   - 在线 API(PubChem/CACTUS/ESMFold)均免费免 key,失败静默回退本地管线,控制台标注分子来源。
 - **自由搭骨架**:侧面原子卡片拖出 **8 种原子**(C/H/O/N/F/Cl/Br/I)到画布,靠近已有原子松开即自动成键。
@@ -92,6 +93,7 @@
 | `verify_groups_fix.js` | 基团放置回归:9 组 × 4 方位 = 36 场景 |
 | `verify_isomer_condensed.js` | 异构体面板:结构简式转换器电池、真实弹窗(C2H6O)、键线式放大查看器(含 ‹›/←→ 切换、勾选"生成此分子"、本地画布渲染与缩放回归保护,25 项) |
 | `verify_isomer_filter.js` | 异构体候选筛选:分析器电池 39 例、峰组数表达式、真实 UI 筛选/全选/重置/C4H8 数据驱动/筛选内放大切换范围(26 项) |
+| `verify_isomer_presearch.js` | 大分子式检索前筛选:候选探测(401/capped)、属性抓取、真实 UI(C₁₂H₁₃N₃O₂ 芳香环筛选 30 个、说明条/继续 30→60、条件带入、Esc/停止/取消、无筛选前 30)、手机 375×667/375×400 不超屏可滚动、C2H6O/C6H6 回归(23 项) |
 | `verify_history.js` | 撤销/恢复专项(12 项):按钮/图标/布局/初始置灰、空栈提示、拖拽/删除/移动/优化/清空/生成的提交点、复合操作恰记一条、键盘微移合并、redo 失效规则、快捷键、位置精确还原 |
 | `verify_corners.js` | 角落控件统一结构:桌面五件+右下角两件+撤销/恢复两键、移动端 375 两行图标键(10 项) |
 | `verify_foolproof.js` | 防呆测试:22 项边界/误操作场景(空状态、非法参数注入、状态机、极端几何、真实鼠标误操作) |
@@ -156,7 +158,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)
 - `window.__dragMode`{project/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
 - `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
-- 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
+- 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__probeFormulaCandidates`/`__isomerPresearch`{open/close/start/stop/continue/reset/set/state/matches}/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
 - 异构体/键线式:`window.__smilesToCondensed`/`__toSubscriptCondensed`/`__analyzeIsomerStructure`/`__isomerFilter`{analyze/state/set/reset/rows}、`window.__skeletalRender`/`__openSkeletalLightbox`/`__hideSkeletalLightbox`/`__skeletalLightbox`{state/next/prev}
 - 参数注入:`window.OPT_PARAMS`、`localStorage.OPT_PARAMS_OVERRIDE`(见 HTML 内 `DEFAULT_OPT_PARAMS`)
 

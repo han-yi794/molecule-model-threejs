@@ -557,13 +557,13 @@
         }
         .isof-chip:hover { border-color: rgba(255, 210, 138, 0.55); color: #ffe1ad; }
         .isof-chip.on { background: #e8b44c; border-color: #e8b44c; color: #1a1f27; font-weight: bold; }
-        #isomer-nmr-count {
+        #isomer-nmr-count, #isomer-pre-nmr-count {
             width: 92px; box-sizing: border-box; background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; color: #e8eefc;
             font-size: 12px; padding: 2px 6px; outline: none;
         }
-        #isomer-nmr-count.isof-invalid { border-color: #ff6b6b; }
-        #isomer-filter-mode { background: rgba(16, 22, 38, 0.9); color: #e8eefc; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; font-size: 12px; padding: 2px 4px; }
+        #isomer-nmr-count.isof-invalid, #isomer-pre-nmr-count.isof-invalid { border-color: #ff6b6b; }
+        #isomer-filter-mode, #isomer-pre-filter-mode, #isomer-pre-limit { background: rgba(16, 22, 38, 0.9); color: #e8eefc; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; font-size: 12px; padding: 2px 4px; }
         .isof-status { margin-left: auto; color: #8fa0b8; }
         .isof-reset { cursor: pointer; color: #ffd28a; }
         .isof-reset:hover { text-decoration: underline; }
@@ -573,6 +573,47 @@
         .isof-tags .tg-g { color: #ffd28a; }
         .isof-tags .tg-n { color: #9fd0ff; }
         .isof-tags .tg-sep { color: #5a6472; }
+        /* 检索前筛选弹窗 + 结果面板的预筛选说明条（2026-10-24）
+           动机：C12H13N3O2 这类分子式在 PubChem 有上万候选，先全量拉属性会超时；
+           改为检索前按官能团 / ¹H NMR 收窄，命中达到上限即停。 */
+        #isomer-pre-panel {
+            position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            width: min(700px, 94vw); max-height: 86vh; box-sizing: border-box;
+            background: rgba(16, 20, 26, 0.98); border: 1px solid rgba(232, 180, 76, 0.38);
+            border-radius: 14px; z-index: 1150; padding: 14px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.65); overflow-y: auto;
+            display: none; flex-direction: column;
+        }
+        #isomer-pre-hint { color: #9ab; font-size: 12px; line-height: 1.6; margin-bottom: 8px; }
+        #isomer-pre-hint b { color: #ffd28a; font-weight: normal; }
+        #isomer-pre-filter {
+            display: flex; flex-direction: column; gap: 6px; padding: 8px 9px 9px; margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px;
+        }
+        #isomer-pre-progress-wrap {
+            background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px; padding: 8px 9px; margin-bottom: 10px;
+        }
+        #isomer-pre-progress { color: #9fd0ff; font-size: 12px; line-height: 1.5; margin-bottom: 6px; }
+        #isomer-pre-bar { height: 5px; background: rgba(255, 255, 255, 0.1); border-radius: 999px; overflow: hidden; }
+        #isomer-pre-bar-fill { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #e8b44c, #ffd28a); transition: width 0.2s ease; }
+        #isomer-pre-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        #isomer-pre-actions .isof-note { color: #7d8798; font-size: 11px; line-height: 1.5; flex: 1 1 180px; }
+        #isomer-pre-actions button { border: none; border-radius: 10px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: bold; }
+        #isomer-pre-cancel { background: rgba(255, 255, 255, 0.1); color: #dde8ff; }
+        #isomer-pre-cancel:hover { background: rgba(255, 255, 255, 0.18); }
+        #isomer-pre-start { background: #e8b44c; color: #1a1f27; }
+        #isomer-pre-start:hover { background: #ffd28a; }
+        #isomer-pre-start:disabled { background: rgba(232, 180, 76, 0.4); color: rgba(26, 31, 39, 0.6); cursor: default; }
+        #isomer-presearch-note {
+            display: none; align-items: center; gap: 8px; flex-wrap: wrap;
+            font-size: 12px; color: #9fd0ff; background: rgba(95, 166, 228, 0.1);
+            border: 1px solid rgba(95, 166, 228, 0.28); border-radius: 8px;
+            padding: 5px 8px; margin-bottom: 8px; line-height: 1.5;
+        }
+        #isomer-presearch-more { cursor: pointer; color: #ffd28a; text-decoration: underline; user-select: none; }
+        #isomer-presearch-more:hover { color: #ffe1ad; }
+        #isomer-presearch-more.isof-busy { opacity: 0.55; pointer-events: none; }
         #sidebar::-webkit-scrollbar {
             width: 4px;
         }
@@ -771,6 +812,7 @@
             #sidebar .action-btn, #group-sidebar .action-btn { font-size: min(12px, 1.2vw); padding: min(6px, 0.6vw); }
             /* 浮层限宽防溢出 */
             #isomer-panel { width: min(640px, 94vw); max-height: 86vh; }
+            #isomer-pre-panel { width: min(700px, 94vw); max-height: 88vh; }
             #isomer-list { max-height: none; }
             #formula-keypad { width: min(232px, 92vw); }
             #candidate-panel { max-width: min(440px, 92vw); }
@@ -987,6 +1029,11 @@
             <b style="color:#fff; font-size:14px;"><span id="isomer-panel-title">异构体</span></b>
             <span id="isomer-panel-close" data-icon="x" data-size="16" style="cursor:pointer; color:#9ab; line-height:1; display:inline-flex;"></span>
         </div>
+        <!-- 预筛选说明条（2026-10-24）：只有走「检索前筛选」的结果才显示，说明已扫描/命中/是否还能继续 -->
+        <div id="isomer-presearch-note">
+            <span id="isomer-presearch-note-text"></span>
+            <span id="isomer-presearch-more" style="display:none;">继续检索更多</span>
+        </div>
         <div id="isomer-filter">
             <div class="isof-row">
                 <span class="isof-cap">官能团</span>
@@ -1015,6 +1062,49 @@
                 <span id="isomer-count" style="color:#9ab; font-size:12px; margin-right:10px;"></span>
                 <button id="btn-isomer-generate" style="background:#e8b44c; color:#1a1f27; border:none; border-radius:10px; padding:6px 14px; font-weight:bold; cursor:pointer; font-size:13px;">生成选中</button>
             </div>
+        </div>
+    </div>
+    <!-- 检索前筛选弹窗（2026-10-24）：候选超过阈值（默认 400）时先收窄再检索，
+         避免给上万个候选逐个拉属性导致超时（C12H13N3O2 实测 13,737 个）。 -->
+    <div id="isomer-pre-panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <b style="color:#fff; font-size:14px;"><span id="isomer-pre-title">检索前筛选</span></b>
+            <span id="isomer-pre-close" data-icon="x" data-size="16" style="cursor:pointer; color:#9ab; line-height:1; display:inline-flex;"></span>
+        </div>
+        <div id="isomer-pre-hint"></div>
+        <div id="isomer-pre-filter">
+            <div class="isof-row">
+                <span class="isof-cap">官能团</span>
+                <span id="isomer-pre-group-chips" style="display:flex; flex-wrap:wrap; gap:4px 6px;"></span>
+            </div>
+            <div class="isof-row">
+                <span class="isof-cap">¹H NMR</span>
+                <span>峰组数</span>
+                <input type="text" id="isomer-pre-nmr-count" placeholder="如 3 / ≥3 / 2-4" title="支持 =n、>n、<n、a-b 区间；留空则不限" autocomplete="off" />
+                <label class="isof-check"><input type="checkbox" id="isomer-pre-nmr-noexch" />排除活泼氢</label>
+                <span id="isomer-pre-nmr-types" style="display:flex; flex-wrap:wrap; gap:4px 6px;"></span>
+            </div>
+            <div class="isof-row">
+                <span class="isof-cap">多条件</span>
+                <select id="isomer-pre-filter-mode"><option value="all">满足全部</option><option value="any">满足任一</option></select>
+                <span class="isof-cap" style="margin-left:8px;">每次上限</span>
+                <select id="isomer-pre-limit" title="本次检索最多返回多少个结构；达到即停，可再继续检索下一批">
+                    <option value="30">30 个</option>
+                    <option value="60" selected>60 个</option>
+                    <option value="120">120 个</option>
+                </select>
+                <span class="isof-reset" id="isomer-pre-filter-reset">重置筛选</span>
+                <span class="isof-status" id="isomer-pre-status"></span>
+            </div>
+        </div>
+        <div id="isomer-pre-progress-wrap">
+            <div id="isomer-pre-progress">正在统计候选总数…</div>
+            <div id="isomer-pre-bar"><span id="isomer-pre-bar-fill"></span></div>
+        </div>
+        <div id="isomer-pre-actions">
+            <span class="isof-note">提示：命中达到「每次上限」即停止检索；再次点击「继续检索更多」可往后取下一批。</span>
+            <button id="isomer-pre-cancel">取消</button>
+            <button id="isomer-pre-start">开始检索</button>
         </div>
     </div>
     <div id="skeletal-lightbox">
@@ -8557,8 +8647,8 @@ function smilesToCondensed(smiles) {
         const _isofState = { groups: new Set(), types: new Set(), countRaw: '', noExch: false, mode: 'all' };
         let _isofInited = false;
 
-        function isofRowMatches(an, expr) {
-            const f = _isofState;
+        function isofRowMatches(an, expr, state) {
+            const f = state || _isofState;
             if (!f.groups.size && !f.types.size && !expr) return true;   // 无筛选条件：全部显示（含分析不可用的行）
             if (!an) return false;                                       // 有筛选条件但结构分析不可用：无法匹配
             const conds = [];
@@ -8632,9 +8722,7 @@ function smilesToCondensed(smiles) {
             isofUpdateRowTags();
             return isofApplyFilter();
         }
-        function isofBuildChips() {
-            const gWrap = document.getElementById('isomer-group-chips');
-            const tWrap = document.getElementById('isomer-nmr-types');
+        function isofBuildChipSet(gWrap, tWrap, state, onChange) {
             if (!gWrap || !tWrap || gWrap.childElementCount) return;
             ISOF_GROUP_DEFS.forEach(d => {
                 const chip = document.createElement('span');
@@ -8644,9 +8732,9 @@ function smilesToCondensed(smiles) {
                 chip.textContent = d.label;
                 chip.title = d.tip || '';
                 chip.addEventListener('click', () => {
-                    if (_isofState.groups.has(d.key)) _isofState.groups.delete(d.key); else _isofState.groups.add(d.key);
-                    chip.classList.toggle('on', _isofState.groups.has(d.key));
-                    isofApplyFilter();
+                    if (state.groups.has(d.key)) state.groups.delete(d.key); else state.groups.add(d.key);
+                    chip.classList.toggle('on', state.groups.has(d.key));
+                    onChange();
                 });
                 gWrap.appendChild(chip);
             });
@@ -8658,12 +8746,20 @@ function smilesToCondensed(smiles) {
                 chip.textContent = d.label;
                 chip.title = d.tip || '';
                 chip.addEventListener('click', () => {
-                    if (_isofState.types.has(d.key)) _isofState.types.delete(d.key); else _isofState.types.add(d.key);
-                    chip.classList.toggle('on', _isofState.types.has(d.key));
-                    isofApplyFilter();
+                    if (state.types.has(d.key)) state.types.delete(d.key); else state.types.add(d.key);
+                    chip.classList.toggle('on', state.types.has(d.key));
+                    onChange();
                 });
                 tWrap.appendChild(chip);
             });
+        }
+        function isofBuildChips() {
+            isofBuildChipSet(
+                document.getElementById('isomer-group-chips'),
+                document.getElementById('isomer-nmr-types'),
+                _isofState,
+                isofApplyFilter
+            );
         }
         function isofInitUI() {
             if (_isofInited) return;
@@ -8738,41 +8834,508 @@ function smilesToCondensed(smiles) {
         window.__parseFormula = parseFormula;
         window.__formulaToString = formulaToString;
 
-        // 收集 FastFormula 候选的分子展示信息（名称/SMILES）
-        async function fetchFormulaIsomers(formula) {
-            try {
-                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined;
-                const r = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastformula/' + encodeURIComponent(formula) + '/cids/JSON', { signal: ctrl });
-                if (!r.ok) return { ok: false, error: 'FastFormula 检索失败 (HTTP ' + r.status + ')' };
-                const j = await r.json();
-                const cids = j && j.IdentifierList ? j.IdentifierList.CID : null;
-                if (!cids || !cids.length) return { ok: false, error: '未找到该分子式的任何记录' };
-                const props = [];
-                // 分块请求属性（CID 过多时分批，避免 URL 过长）
-                for (let i = 0; i < cids.length; i += 50) {
-                    const chunk = cids.slice(i, i + 50);
-                    const p = await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/' + chunk.join(',') + '/property/MolecularFormula,ConnectivitySMILES,IUPACName/JSON', { signal: ctrl });
-                    if (!p.ok) continue;
-                    const pj = await p.json();
-                    const list = pj && pj.PropertyTable ? pj.PropertyTable.Properties : [];
-                    for (const x of list) props.push(x);
+        // ============ PubChem 异构体检索（2026-10-24 重构：每请求独立超时 + 大候选检索前筛选）============
+        // 旧实现把同一个 AbortSignal.timeout(20000) 传给 CID 列表与所有属性分块请求。AbortSignal.timeout
+        // 是一次性信号：20 秒后它对**所有**使用同一信号的请求生效。C12H13N3O2 有 13,737 个候选、
+        // 需 ~275 次属性分块请求，后续请求全部抛 AbortError → 用户只看到「请求失败」。
+        // 现在：① 每个请求各自创建超时（绝不复用）；② 429/5xx 短暂退避重试；单块失败不拖垮整体；
+        //       ③ 候选超过阈值时先弹「检索前筛选」，边分页边本地分析结构，命中达到上限立即停。
+        const PUBCHEM_REST = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
+        const ISOF_PRESEARCH_THRESHOLD = 400;   // 候选超过此数 → 先筛选再检索
+        const ISOF_PRE_PAGE = 100;              // 每页 CID 数
+        const ISOF_PRE_PROP = 50;               // 属性分块（限制 URL 长度）
+        const ISOF_PRE_LIST_CAP = 20000;        // 一次性取 CID 列表的上限；超过则改为分页拉取
+
+        function pubchemSignal(timeoutMs, runSignal) {
+            let to = null;
+            if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+                try { to = AbortSignal.timeout(timeoutMs || 15000); } catch (e) { to = null; }
+            }
+            if (runSignal && to && typeof AbortSignal.any === 'function') {
+                try { return AbortSignal.any([runSignal, to]); } catch (e) {}
+            }
+            return runSignal || to || undefined;
+        }
+        async function pubchemJson(url, opts) {
+            opts = opts || {};
+            const r = await fetch(url, { signal: pubchemSignal(opts.timeout || 15000, opts.signal) });
+            if (!r.ok) {
+                const err = new Error('HTTP ' + r.status);
+                err.status = r.status;
+                throw err;
+            }
+            return r.json();
+        }
+        async function pubchemJsonRetry(url, opts) {
+            opts = opts || {};
+            const tries = Math.max(1, opts.tries || 3);
+            let last = null;
+            for (let i = 0; i < tries; i++) {
+                try { return await pubchemJson(url, opts); }
+                catch (e) {
+                    last = e;
+                    // 4xx（除以 429 限流）是确定性错误，重试无意义
+                    if (e && e.status && [429, 500, 502, 503, 504].indexOf(e.status) < 0) throw e;
+                    if (opts.signal && opts.signal.aborted) throw e;
+                    await new Promise(rs => setTimeout(rs, 400 * (i + 1)));
                 }
+            }
+            throw last;
+        }
+        function isofCidsUrl(formula) {
+            return PUBCHEM_REST + '/compound/fastformula/' + encodeURIComponent(formula) + '/cids/JSON';
+        }
+        function isofPropsUrl(cids) {
+            return PUBCHEM_REST + '/compound/cid/' + cids.join(',') + '/property/MolecularFormula,ConnectivitySMILES,IUPACName/JSON';
+        }
+        // 统一过滤规则：排除含显式 H/同位素（'['）、多片段（'.'）、氘代名称；生成展示用结构简式
+        function isofNormalizeProperty(x, formula) {
+            const smi = (x && x.ConnectivitySMILES) || '';
+            if (!smi || smi.includes('[') || smi.includes('.')) return null;
+            const name = x.IUPACName || '';
+            if (/deuterio|tritio|isotop/i.test(name)) return null;
+            return { cid: x.CID, name: name || smi, smiles: smi, formula: x.MolecularFormula || formula, cond: smilesToCondensed(smi) };
+        }
+        // 轻量探测候选规模（只取阈值+1 条）：capped=true 表示超过阈值，需要先筛选
+        async function probeFormulaCandidates(formula) {
+            const cap = ISOF_PRESEARCH_THRESHOLD + 1;
+            try {
+                const j = await pubchemJsonRetry(isofCidsUrl(formula) + '?MaxRecords=' + cap, { timeout: 15000, tries: 2 });
+                const cids = (j && j.IdentifierList && j.IdentifierList.CID) || [];
+                return { ok: true, cids: cids, capped: cids.length >= cap, threshold: ISOF_PRESEARCH_THRESHOLD };
+            } catch (e) {
+                if (e && e.status === 404) return { ok: true, cids: [], capped: false, threshold: ISOF_PRESEARCH_THRESHOLD };
+                return { ok: false, error: e && e.status ? ('HTTP ' + e.status) : (e && e.message ? e.message : String(e)) };
+            }
+        }
+        // 收集 FastFormula 候选的分子展示信息（名称 / SMILES / 结构简式）
+        // opts.cids：调用方已拿到的 CID 列表（小候选路径避免重复请求）
+        async function fetchFormulaIsomers(formula, opts) {
+            opts = opts || {};
+            try {
+                let cids = Array.isArray(opts.cids) ? opts.cids.slice() : null;
+                if (!cids) {
+                    let j;
+                    try { j = await pubchemJsonRetry(isofCidsUrl(formula), { timeout: 20000, tries: 2 }); }
+                    catch (e) {
+                        if (e && e.status === 404) return { ok: false, error: '未找到该分子式的任何记录' };
+                        throw e;
+                    }
+                    cids = (j && j.IdentifierList && j.IdentifierList.CID) || [];
+                }
+                if (!cids.length) return { ok: false, error: '未找到该分子式的任何记录' };
+                const props = [];
+                let chunkFail = 0;
+                for (let i = 0; i < cids.length; i += ISOF_PRE_PROP) {
+                    const chunk = cids.slice(i, i + ISOF_PRE_PROP);
+                    try {
+                        const pj = await pubchemJsonRetry(isofPropsUrl(chunk), { timeout: 20000, tries: 3 });
+                        const list = (pj && pj.PropertyTable && pj.PropertyTable.Properties) || [];
+                        for (const x of list) props.push(x);
+                    } catch (e) { chunkFail++; }
+                }
+                if (!props.length) return { ok: false, error: '结构信息获取失败（网络或 PubChem 限流），请稍后重试' };
                 const seen = new Set();
                 const items = [];
                 for (const x of props) {
-                    const smi = x.ConnectivitySMILES || '';
-                    if (!smi || smi.includes('[') || smi.includes('.')) continue;
-                    const name = x.IUPACName || '';
-                    if (/deuterio|tritio|isotop/i.test(name)) continue;
-                    if (seen.has(smi)) continue;
-                    seen.add(smi);
-                    items.push({ cid: x.CID, name: name || smi, smiles: smi, formula: x.MolecularFormula || formula, cond: smilesToCondensed(smi) });
+                    const it = isofNormalizeProperty(x, formula);
+                    if (!it || seen.has(it.smiles)) continue;
+                    seen.add(it.smiles);
+                    items.push(it);
                 }
                 items.sort((a, b) => a.name.localeCompare(b.name, 'en'));
-                return { ok: true, formula, items };
+                if (chunkFail) console.warn('[异构体] 有 ' + chunkFail + ' 个属性分块请求失败，结果可能不完整');
+                return { ok: true, formula, items, chunkFail };
             } catch (e) { return { ok: false, error: '请求失败: ' + (e && e.message ? e.message : String(e)) }; }
         }
         window.__fetchFormulaIsomers = fetchFormulaIsomers;
+        window.__probeFormulaCandidates = probeFormulaCandidates;
+
+        // ---- 检索前筛选（2026-10-24）----
+        // 状态独立于结果面板的 _isofState：预筛选条件在检索阶段使用，检索完成后原样带入结果面板。
+        const _isofPre = {
+            formula: '', threshold: ISOF_PRESEARCH_THRESHOLD,
+            groups: new Set(), types: new Set(), countRaw: '', noExch: false, mode: 'all',
+            limit: 60, running: false, runId: 0, runStart: 0,
+            offset: 0, scanned: 0, matches: [], seen: new Set(),
+            total: 0, totalKnown: false, allCids: null, listPromise: null,
+            exhausted: false, abort: null, lastError: '', scanBudget: 1200
+        };
+        let _isofPreChipsBuilt = false;
+        let _isomerCurrentFormula = '';
+        let _isomerCurrentPresearch = null;
+
+        function isofPreSnapshot() {
+            return { groups: Array.from(_isofPre.groups), types: Array.from(_isofPre.types), countRaw: _isofPre.countRaw, noExch: _isofPre.noExch, mode: _isofPre.mode };
+        }
+        function isofPreLimit() {
+            const sel = document.getElementById('isomer-pre-limit');
+            const v = sel ? parseInt(sel.value, 10) : 60;
+            return isNaN(v) || v <= 0 ? 60 : v;
+        }
+        function isofPreScanBudget() {
+            const lim = _isofPre.limit || isofPreLimit();
+            return Math.max(1200, lim * 20);   // 每次运行最多扫描的候选数（防止极窄条件下无限扫）
+        }
+        function isofPreTotalText() {
+            if (_isofPre.totalKnown) return _isofPre.total.toLocaleString('en-US');
+            if (_isofPre.total > 0) return '>' + _isofPre.total.toLocaleString('en-US');
+            return '';
+        }
+        function isofPreSetRunning(running) {
+            _isofPre.running = !!running;
+            const start = document.getElementById('isomer-pre-start');
+            const cancel = document.getElementById('isomer-pre-cancel');
+            const reset = document.getElementById('isomer-pre-filter-reset');
+            if (start) { start.disabled = !!running; start.textContent = running ? '检索中…' : '开始检索'; }
+            if (cancel) cancel.textContent = running ? '停止检索' : '取消';
+            if (reset) reset.style.opacity = running ? '0.4' : '';
+        }
+        function isofPreUpdateStatus(extra) {
+            const st = document.getElementById('isomer-pre-status');
+            if (!st) return;
+            const has = _isofPre.groups.size + _isofPre.types.size + (_isofPre.countRaw.trim() ? 1 : 0);
+            st.textContent = extra || (has ? ('条件 ' + has + ' 项') : ('未选条件（按 PubChem 顺序取前 ' + isofPreLimit() + ' 个）'));
+        }
+        // 浮层可见性判定：CSS 里默认 display:none、展开时才写内联 display，
+        // 所以只读 style.display 会把「从未展开过」误判为可见（'' !== 'none'）。
+        function isofElVisible(el) {
+            if (!el) return false;
+            try { return getComputedStyle(el).display !== 'none'; } catch (e) { return el.style.display !== 'none'; }
+        }
+        function isofUpdateResultsNoteLive() {
+            const note = document.getElementById('isomer-presearch-note');
+            const txt = document.getElementById('isomer-presearch-note-text');
+            if (!isofElVisible(note) || !txt || !_isomerCurrentPresearch) return;
+            const total = isofPreTotalText();
+            txt.textContent = '预筛选：已扫描 ' + _isofPre.scanned.toLocaleString('en-US') + (total ? ' / ' + total : '') + ' 个候选 · 已命中 ' + _isofPre.matches.length + ' 个' + (_isofPre.running ? '（检索中…）' : '');
+        }
+        function isofPreUpdateProgress(text) {
+            const el = document.getElementById('isomer-pre-progress');
+            const fill = document.getElementById('isomer-pre-bar-fill');
+            const total = isofPreTotalText();
+            const scanned = _isofPre.scanned;
+            let pct = 0;
+            if (_isofPre.totalKnown && _isofPre.total > 0) pct = scanned / _isofPre.total * 100;
+            else if (_isofPre.running) pct = scanned / Math.max(1, _isofPre.scanBudget) * 100;
+            else pct = _isofPre.exhausted ? 100 : 0;
+            if (fill) fill.style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%';
+            if (el) {
+                const parts = [];
+                parts.push('已扫描 ' + scanned.toLocaleString('en-US') + (total ? ' / ' + total : '') + ' 个候选');
+                parts.push('命中 ' + _isofPre.matches.length + ' 个' + (_isofPre.running ? '（每次上限 ' + _isofPre.limit + ' 个）' : ''));
+                if (_isofPre.exhausted) parts.push('已扫描完候选');
+                if (text) parts.push(text);
+                el.textContent = parts.join(' · ');
+            }
+            isofUpdateResultsNoteLive();
+        }
+        function isofPreSyncUI() {
+            document.querySelectorAll('#isomer-pre-group-chips .isof-chip').forEach(c => c.classList.toggle('on', _isofPre.groups.has(c.dataset.key)));
+            document.querySelectorAll('#isomer-pre-nmr-types .isof-chip').forEach(c => c.classList.toggle('on', _isofPre.types.has(c.dataset.key)));
+            const cnt = document.getElementById('isomer-pre-nmr-count');
+            if (cnt) {
+                cnt.value = _isofPre.countRaw;
+                cnt.classList.toggle('isof-invalid', isofParseCountExpr(_isofPre.countRaw) === undefined);
+            }
+            const nx = document.getElementById('isomer-pre-nmr-noexch');
+            if (nx) nx.checked = _isofPre.noExch;
+            const md = document.getElementById('isomer-pre-filter-mode');
+            if (md) md.value = _isofPre.mode;
+            const lim = document.getElementById('isomer-pre-limit');
+            if (lim) lim.value = String(_isofPre.limit);
+        }
+        function isofPreResetFilter() {
+            if (_isofPre.running) return;   // 检索中不改条件，避免前后结果语义不一致
+            _isofPre.groups.clear(); _isofPre.types.clear();
+            _isofPre.countRaw = ''; _isofPre.noExch = false; _isofPre.mode = 'all';
+            isofPreSyncUI();
+            isofPreUpdateStatus();
+        }
+        function isofPreBuildUI() {
+            if (_isofPreChipsBuilt) return;
+            _isofPreChipsBuilt = true;
+            isofBuildChipSet(
+                document.getElementById('isomer-pre-group-chips'),
+                document.getElementById('isomer-pre-nmr-types'),
+                _isofPre,
+                () => { isofPreUpdateStatus(); }
+            );
+            const cnt = document.getElementById('isomer-pre-nmr-count');
+            if (cnt) cnt.addEventListener('input', () => {
+                _isofPre.countRaw = cnt.value;
+                cnt.classList.toggle('isof-invalid', isofParseCountExpr(cnt.value) === undefined);
+                isofPreUpdateStatus();
+            });
+            const nx = document.getElementById('isomer-pre-nmr-noexch');
+            if (nx) nx.addEventListener('change', () => { _isofPre.noExch = nx.checked; isofPreUpdateStatus(); });
+            const md = document.getElementById('isomer-pre-filter-mode');
+            if (md) md.addEventListener('change', () => { _isofPre.mode = md.value; isofPreUpdateStatus(); });
+            const lim = document.getElementById('isomer-pre-limit');
+            if (lim) lim.addEventListener('change', () => { _isofPre.limit = isofPreLimit(); _isofPre.scanBudget = isofPreScanBudget(); isofPreUpdateStatus(); });
+            const rs = document.getElementById('isomer-pre-filter-reset');
+            if (rs) rs.addEventListener('click', isofPreResetFilter);
+            const close = document.getElementById('isomer-pre-close');
+            if (close) close.addEventListener('click', hideIsomerPresearchPanel);
+            const cancel = document.getElementById('isomer-pre-cancel');
+            if (cancel) cancel.addEventListener('click', () => { if (_isofPre.running) isofPreStop(); else hideIsomerPresearchPanel(); });
+            const start = document.getElementById('isomer-pre-start');
+            if (start) start.addEventListener('click', () => runIsomerPresearch({ resume: false }));
+            const panel = document.getElementById('isomer-pre-panel');
+            if (panel) panel.addEventListener('click', (e) => { if (e.target === panel) hideIsomerPresearchPanel(); });
+            const more = document.getElementById('isomer-presearch-more');
+            if (more) more.addEventListener('click', continueIsomerPresearch);
+            window.addEventListener('keydown', (e) => {
+                if (!isofElVisible(panel)) return;
+                if (e.key === 'Escape') { e.preventDefault(); hideIsomerPresearchPanel(); }
+            });
+        }
+        function isofPreEnsureCidList() {
+            if (Array.isArray(_isofPre.allCids)) return Promise.resolve(_isofPre.allCids);
+            if (_isofPre.listPromise) return _isofPre.listPromise;
+            const formula = _isofPre.formula;
+            _isofPre.listPromise = (async () => {
+                try {
+                    const j = await pubchemJsonRetry(isofCidsUrl(formula) + '?MaxRecords=' + (ISOF_PRE_LIST_CAP + 1), { timeout: 30000, tries: 2 });
+                    const cids = (j && j.IdentifierList && j.IdentifierList.CID) || [];
+                    if (_isofPre.formula !== formula) return null;
+                    if (cids.length <= ISOF_PRE_LIST_CAP) {
+                        _isofPre.allCids = cids;
+                        _isofPre.total = cids.length;
+                        _isofPre.totalKnown = true;
+                    } else {
+                        _isofPre.total = ISOF_PRE_LIST_CAP;
+                        _isofPre.totalKnown = false;   // 超过 2 万：改分页拉取，只报下界
+                    }
+                    if (!_isofPre.running) isofPreUpdateProgress('候选总数已就绪');
+                    return _isofPre.allCids;
+                } catch (e) {
+                    if (!_isofPre.running) {
+                        const el = document.getElementById('isomer-pre-progress');
+                        if (el) el.textContent = '候选总数统计失败（检索时改用分页拉取，不影响使用）';
+                    }
+                    return null;
+                } finally {
+                    _isofPre.listPromise = null;
+                }
+            })();
+            return _isofPre.listPromise;
+        }
+        async function isofPreCidWindow(start, count) {
+            if (Array.isArray(_isofPre.allCids)) return _isofPre.allCids.slice(start, start + count);
+            const j = await pubchemJsonRetry(
+                isofCidsUrl(_isofPre.formula) + '?Start=' + start + '&MaxRecords=' + count,
+                { timeout: 15000, tries: 2, signal: _isofPre.abort ? _isofPre.abort.signal : null }
+            );
+            return (j && j.IdentifierList && j.IdentifierList.CID) || [];
+        }
+        function openIsomerPresearchPanel(formula, threshold) {
+            isofPreBuildUI();
+            const panel = document.getElementById('isomer-pre-panel');
+            if (!panel) return false;
+            if (_isofPre.running) isofPreStop();
+            // 换分子式则重置预筛选条件（同一分子式重开保留上次条件，便于微调后重试）
+            if (_isofPre.formula && _isofPre.formula !== formula) {
+                _isofPre.groups.clear(); _isofPre.types.clear();
+                _isofPre.countRaw = ''; _isofPre.noExch = false; _isofPre.mode = 'all';
+            }
+            _isofPre.formula = formula;
+            _isofPre.threshold = threshold || ISOF_PRESEARCH_THRESHOLD;
+            _isofPre.offset = 0; _isofPre.scanned = 0;
+            _isofPre.matches = []; _isofPre.seen = new Set();
+            _isofPre.runStart = 0; _isofPre.total = 0; _isofPre.totalKnown = false;
+            _isofPre.allCids = null; _isofPre.listPromise = null;
+            _isofPre.exhausted = false; _isofPre.abort = null; _isofPre.lastError = '';
+            _isofPre.limit = isofPreLimit();
+            _isofPre.scanBudget = isofPreScanBudget();
+            hideIsomerPanel();   // 避免两层弹窗叠加
+            isofPreSyncUI();
+            const title = document.getElementById('isomer-pre-title');
+            if (title) title.textContent = '检索前筛选 · ' + toSubscriptFormula(formula);
+            const hint = document.getElementById('isomer-pre-hint');
+            if (hint) {
+                hint.innerHTML = '该分子式在 PubChem 的候选<b>超过 ' + _isofPre.threshold + ' 个</b>。直接全量拉取结构会请求超时，'
+                    + '请先按结构特征收窄范围——检索会从前往后扫描候选，<b>命中达到上限即停止</b>，无需等待全部记录。<br/>'
+                    + '提示：不选任何条件时按 PubChem 顺序取前若干条；结构分析不可用的候选会被跳过。';
+            }
+            const prog = document.getElementById('isomer-pre-progress');
+            const fill = document.getElementById('isomer-pre-bar-fill');
+            if (prog) prog.textContent = '正在统计候选总数…';
+            if (fill) fill.style.width = '0%';
+            isofPreSetRunning(false);
+            isofPreUpdateStatus();
+            panel.style.display = 'flex';
+            isofPreEnsureCidList();   // 后台取总数并预载 CID 列表（失败则由检索时分页兜底）
+            return true;
+        }
+        function hideIsomerPresearchPanel() {
+            if (_isofPre.running) isofPreStop();
+            const panel = document.getElementById('isomer-pre-panel');
+            if (panel) panel.style.display = 'none';
+        }
+        function isofPreStop() {
+            if (!_isofPre.running) return;
+            _isofPre.runId++;
+            _isofPre.running = false;
+            if (_isofPre.abort) { try { _isofPre.abort.abort(); } catch (e) {} _isofPre.abort = null; }
+            isofPreSetRunning(false);
+            isofPreUpdateProgress('已停止');
+        }
+        async function runIsomerPresearch(opts) {
+            opts = opts || {};
+            if (_isofPre.running || !_isofPre.formula) return;
+            const resume = !!opts.resume;
+            const fromResults = !!opts.fromResults;
+            const cnt = document.getElementById('isomer-pre-nmr-count');
+            const expr = isofParseCountExpr(_isofPre.countRaw);
+            if (expr === undefined) {
+                if (cnt) cnt.classList.add('isof-invalid');
+                showToast('峰组数格式不正确，请用 3 / ≥3 / 2-4 之类的写法', 2600);
+                return;
+            }
+            const eff = expr === null ? null : expr;
+            _isofPre.limit = isofPreLimit();
+            _isofPre.scanBudget = isofPreScanBudget();
+            if (!resume) {
+                _isofPre.offset = 0; _isofPre.scanned = 0;
+                _isofPre.matches = []; _isofPre.seen = new Set();
+                _isofPre.exhausted = false; _isofPre.total = 0; _isofPre.totalKnown = false;
+                _isofPre.allCids = null;
+            }
+            _isofPre.lastError = '';
+            _isofPre.runStart = _isofPre.matches.length;
+            const target = _isofPre.runStart + _isofPre.limit;
+            _isofPre.abort = new AbortController();
+            const runId = ++_isofPre.runId;
+            isofPreSetRunning(true);
+            isofPreUpdateProgress();
+            const panel = document.getElementById('isomer-pre-panel');
+            if (panel && !fromResults) panel.style.display = 'flex';
+            let scannedThisRun = 0;
+            try {
+                await isofPreEnsureCidList();
+                if (runId !== _isofPre.runId) return;
+                while (runId === _isofPre.runId && !_isofPre.exhausted
+                       && _isofPre.matches.length < target && scannedThisRun < _isofPre.scanBudget) {
+                    const want = Math.min(ISOF_PRE_PAGE, _isofPre.scanBudget - scannedThisRun);
+                    let batch = [];
+                    try {
+                        batch = await isofPreCidWindow(_isofPre.offset, want);
+                    } catch (e) {
+                        if (runId !== _isofPre.runId) return;
+                        _isofPre.lastError = '候选分页获取失败：' + (e && e.message ? e.message : String(e));
+                        break;
+                    }
+                    if (runId !== _isofPre.runId) return;
+                    if (!batch.length) { _isofPre.exhausted = true; break; }
+                    _isofPre.offset += batch.length;
+                    _isofPre.scanned += batch.length;
+                    scannedThisRun += batch.length;
+                    for (let i = 0; i < batch.length && _isofPre.matches.length < target; i += ISOF_PRE_PROP) {
+                        const chunk = batch.slice(i, i + ISOF_PRE_PROP);
+                        let props = [];
+                        try {
+                            const pj = await pubchemJsonRetry(isofPropsUrl(chunk), { timeout: 20000, tries: 3, signal: _isofPre.abort ? _isofPre.abort.signal : null });
+                            props = (pj && pj.PropertyTable && pj.PropertyTable.Properties) || [];
+                        } catch (e) {
+                            if (runId !== _isofPre.runId) return;
+                            _isofPre.lastError = '部分结构获取失败，已跳过';
+                        }
+                        if (runId !== _isofPre.runId) return;
+                        for (const x of props) {
+                            if (_isofPre.matches.length >= target) break;
+                            const it = isofNormalizeProperty(x, _isofPre.formula);
+                            if (!it || _isofPre.seen.has(it.smiles)) continue;
+                            let an = null;
+                            try { an = isofAnalyzeStructure(it.smiles); } catch (e) { an = null; }
+                            if (!isofRowMatches(an, eff, _isofPre)) continue;
+                            it._an = an;   // 结果面板直接复用，避免二次分析
+                            _isofPre.seen.add(it.smiles);
+                            _isofPre.matches.push(it);
+                        }
+                        isofPreUpdateProgress();
+                    }
+                    isofPreUpdateProgress();
+                }
+            } catch (e) {
+                if (runId !== _isofPre.runId) return;
+                _isofPre.lastError = '检索出错：' + (e && e.message ? e.message : String(e));
+            }
+            if (runId !== _isofPre.runId) return;
+            _isofPre.running = false;
+            if (_isofPre.abort) { try { _isofPre.abort.abort(); } catch (e) {} _isofPre.abort = null; }
+            isofPreSetRunning(false);
+            const added = _isofPre.matches.length - _isofPre.runStart;
+            if (_isofPre.matches.length) {
+                isofPreUpdateProgress('命中 ' + _isofPre.matches.length + ' 个');
+                showIsomerPanel(_isofPre.formula, _isofPre.matches.slice(), {
+                    filter: isofPreSnapshot(),
+                    presearch: {
+                        scanned: _isofPre.scanned,
+                        total: _isofPre.total,
+                        totalKnown: _isofPre.totalKnown,
+                        exhausted: _isofPre.exhausted,
+                        limit: _isofPre.limit,
+                        added: added,
+                        canContinue: !_isofPre.exhausted
+                    }
+                });
+                if (panel) panel.style.display = 'none';
+            } else {
+                isofPreUpdateProgress(_isofPre.exhausted ? '没有符合条件的结构' : (added === 0 ? '本次未新增命中' : ''));
+                const msg = _isofPre.exhausted
+                    ? '已扫描全部候选，未找到符合当前筛选条件的结构，请放宽条件'
+                    : ('已扫描 ' + _isofPre.scanned.toLocaleString('en-US') + ' 个候选仍无命中，可点「开始检索」继续往后扫描，或放宽条件');
+                isofPreUpdateStatus(msg);
+                showToast(msg, 3600);
+            }
+        }
+        function continueIsomerPresearch() {
+            if (_isofPre.running) return;
+            const more = document.getElementById('isomer-presearch-more');
+            if (more) more.classList.add('isof-busy');
+            if (!_isofPre.formula) {
+                if (_isomerCurrentFormula) openIsomerPresearchPanel(_isomerCurrentFormula, ISOF_PRESEARCH_THRESHOLD);
+                if (more) more.classList.remove('isof-busy');
+                return;
+            }
+            runIsomerPresearch({ resume: true, fromResults: true }).finally(() => {
+                if (more) more.classList.remove('isof-busy');
+            });
+        }
+        window.__isomerPresearch = {
+            threshold: ISOF_PRESEARCH_THRESHOLD,
+            open: (formula) => openIsomerPresearchPanel(formula || 'C12H13N3O2', ISOF_PRESEARCH_THRESHOLD),
+            close: hideIsomerPresearchPanel,
+            start: () => runIsomerPresearch({ resume: false }),
+            stop: isofPreStop,
+            continue: () => continueIsomerPresearch(),
+            reset: isofPreResetFilter,
+            visible: () => isofElVisible(document.getElementById('isomer-pre-panel')),
+            set: (p) => {
+                if (p) {
+                    if (p.groups) _isofPre.groups = new Set(p.groups);
+                    if (p.types) _isofPre.types = new Set(p.types);
+                    if (typeof p.countRaw === 'string') _isofPre.countRaw = p.countRaw;
+                    if (typeof p.noExch === 'boolean') _isofPre.noExch = p.noExch;
+                    if (p.mode) _isofPre.mode = p.mode;
+                    if (p.limit) { _isofPre.limit = p.limit; const sel = document.getElementById('isomer-pre-limit'); if (sel) sel.value = String(p.limit); }
+                }
+                isofPreSyncUI();
+                isofPreUpdateStatus();
+                return isofPreSnapshot();
+            },
+            state: () => ({
+                formula: _isofPre.formula, running: _isofPre.running,
+                offset: _isofPre.offset, scanned: _isofPre.scanned,
+                total: _isofPre.total, totalKnown: _isofPre.totalKnown,
+                matches: _isofPre.matches.length, exhausted: _isofPre.exhausted,
+                limit: _isofPre.limit, filter: isofPreSnapshot(),
+                lastError: _isofPre.lastError
+            }),
+            matches: () => _isofPre.matches.map(it => ({ name: it.name, smiles: it.smiles, groups: it._an ? it._an.groups : null, count: it._an ? it._an.count : null }))
+        };
+        /* ISOFPRESEARCH_END */
 
         // ============ 名称 / SMILES 双输入 UI（Task 4.3）============
         // 优先级：SMILES 输入框非空 → 直接解析；否则名称输入框 → 名称解析（内置库 → PubChem → Cactus）
@@ -8805,10 +9368,20 @@ function smilesToCondensed(smiles) {
                 }
                 // 分子式分流（2026-09）：优先用专用 formula-input（小键盘输入），其次名称/SMILES
                 // 框填的是纯分子式（如 C2H6O / C6H6）也识别 → 枚举异构体弹面板多选。
-                // 多元素分子式或带数字单元素（O2）才判定为分子式，避免与英文名混淆；
-                // 但合法 SMILES（如 CCl4 或 c1ccccc1）仍按 SMILES 处理。
+                // 2026-10-24 修复：专用「分子式」框必须**优先按分子式**解析——C6H6 / C12H13N3O2
+                // 这类字符串恰好能被 SMILES 解析器当成环闭合号（C6H6 → C(环6) + H(闭6)），
+                // 旧逻辑据此判为"合法 SMILES"，分子式路径永不触发（C12H13N3O2 只会报请求失败）。
                 let formulaCounts = null;
-                const formulaLike = (formulaBox || name || smiles);
+                if (formulaBox) {
+                    const cBox = parseFormula(formulaBox);
+                    if (cBox) {
+                        const tokens = Object.keys(cBox);
+                        if (tokens.length >= 2 || /\d/.test(formulaBox)) formulaCounts = cBox;
+                    }
+                }
+                // 名称 / SMILES 框里的纯分子式（兼容旧用法）：仍要求"不是合法 SMILES"，
+                // 避免把 CCl4、c1ccccc1 等真正的 SMILES 当分子式枚举。
+                const formulaLike = formulaCounts ? '' : (name || smiles);
                 if (formulaLike && !/[a-z=#()\[\]\\/@.%]/.test(formulaLike)) {
                     let isLegitSmiles = false;
                     try {
@@ -8825,8 +9398,24 @@ function smilesToCondensed(smiles) {
                 }
                 if (formulaCounts) {
                     const fStr = formulaToString(formulaCounts);
-                    showToast('正在枚举 ' + fStr + ' 的异构体…', 2200);
-                    const res = await fetchFormulaIsomers(fStr);
+                    showToast('正在检查 ' + fStr + ' 的候选规模…', 2200);
+                    const probe = await probeFormulaCandidates(fStr);
+                    if (!probe.ok) {
+                        showToast('请求失败: ' + probe.error, 3400);
+                        return false;
+                    }
+                    // 候选过多：先弹「检索前筛选」，边扫描边本地过滤，不再全量拉取（2026-10-24）
+                    if (probe.capped) {
+                        openIsomerPresearchPanel(fStr, probe.threshold);
+                        showToast(fStr + ' 的候选超过 ' + probe.threshold + ' 个，请先筛选', 3200);
+                        return true;
+                    }
+                    if (!probe.cids.length) {
+                        showToast('未找到该分子式的任何记录', 3200);
+                        return false;
+                    }
+                    showToast('正在获取 ' + fStr + ' 的异构体…', 2200);
+                    const res = await fetchFormulaIsomers(fStr, { cids: probe.cids });
                     if (res.ok && res.items.length) {
                         showIsomerPanel(fStr, res.items);
                         return true;
@@ -8926,15 +9515,40 @@ if (smilesInput) smilesInput.value = smilesToUse;
         window.__generateFromInput = generateFromInput;
 
         // ============ 异构体选择弹窗（2026-09 新增）============
+        // opts.filter：预筛选条件（检索前筛选结果带入，避免再手动设一次）
+        // opts.presearch：预筛选统计（已扫描/总数/是否还能继续），用于顶部说明条
         let _isomerItems = [];
-        function showIsomerPanel(formula, items) {
+        function showIsomerPanel(formula, items, opts) {
+            opts = opts || {};
+            if (isofElVisible(document.getElementById('isomer-pre-panel'))) hideIsomerPresearchPanel();
             _isomerItems = items;
+            _isomerCurrentFormula = formula;
+            _isomerCurrentPresearch = opts.presearch || null;
             const panel = document.getElementById('isomer-panel');
             const list = document.getElementById('isomer-list');
             const title = document.getElementById('isomer-panel-title');
             const all = document.getElementById('isomer-select-all');
-            if (title) title.textContent = toSubscriptFormula(formula) + ' 的同分异构体（' + items.length + ' 个）';
+            const note = document.getElementById('isomer-presearch-note');
+            const noteTxt = document.getElementById('isomer-presearch-note-text');
+            const more = document.getElementById('isomer-presearch-more');
+            if (title) {
+                title.textContent = toSubscriptFormula(formula) + ' 的同分异构体（' + items.length + ' 个'
+                    + (opts.presearch ? ' · 预筛选' : '') + '）';
+            }
             if (all) all.checked = false;
+            if (opts.presearch) {
+                const ps = opts.presearch;
+                const total = ps.totalKnown ? ps.total.toLocaleString('en-US') : (ps.total ? '>' + ps.total.toLocaleString('en-US') : '');
+                let s = '预筛选：已扫描 ' + ps.scanned.toLocaleString('en-US') + (total ? ' / ' + total : '') + ' 个候选 · 命中 ' + items.length + ' 个（每次上限 ' + ps.limit + ' 个）';
+                if (ps.exhausted) s += ' · 已扫描完候选';
+                if (ps.canContinue) s += ' · 可继续往后检索';
+                if (noteTxt) noteTxt.textContent = s;
+                if (more) more.style.display = ps.canContinue ? 'inline' : 'none';
+                if (note) note.style.display = 'flex';
+            } else {
+                if (note) note.style.display = 'none';
+                if (more) more.style.display = 'none';
+            }
             if (!list) return;
             list.innerHTML = '';
             if (_skeletalThumbObserver) _skeletalThumbObserver.disconnect();   // 丢弃上一批缩略图观察目标
@@ -9005,7 +9619,20 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 updateIsomerCount();
             });
             isofInitUI();
-            isofResetFilter();   // 新一批候选：清空上次筛选条件并应用
+            if (opts.filter) {
+                // 预筛选条件带入结果面板：直接把同一组条件写进 _isofState 并应用，
+                // 用户看到的结果与筛选状态一致（可继续在此基础上收窄）。
+                _isofState.groups = new Set(opts.filter.groups || []);
+                _isofState.types = new Set(opts.filter.types || []);
+                _isofState.countRaw = opts.filter.countRaw || '';
+                _isofState.noExch = !!opts.filter.noExch;
+                _isofState.mode = opts.filter.mode || 'all';
+                isofSyncUI();
+                isofUpdateRowTags();
+                isofApplyFilter();
+            } else {
+                isofResetFilter();   // 新一批候选：清空上次筛选条件并应用
+            }
             if (panel) panel.style.display = 'flex';
             updateIsomerCount();
         }
