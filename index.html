@@ -257,6 +257,43 @@
             width: 100%;
             text-align: center;
         }
+        /* 两侧栏折叠（2026-10-24 用户需求「界面两侧的区域改为可折叠收起」）：
+           头部整行即开关（图标 + 文字 + 朝向侧边的 caret）；收起后缩为窄胶囊，
+           只留图标与朝内 caret，点击即展开。默认展开，状态记忆在 localStorage。
+           用 id+class 选择器提高优先级，以便覆盖 ≤1024 / ≤640 / 横屏的 width/bottom 规则。 */
+        #sidebar, #group-sidebar { transition: width 0.18s ease, padding 0.18s ease; }
+        #sidebar .sb-head, #group-sidebar .sb-head {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: color 0.15s ease;
+        }
+        #sidebar .sb-head:hover, #group-sidebar .sb-head:hover { color: #ffd78c; }
+        #sidebar .sb-head:focus-visible, #group-sidebar .sb-head:focus-visible {
+            outline: 1px solid rgba(255, 210, 138, 0.65);
+            outline-offset: 3px;
+        }
+        #sidebar .sb-caret, #group-sidebar .sb-caret { opacity: 0.85; }
+        #sidebar.sb-collapsed, #group-sidebar.sb-collapsed {
+            width: 40px;
+            padding: 10px 4px;
+            gap: 0;
+            max-height: none;
+            overflow: visible; /* 无内容可滚；保留焦点描边不被裁剪 */
+            bottom: auto; /* 窄屏贴底布局下取消拉伸，胶囊高度随内容 */
+        }
+        #sidebar.sb-collapsed .sb-head, #group-sidebar.sb-collapsed .sb-head {
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        #sidebar.sb-collapsed .sb-head-label, #group-sidebar.sb-collapsed .sb-head-label { display: none; }
+        #sidebar.sb-collapsed > :not(.sb-head), #group-sidebar.sb-collapsed > :not(.sb-head) { display: none !important; }
         .group-card {
             width: 100px;
             height: 44px;
@@ -1013,7 +1050,11 @@
         </div>
     </div>
     <div id="group-sidebar">
-        <div class="title"><span class="ui-ic" data-icon="shapes" data-size="13"></span> 预设基团</div>
+        <div class="title sb-head" id="group-sidebar-toggle" role="button" tabindex="0" title="收起预设基团" aria-label="收起预设基团" aria-expanded="true">
+            <span class="ui-ic" data-icon="shapes" data-size="13"></span>
+            <span class="sb-head-label">预设基团</span>
+            <span class="sb-caret ui-ic" data-icon="chevron-left" data-size="12"></span>
+        </div>
         <div class="group-card" id="drag-group-methyl" data-group="methyl">CH₃<small>甲基</small></div>
         <div class="group-card" id="drag-group-ethyl" data-group="ethyl">C₂H₅<small>乙基</small></div>
         <div class="group-card" id="drag-group-phenyl" data-group="phenyl">Ph<small>苯基</small></div>
@@ -1026,7 +1067,11 @@
         <div class="hint"><i>拖至原子附近连接</i></div>
     </div>
     <div id="sidebar">
-        <div class="title"><span class="ui-ic" data-icon="atom" data-size="13"></span> 原子库</div>
+        <div class="title sb-head" id="sidebar-toggle" role="button" tabindex="0" title="收起原子库" aria-label="收起原子库" aria-expanded="true">
+            <span class="ui-ic" data-icon="atom" data-size="13"></span>
+            <span class="sb-head-label">原子库</span>
+            <span class="sb-caret ui-ic" data-icon="chevron-right" data-size="12"></span>
+        </div>
         <div class="atom-card atom-carbon" id="drag-carbon" data-atom="C">C<small>碳</small></div>
         <div class="atom-card atom-hydrogen" id="drag-hydrogen" data-atom="H">H<small>氢</small></div>
         <div class="atom-card atom-oxygen" id="drag-oxygen" data-atom="O">O<small>氧</small></div>
@@ -9437,6 +9482,64 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 tgl.innerHTML = iconSvg('circle-help', 12) + (open ? ' SMILES 输入方法介绍（收起）' : ' SMILES 输入方法介绍');
             });
         })();
+        // 两侧栏折叠（2026-10-24 用户需求「界面两侧的区域改为可折叠收起」）：
+        // 左侧预设基团 / 右侧原子库。头部整行即开关；收起后仅留窄胶囊（图标 + 朝内
+        // caret），点击即展开。默认展开；状态记忆 localStorage（'0'=收起）。
+        // caret 指向语义：展开时朝收起的侧边（左栏 ←、右栏 →），收起时朝展开方向。
+        const SIDEBAR_SPECS = [
+            { id: 'group-sidebar', key: 'SIDEBAR_GROUPS_OPEN', label: '预设基团', openCaret: 'chevron-left', collapsedCaret: 'chevron-right' },
+            { id: 'sidebar', key: 'SIDEBAR_ATOMS_OPEN', label: '原子库', openCaret: 'chevron-right', collapsedCaret: 'chevron-left' }
+        ];
+        function setSidebarCollapsed(panelId, collapsed, opts) {
+            const spec = SIDEBAR_SPECS.find(s => s.id === panelId);
+            const panel = document.getElementById(panelId);
+            if (!spec || !panel) return false;
+            collapsed = !!collapsed;
+            panel.classList.toggle('sb-collapsed', collapsed);
+            const head = panel.querySelector('.sb-head');
+            if (head) {
+                head.title = (collapsed ? '展开' : '收起') + spec.label;
+                head.setAttribute('aria-label', head.title);
+                head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                const caret = head.querySelector('.sb-caret');
+                if (caret) {
+                    const name = collapsed ? spec.collapsedCaret : spec.openCaret;
+                    caret.dataset.icon = name;
+                    caret.innerHTML = iconSvg(name, 12);
+                }
+            }
+            if (!opts || !opts.silent) {
+                try { localStorage.setItem(spec.key, collapsed ? '0' : '1'); } catch (e) {}
+            }
+            return true;
+        }
+        function isSidebarCollapsed(panelId) {
+            const panel = document.getElementById(panelId);
+            return !!(panel && panel.classList.contains('sb-collapsed'));
+        }
+        (function initSidebarCollapse() {
+            SIDEBAR_SPECS.forEach(spec => {
+                const panel = document.getElementById(spec.id);
+                const head = panel && panel.querySelector('.sb-head');
+                if (!panel || !head) return;
+                let saved = null;
+                try { saved = localStorage.getItem(spec.key); } catch (e) {}
+                setSidebarCollapsed(spec.id, saved === '0', { silent: true });
+                const toggle = () => setSidebarCollapsed(spec.id, !isSidebarCollapsed(spec.id));
+                head.addEventListener('click', toggle);
+                head.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+                });
+            });
+        })();
+        window.__sidebars = {
+            set: (id, collapsed) => setSidebarCollapsed(id, collapsed),
+            toggle: (id) => setSidebarCollapsed(id, !isSidebarCollapsed(id)),
+            state: () => SIDEBAR_SPECS.reduce((o, s) => {
+                o[s.id] = { collapsed: isSidebarCollapsed(s.id), key: s.key };
+                return o;
+            }, {})
+        };
         const candClose = document.getElementById('candidate-panel-close');
         if (candClose) candClose.addEventListener('click', hideCandidatePanel);
 
