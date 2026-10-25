@@ -59,6 +59,13 @@
             padding-top: 8px;
             border-top: 1px solid rgba(255, 255, 255, 0.12);
         }
+        /* ===== 浮层开合动画（2026-10-25 用户需求「给所有下拉框做个动画」）=====
+           收起态仍是 display:none（验证脚本 / isofElVisible 依赖 computedStyle），
+           所以动画由 JS 的 Web Animations API 播放；.dd-closing 是「正在收起」
+           中间态——先摘掉 .open 让状态立刻变「已收起」，但保持 display 可见，
+           等收起动画播完再真正 display:none（见 ddSlideHide）。
+           原生 <select> 的弹出列表由操作系统绘制，CSS 无法动画，保持原样。 */
+        .dd-closing { pointer-events: none; }
         /* 输入面板内容区：与说明/设置面板一致的上分隔线（2026-10 统一） */
         #input-panel .molecule-input-row {
             margin-top: 8px;
@@ -74,7 +81,7 @@
             color: #cdd7e8;
             overflow-wrap: anywhere;
         }
-        #guide-panel .guide-body.open { display: block; }
+        #guide-panel .guide-body.open, #guide-panel .guide-body.dd-closing { display: block; }
         #guide-panel .guide-body b {
             display: block;
             margin-top: 6px;
@@ -95,7 +102,7 @@
         #settings-panel .settings-body {
             display: none;
         }
-        #settings-panel .settings-body.open { display: flex; flex-direction: column; gap: 6px; }
+        #settings-panel .settings-body.open, #settings-panel .settings-body.dd-closing { display: flex; flex-direction: column; gap: 6px; }
         #settings-panel .settings-body .setting-item {
             display: flex; align-items: center; gap: 6px;
             font-size: 11px; color: #cdd7e8; cursor: pointer;
@@ -736,7 +743,7 @@
             max-height: 46vh; /* 内容较长时帮助框自身滚动，不撑爆侧栏 */
             overflow-y: auto;
         }
-        .smiles-help.open { display: block; }
+        .smiles-help.open, .smiles-help.dd-closing { display: block; }
         .smiles-help b { color: #ffd78c; font-weight: 600; }
         .smiles-help code {
             display: inline-block;
@@ -1324,6 +1331,138 @@
         }
         window.__hydrateIcons = hydrateIcons;
         hydrateIcons();
+        // ===== 浮层开合动画（2026-10-25 用户需求「给所有下拉框做个动画」）=====
+        // 为什么用 Web Animations API 而不是 CSS transition：这些浮层平时是 display:none，
+        // display 切换的那一帧不会触发 transition；WAAPI 在 display 置位后立刻播放即可。
+        // 收起时先播动画、结束才写 display:none（面板高度同时收拢，视觉上是手风琴）。
+        // __ddToken 防竞态：收起动画还没播完又被打开时，旧回调不会把新面板藏掉。
+        // 原生 <select> 的弹出列表由操作系统绘制，无法动画，保持原样。
+        const DD_IN_MS = 190;
+        const DD_OUT_MS = 120;
+        const DD_EASE_IN = 'cubic-bezier(.2, .9, .3, 1)';
+        const DD_EASE_OUT = 'cubic-bezier(.45, 0, 1, 1)';
+        const _ddRunning = new Set();   // 运行中的开合动画（__ddAnim.idle() 供验证脚本等待稳定）
+        function ddAnim(el, frames, ms, easing, onFinish) {
+            if (!el || typeof el.animate !== 'function') { if (onFinish) onFinish(); return null; }
+            let anim = null;
+            try { anim = el.animate(frames, { duration: ms, easing: easing || 'ease-out' }); }
+            catch (e) { if (onFinish) onFinish(); return null; }
+            _ddRunning.add(anim);
+            let done = false;
+            let timer = 0;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                if (timer) clearTimeout(timer);
+                _ddRunning.delete(anim);
+                if (onFinish) onFinish();
+            };
+            anim.onfinish = finish;
+            anim.oncancel = finish;
+            // 兜底：后台标签页里 rAF 被节流 / 动画被取消时 onfinish 可能不来，
+            // 超时强制收尾，避免浮层永久停在「正在收起」中间态（验证脚本也不会空等）。
+            timer = setTimeout(finish, ms + 250);
+            return anim;
+        }
+        function ddToken(el) { return (el.__ddToken = (el.__ddToken || 0) + 1); }
+        function ddIsShown(el) { return !!el && getComputedStyle(el).display !== 'none'; }
+        // 手风琴展开：高度 0→实际 + 淡入 + 轻微下移（调用前 display 必须已可见）
+        function ddSlideShow(el) {
+            if (!el) return;
+            el.style.pointerEvents = '';
+            el.style.overflow = 'hidden';
+            const h = el.scrollHeight;
+            const token = ddToken(el);
+            ddAnim(el, [
+                { opacity: 0, transform: 'translateY(-6px)', maxHeight: '0px' },
+                { opacity: 1, transform: 'none', maxHeight: h + 'px' }
+            ], DD_IN_MS, DD_EASE_IN, () => {
+                if (el.__ddToken !== token) return;   // 期间被收起，交给收起流程收尾
+                el.style.overflow = '';
+                el.style.maxHeight = '';
+            });
+        }
+        // 手风琴收起：先播完再回调（回调里把 display 置 none / 摘掉 .dd-closing）
+        function ddSlideHide(el, onHidden) {
+            if (!el) return;
+            if (getComputedStyle(el).display === 'none') { if (onHidden) onHidden(); return; }
+            const h = el.offsetHeight;
+            el.style.overflow = 'hidden';
+            const token = ddToken(el);
+            ddAnim(el, [
+                { opacity: 1, transform: 'none', maxHeight: h + 'px' },
+                { opacity: 0, transform: 'translateY(-6px)', maxHeight: '0px' }
+            ], DD_OUT_MS, DD_EASE_OUT, () => {
+                if (el.__ddToken !== token) return;
+                el.style.overflow = '';
+                el.style.maxHeight = '';
+                if (onHidden) onHidden();
+            });
+        }
+        // 角落下拉内容区（使用说明 / 设置 / SMILES 说明）：.open 立刻切换（状态语义），
+        // 收起时用 .dd-closing 把 display 撑到动画结束。
+        function setCornerBodyOpen(body, open) {
+            if (!body) return;
+            if (open) {
+                body.classList.remove('dd-closing');
+                body.classList.add('open');
+                ddSlideShow(body);
+            } else {
+                if (!body.classList.contains('open') && !body.classList.contains('dd-closing')) return;
+                body.classList.remove('open');
+                body.classList.add('dd-closing');
+                ddSlideHide(body, () => body.classList.remove('dd-closing'));
+            }
+        }
+        // 淡入 / 淡出（弹窗）：frames 由调用方给，保留各自的居中 transform
+        function ddFadeShow(el, frames) {
+            if (!el) return;
+            el.style.pointerEvents = '';
+            ddAnim(el, frames, DD_IN_MS, DD_EASE_IN);
+        }
+        function ddFadeHide(el, frames, onHidden) {
+            if (!el) return;
+            if (getComputedStyle(el).display === 'none') return;
+            // 收起动画期间不再接收点击（否则淡出中的弹窗/菜单会挡住下层原子）
+            el.style.pointerEvents = 'none';
+            const token = ddToken(el);
+            ddAnim(el, frames, DD_OUT_MS, DD_EASE_OUT, () => {
+                if (el.__ddToken !== token) return;   // 期间被重新打开
+                el.style.display = 'none';
+                el.style.pointerEvents = '';
+                if (onHidden) onHidden();
+            });
+        }
+        // 键菜单（#bond-type-menu）：锚在点击处、transform 已用于定位，动画帧里必须带上
+        const BOND_MENU_T = 'translate(-50%, -100%)';
+        function showBondMenu() {
+            const menu = document.getElementById('bond-type-menu');
+            if (!menu) return;
+            const wasShown = ddIsShown(menu);
+            menu.style.display = 'flex';
+            if (!wasShown) ddFadeShow(menu, [
+                { opacity: 0, transform: BOND_MENU_T + ' scale(.9)' },
+                { opacity: 1, transform: BOND_MENU_T + ' scale(1)' }
+            ]);
+        }
+        function hideBondMenu() {
+            const menu = document.getElementById('bond-type-menu');
+            if (!menu) return;
+            ddFadeHide(menu, [
+                { opacity: 1, transform: BOND_MENU_T + ' scale(1)' },
+                { opacity: 0, transform: BOND_MENU_T + ' scale(.9)' }
+            ]);
+        }
+        // 调试接口（验证脚本用）：动画时长 + 各开合入口
+        window.__ddAnim = {
+            inMs: DD_IN_MS, outMs: DD_OUT_MS,
+            idle: () => _ddRunning.size === 0,
+            running: () => _ddRunning.size,
+            slideShow: ddSlideShow, slideHide: ddSlideHide,
+            fadeShow: ddFadeShow, fadeHide: ddFadeHide,
+            setCornerBodyOpen: setCornerBodyOpen,
+            bondMenu: { show: showBondMenu, hide: hideBondMenu }
+        };
         // ===== 合并模式开关：离域π键 =====
         // true（默认，新逻辑）= 杂化轨道 + VSEPR + 离域π键（球棍模型3 行为）
         // false（旧逻辑）= 仅杂化轨道 + VSEPR，不考虑离域π键（球棍模型2 行为）
@@ -3657,8 +3796,16 @@ isOptimizing = false;
             const helpBtn = document.getElementById('btn-help');
             const overlay = document.getElementById('help-overlay');
             if (helpBtn && overlay) {
-                const close = () => { overlay.style.display = 'none'; };
-                helpBtn.addEventListener('click', () => { overlay.style.display = 'flex'; });
+                const helpCard = document.getElementById('help-card');
+                const close = () => { ddFadeHide(overlay, [{ opacity: 1 }, { opacity: 0 }]); };
+                helpBtn.addEventListener('click', () => {
+                    overlay.style.display = 'flex';
+                    ddFadeShow(overlay, [{ opacity: 0 }, { opacity: 1 }]);
+                    if (helpCard) ddFadeShow(helpCard, [
+                        { opacity: 0, transform: 'scale(.96)' },
+                        { opacity: 1, transform: 'none' }
+                    ]);
+                });
                 document.getElementById('help-close').addEventListener('click', close);
                 overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
             }
@@ -3747,7 +3894,7 @@ isOptimizing = false;
             torsionAngle = 0;
             torsionActive = true;
             // 进入旋转模式即关闭键菜单：menu 会挡住键两端原子（换侧/取消点击）
-            bondMenu.style.display = 'none';
+            hideBondMenu();
             showTorsionAxis();
             updateTorsionHUD();
             showToast(`旋转 ${torsionFixed.userData.atomType}—${torsionPivot.userData.atomType} 键：按住空白处拖动旋转该侧（点另一端原子可换侧）`, 3000);
@@ -7799,10 +7946,17 @@ const ZH_NAME_FIX = {
                 list.appendChild(item);
             });
             panel.style.display = 'block';
+            ddFadeShow(panel, [
+                { opacity: 0, transform: 'translateX(-50%) translateY(8px)' },
+                { opacity: 1, transform: 'translateX(-50%)' }
+            ]);
         }
         function hideCandidatePanel() {
             const panel = document.getElementById('candidate-panel');
-            if (panel) panel.style.display = 'none';
+            ddFadeHide(panel, [
+                { opacity: 1, transform: 'translateX(-50%)' },
+                { opacity: 0, transform: 'translateX(-50%) translateY(8px)' }
+            ]);
         }
         window.__resolveNameCandidates = resolveNameCandidates;
         window.__precheckNameInput = precheckNameInput;
@@ -9165,13 +9319,20 @@ function smilesToCondensed(smiles) {
             isofPreSetRunning(false);
             isofPreUpdateStatus();
             panel.style.display = 'flex';
+            ddFadeShow(panel, [
+                { opacity: 0, transform: 'translate(-50%, -50%) scale(.97)' },
+                { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' }
+            ]);
             isofPreEnsureCidList();   // 后台取总数并预载 CID 列表（失败则由检索时分页兜底）
             return true;
         }
         function hideIsomerPresearchPanel() {
             if (_isofPre.running) isofPreStop();
             const panel = document.getElementById('isomer-pre-panel');
-            if (panel) panel.style.display = 'none';
+            ddFadeHide(panel, [
+                { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
+                { opacity: 0, transform: 'translate(-50%, -50%) scale(.97)' }
+            ]);
         }
         function isofPreStop() {
             if (!_isofPre.running) return;
@@ -9210,7 +9371,13 @@ function smilesToCondensed(smiles) {
             isofPreSetRunning(true);
             isofPreUpdateProgress();
             const panel = document.getElementById('isomer-pre-panel');
-            if (panel && !fromResults) panel.style.display = 'flex';
+            if (panel && !fromResults && !ddIsShown(panel)) {
+                panel.style.display = 'flex';
+                ddFadeShow(panel, [
+                    { opacity: 0, transform: 'translate(-50%, -50%) scale(.97)' },
+                    { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' }
+                ]);
+            }
             let scannedThisRun = 0;
             try {
                 await isofPreEnsureCidList();
@@ -9633,7 +9800,13 @@ if (smilesInput) smilesInput.value = smilesToUse;
             } else {
                 isofResetFilter();   // 新一批候选：清空上次筛选条件并应用
             }
-            if (panel) panel.style.display = 'flex';
+            if (panel) {
+                panel.style.display = 'flex';
+                ddFadeShow(panel, [
+                    { opacity: 0, transform: 'translate(-50%, -50%) scale(.97)' },
+                    { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' }
+                ]);
+            }
             updateIsomerCount();
         }
         // ---- 本地键线式渲染（2026-10）：SmilesDrawer v1.2.0（MIT，已内联）实时绘制 2D 结构式 ----
@@ -9777,12 +9950,19 @@ if (smilesInput) smilesInput.value = smilesToUse;
             _slbList = entries;
             _slbIndex = idx;
             lb.style.display = 'flex';   // 先显示：画布需要布局尺寸（offsetWidth）才能正确自适应缩放
+            // 开合动画（2026-10-25）：遮罩淡入 + 卡片轻微放大
+            ddFadeShow(lb, [{ opacity: 0 }, { opacity: 1 }]);
+            const lbCard = document.getElementById('skeletal-lightbox-card');
+            if (lbCard) ddFadeShow(lbCard, [
+                { opacity: 0, transform: 'scale(.96)' },
+                { opacity: 1, transform: 'none' }
+            ]);
             slbRenderCurrent();
         }
         function hideSkeletalLightbox() {
             const lb = document.getElementById('skeletal-lightbox');
             if (!lb || lb.style.display === 'none') return false;
-            lb.style.display = 'none';
+            ddFadeHide(lb, [{ opacity: 1 }, { opacity: 0 }]);
             return true;
         }
         window.__openSkeletalLightbox = openSkeletalLightbox;
@@ -9834,7 +10014,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
         })();
         function hideIsomerPanel() {
             const panel = document.getElementById('isomer-panel');
-            if (panel) panel.style.display = 'none';
+            ddFadeHide(panel, [
+                { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
+                { opacity: 0, transform: 'translate(-50%, -50%) scale(.97)' }
+            ]);
             hideSkeletalLightbox();
         }
         function updateIsomerCount() {
@@ -9946,6 +10129,12 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!kp) return;
             kp.style.display = 'block';   // 先显示再测量（display:none 时 offsetWidth/offsetHeight 为 0）
             positionFormulaKeypad();
+            // 弹出动画（2026-10-25）：定位完成后再播，避免测量到动画中的缩放尺寸。
+            // 关闭保持瞬时（聚焦失焦即消失，手感更利落，也维持既有验证契约）。
+            ddFadeShow(kp, [
+                { opacity: 0, transform: 'translateY(-8px) scale(.96)' },
+                { opacity: 1, transform: 'none' }
+            ]);
         }
         function hideFormulaKeypad() {
             const kp = document.getElementById('formula-keypad');
@@ -10055,13 +10244,21 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // 右上角输入面板折叠（2026-08）：默认收起（不遮挡原子库），用户展开后
         // 记忆；分子生成成功后自动折叠（generateFromInput 成功路径调用）。
         // 暴露 window.__setInputPanelOpen 供自动化脚本在操作输入框前展开。
-        function setInputPanelOpen(open) {
+        function setInputPanelOpen(open, opts) {
             const panel = document.getElementById('input-panel');
             const tgl = document.getElementById('input-panel-toggle');
             const body = document.getElementById('input-panel-body');
             if (!panel || !body) return;
+            const animate = !opts || opts.animate !== false;
             panel.classList.toggle('open', open);
-            body.style.display = open ? '' : 'none';
+            if (open) {
+                body.style.display = '';
+                if (animate) ddSlideShow(body);
+            } else if (animate) {
+                ddSlideHide(body, () => { body.style.display = 'none'; });
+            } else {
+                body.style.display = 'none';   // 初始化 / 刷新恢复：不播动画，避免首屏闪一下
+            }
             if (!open) hideFormulaKeypad();   // 收起输入面板时同步收起分子式小键盘（2026-10-17 防悬空浮层）
             setCornerCaret(tgl, open);
         }
@@ -10072,20 +10269,21 @@ if (smilesInput) smilesInput.value = smilesToUse;
             try { saved = localStorage.getItem('INPUT_PANEL_OPEN'); } catch (e) {}
             // 自动化环境(playwright navigator.webdriver=true)默认展开,便于验证
             // 脚本直接操作输入框;真实浏览器(saved=null)保持收起。
-            setInputPanelOpen(saved === '1' || (saved === null && navigator.webdriver === true));
+            setInputPanelOpen(saved === '1' || (saved === null && navigator.webdriver === true), { animate: false });
             if (tgl) tgl.addEventListener('click', () => {
                 const open = !document.getElementById('input-panel').classList.contains('open');
                 setInputPanelOpen(open);
                 try { if (navigator.webdriver !== true) localStorage.setItem('INPUT_PANEL_OPEN', open ? '1' : '0'); } catch (e) {} // 自动化下不记忆
             });
         })();
-        // 左上角使用说明折叠（2026-08 界面重构）
+        // 左上角使用说明折叠（2026-08 界面重构；2026-10-25 加展开/收起动画）
         (function () {
             const tgl = document.getElementById('guide-toggle');
             const body = document.getElementById('guide-body');
             if (!tgl || !body) return;
             tgl.addEventListener('click', () => {
-                const open = body.classList.toggle('open');
+                const open = !body.classList.contains('open');
+                setCornerBodyOpen(body, open);
                 setCornerCaret(tgl, open);
             });
         })();
@@ -10095,8 +10293,9 @@ if (smilesInput) smilesInput.value = smilesToUse;
             const body = document.getElementById('settings-body');
             if (!tgl || !body) return;
             tgl.addEventListener('click', () => {
-                body.classList.toggle('open');
-                setCornerCaret(tgl, body.classList.contains('open'));
+                const open = !body.classList.contains('open');
+                setCornerBodyOpen(body, open);
+                setCornerCaret(tgl, open);
             });
         })();
         // SMILES 输入方法介绍折叠（2026-08）
@@ -10105,7 +10304,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
             const box = document.getElementById('smiles-help');
             if (!tgl || !box) return;
             tgl.addEventListener('click', () => {
-                const open = box.classList.toggle('open');
+                const open = !box.classList.contains('open');
+                setCornerBodyOpen(box, open);
                 tgl.innerHTML = iconSvg('circle-help', 12) + (open ? ' SMILES 输入方法介绍（收起）' : ' SMILES 输入方法介绍');
             });
         })();
@@ -11302,7 +11502,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                         // 再次点击同一键 = 取消选中（连带退出旋转模式）
                         selectedBond = null;
                         clearTorsion();
-                        bondMenu.style.display = 'none';
+                        hideBondMenu();
                     } else {
                         selectedBond = bond;
                         // 已选中键的端点原子 → 自动进入旋转模式
@@ -11310,7 +11510,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                         else clearTorsion();
                         const x = e.clientX, y = e.clientY;
                         document.getElementById('btn-flip-cistrans').style.display = isDoubleBondType(bond.type) ? 'flex' : 'none';
-                        bondMenu.style.display = 'flex';
+                        showBondMenu();
                         bondMenu.style.left = x + 'px';
                         bondMenu.style.top = y + 'px';
                     }
@@ -11357,14 +11557,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
                         if (selectedBond === bond) {
                             selectedBond = null;
                             clearTorsion();
-                            bondMenu.style.display = 'none';
+                            hideBondMenu();
                         } else {
                             selectedBond = bond;
                             if (selectedAtom && (selectedAtom === bond.atomA || selectedAtom === bond.atomB)) setTorsionPivot(selectedAtom);
                             else clearTorsion();
                             const x = touch.clientX, y = touch.clientY;
                             document.getElementById('btn-flip-cistrans').style.display = isDoubleBondType(bond.type) ? 'flex' : 'none';
-                            bondMenu.style.display = 'flex';
+                            showBondMenu();
                             bondMenu.style.left = x + 'px';
                             bondMenu.style.top = y + 'px';
                         }
@@ -11413,13 +11613,13 @@ if (smilesInput) smilesInput.value = smilesToUse;
                         }
                     }
                 }
-                bondMenu.style.display = 'none';
+                hideBondMenu();
                 selectedBond = null;
                 commitHistory();   // 撤销/恢复：改键级（被化合价限制拒绝时无变化自动去重）
             });
         });
-        window.addEventListener('mousedown', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) bondMenu.style.display = 'none'; });
-        window.addEventListener('touchstart', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) bondMenu.style.display = 'none'; });
+        window.addEventListener('mousedown', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) hideBondMenu(); });
+        window.addEventListener('touchstart', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) hideBondMenu(); });
         // 下拉框点击别处自动收起（2026-09）：原生 select 失焦即关闭下拉列表。
         // 捕获阶段监听：点击目标不在任何 select 内（或其弹出的原生列表）时 blur 当前聚焦的 select。
         const _collapseSelects = () => {
@@ -11451,12 +11651,12 @@ if (smilesInput) smilesInput.value = smilesToUse;
             }
             // 使用说明
             if (bodyOpen('guide-body') && !target.closest('#guide-panel')) {
-                document.getElementById('guide-body').classList.remove('open');
+                setCornerBodyOpen(document.getElementById('guide-body'), false);
                 setCornerCaret(document.getElementById('guide-toggle'), false);
             }
             // 设置
             if (bodyOpen('settings-body') && !target.closest('#settings-panel')) {
-                document.getElementById('settings-body').classList.remove('open');
+                setCornerBodyOpen(document.getElementById('settings-body'), false);
                 setCornerCaret(document.getElementById('settings-toggle'), false);
             }
             // 分子式小键盘：仅点击自身 / 分子式输入框 / 开关按钮时保留
