@@ -198,6 +198,15 @@ class AssertionCollector {
             const items = document.querySelectorAll('#candidate-panel-list .cand-item').length;
             const title = document.getElementById('candidate-panel-title').textContent;
             window.__hideCandidatePanel();
+            // 收起是延迟 display:none 的（开合动画）：等动画队列清空再读
+            await new Promise(r => {
+                const t0 = Date.now();
+                const tick = () => {
+                    if ((window.__ddAnim && window.__ddAnim.idle()) || Date.now() - t0 > 3000) r();
+                    else setTimeout(tick, 20);
+                };
+                tick();
+            });
             const afterClose = getComputedStyle(panel).display;
             return { before, afterOpen, items, title, afterClose };
         });

@@ -73,6 +73,7 @@
 - **拖拽辅助**:HUD 显示位移(轴拖显示单轴分量,平面拖显示 Δ 三分量)、悬停 gizmo/原子高亮与光标反馈、首次使用引导 toast。
 - **帮助面板**(右下角 ? 图标按钮):操作指南、快捷键、四种拖动方式图解。
 - **使用说明/输入面板**(左上/右上,均可折叠):前者收纳快捷键说明,后者收纳名称/SMILES/分子式/序列输入;生成成功后输入面板自动收起。
+- **浮层开合动画**:使用说明 / 设置 / 名称·SMILES 三个角落面板与 SMILES 输入方法为手风琴式展开(高度 + 淡入 190ms)、收起 120ms 后才真正隐藏;分子式小键盘弹出、异构体面板 / 检索前筛选 / 键线式大图 / 帮助浮层 / 歧义候选 / 键菜单为淡入淡出 + 轻微缩放。淡出过程中浮层不接收点击,不会挡住原子操作;原生 `<select>` 的弹出列表由系统绘制,无动画。
 - **原子材质**(`#atom-style-select`):classic / glow / metal / toon 四档,新原子自动跟随,深色主题下拉。
 - **选中删除**:选中原子右上角挂红底垃圾桶图标,点击删除该原子;点空白取消选中时图标消失。
 - **旋转视角**:空白处拖动旋转视角,滚轮缩放(旋转单键时空白拖动切换为旋转分子侧)。
@@ -96,6 +97,7 @@
 | `verify_isomer_presearch.js` | 大分子式检索前筛选:候选探测(401/capped)、属性抓取、真实 UI(C₁₂H₁₃N₃O₂ 芳香环筛选 30 个、说明条/继续 30→60、条件带入、Esc/停止/取消、无筛选前 30)、手机 375×667/375×400 不超屏可滚动、C2H6O/C6H6 回归(23 项) |
 | `verify_history.js` | 撤销/恢复专项(12 项):按钮/图标/布局/初始置灰、空栈提示、拖拽/删除/移动/优化/清空/生成的提交点、复合操作恰记一条、键盘微移合并、redo 失效规则、快捷键、位置精确还原 |
 | `verify_corners.js` | 角落控件统一结构:桌面五件+右下角两件+撤销/恢复两键、移动端 375 两行图标键(10 项) |
+| `verify_animations.js` | 浮层开合动画:三个角落面板展开/延迟收起、小键盘弹出(关闭瞬时)、异构体面板/大图/帮助/键菜单淡入淡出、收起中不接收点击、快速连点竞态、原生 select 不受影响(12 项) |
 | `verify_foolproof.js` | 防呆测试:22 项边界/误操作场景(空状态、非法参数注入、状态机、极端几何、真实鼠标误操作) |
 | `verify_inline_offline.js` | 离线验证:file:// 打开 + 拦截全部网络请求,确认零 http 请求(Three.js/SmilesDrawer 内联、键线式本地渲染) |
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
@@ -130,7 +132,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ```
 
 - 自测报告读取:轮询 `window.lastRunResults`(33 例全跑完才写入);页面内 `window.runAllExamplesAndTests()` 可手动触发。
-- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;撤销/恢复 12 项、角控件 10 项、防呆 22 项等 UI 脚本全绿。
+- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;撤销/恢复 12 项、角控件 10 项、浮层开合动画 12 项、防呆 22 项等 UI 脚本全绿。
 
 ## 复现与分析
 
@@ -156,6 +158,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 
 - `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`)、`window.lastRunResults`、`window._INIT_ERRORS`
 - `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)
+- `window.__ddAnim`{inMs/outMs/idle()/running()/slideShow/slideHide/fadeShow/fadeHide/setCornerBodyOpen/bondMenu{show,hide}}(浮层开合动画;验证脚本用 `idle()` 等待动画收尾)
 - `window.__dragMode`{project/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
 - `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
 - 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__probeFormulaCandidates`/`__isomerPresearch`{open/close/start/stop/continue/reset/set/state/matches}/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`

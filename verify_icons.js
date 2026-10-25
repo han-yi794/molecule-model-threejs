@@ -268,7 +268,7 @@ class AssertionCollector {
             await page.waitForTimeout(200);
             const st1 = await page.evaluate(() => getComputedStyle(document.getElementById('help-overlay')).display);
             await page.click('#help-close');
-            await page.waitForTimeout(200);
+            await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
             const st2 = await page.evaluate(() => getComputedStyle(document.getElementById('help-overlay')).display);
             ac.ok(st0 === 'none', `初始关闭（${st0}）`);
             ac.ok(st1 === 'flex', `点击 ? 图标后打开（${st1}）`);

@@ -42,6 +42,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
 
         // 2. 展开帮助：帮助框自身可滚动到完整内容（max-height 46vh），侧栏不被撑爆
         await page.click('#smiles-help-toggle');
+        await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });   // 等展开动画（高度从 0 展开）播完再量几何
         const scrollInfo = await page.evaluate(() => {
             const sb = document.getElementById('sidebar');
             const box = document.getElementById('smiles-help');
@@ -88,6 +89,8 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         await page.evaluate(() => document.getElementById('smiles-help-toggle').scrollIntoView({ block: 'center' }));
         await page.waitForTimeout(100);
         await page.click('#smiles-help-toggle');
+        // 收起是延迟 display:none 的（开合动画），等动画队列清空再断言
+        await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
         const closed = await page.evaluate(() => ({ open: document.getElementById('smiles-help').classList.contains('open'), display: getComputedStyle(document.getElementById('smiles-help')).display }));
         step('帮助可收起', closed.open === false && closed.display === 'none', closed);
 

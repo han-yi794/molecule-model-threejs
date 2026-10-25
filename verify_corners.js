@@ -12,6 +12,8 @@ async function waitPort(ms) { const dl = Date.now() + ms; while (Date.now() < dl
 async function ensureServer() { if (await waitPort(1000)) return null; const { spawn } = require('child_process'); for (const bin of ['python', 'py']) { const p = spawn(bin, ['-m', 'http.server', String(PORT)], { stdio: 'ignore', cwd: process.cwd() }); if (await waitPort(15000)) return p; p.kill(); } return null; }
 
 const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-molecule', 'input-panel'];
+// 开合动画（2026-10-25）后收起是延迟 display:none 的，等动画队列清空再读几何/可见性
+const settle = (p) => p.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
 
 (async () => {
     const serverProc = await ensureServer();
@@ -29,7 +31,7 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
         await page.waitForFunction(() => !!(window.__diag && window.__setInputPanelOpen), null, { timeout: 30000 });
         await page.waitForTimeout(400);
         await page.evaluate(() => window.__setInputPanelOpen(false));
-        await page.waitForTimeout(150);
+        await settle(page);
 
         // C1: 五控件统一外框 + 头部字号
         out.C1 = await page.evaluate((ids) => {
@@ -86,11 +88,11 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
             };
         });
         out.C3 = { before: await snapPanels(), steps: [] };
-        await page.click('#guide-toggle'); await page.waitForTimeout(180);
+        await page.click('#guide-toggle'); await settle(page);
         out.C3.steps.push(await snapPanels());
-        await page.click('#settings-toggle'); await page.waitForTimeout(180);
+        await page.click('#settings-toggle'); await settle(page);
         out.C3.steps.push(await snapPanels());
-        await page.click('#input-panel-toggle'); await page.waitForTimeout(180);
+        await page.click('#input-panel-toggle'); await settle(page);
         out.C3.steps.push(await snapPanels());
         const [gStep, sStep, iStep] = out.C3.steps;
         const c3ok = out.C3.before.carets.g === 'chevron-down' && out.C3.before.carets.s === 'chevron-down' && out.C3.before.carets.i === 'chevron-down'
@@ -111,11 +113,11 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
         step('C4 三内容区上分隔线一致（8px/8px/1px 同色）', c4ok, out.C4);
 
         // C5: 再收起恢复（逐个开→关）
-        await page.click('#input-panel-toggle'); await page.waitForTimeout(150);
-        await page.click('#guide-toggle'); await page.waitForTimeout(150);
-        await page.click('#guide-toggle'); await page.waitForTimeout(150);
-        await page.click('#settings-toggle'); await page.waitForTimeout(150);
-        await page.click('#settings-toggle'); await page.waitForTimeout(150);
+        await page.click('#input-panel-toggle'); await settle(page);
+        await page.click('#guide-toggle'); await settle(page);
+        await page.click('#guide-toggle'); await settle(page);
+        await page.click('#settings-toggle'); await settle(page);
+        await page.click('#settings-toggle'); await settle(page);
         out.C5 = await page.evaluate(() => {
             const ci = (id) => { const c = document.querySelector('#' + id + ' .corner-caret svg'); return c ? c.dataset.icon : null; };
             const disp = (id) => getComputedStyle(document.getElementById(id)).display;
@@ -174,7 +176,7 @@ const IDS = ['guide-panel', 'settings-panel', 'btn-optimize-all', 'btn-clear-mol
         await m.goto(PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
         await m.waitForFunction(() => !!(window.__diag && window.__setInputPanelOpen), null, { timeout: 30000 });
         await m.evaluate(() => window.__setInputPanelOpen(false));
-        await m.waitForTimeout(250);
+        await settle(m);
         out.C7 = await m.evaluate((ids) => {
             const rects = ids.map(id => { const r = document.getElementById(id).getBoundingClientRect(); return { id, l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), h: Math.round(r.height) }; });
             const iconsOnly = ids.slice(0, 4).every(id => {

@@ -152,12 +152,12 @@ const { chromium } = require('playwright');
 
     // Esc 关闭 + 点空白关闭
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
+    await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
     const q10a = await page.evaluate(() => !window.__isomerPresearch.visible());
     await page.evaluate(() => window.__isomerPresearch.open('C12H13N3O2'));
     await page.waitForFunction(() => window.__isomerPresearch.visible(), null, { timeout: 10000 });
     await page.evaluate(() => document.getElementById('isomer-pre-panel').click());
-    await page.waitForTimeout(200);
+    await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
     const q10b = await page.evaluate(() => !window.__isomerPresearch.visible());
     ok('Q10 Esc 与点空白均可关闭预筛选面板', q10a === true && q10b === true, { esc: q10a, backdrop: q10b });
 

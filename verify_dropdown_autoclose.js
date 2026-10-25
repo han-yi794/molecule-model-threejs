@@ -46,11 +46,15 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
                 active: document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null
             };
         });
-        const clickCanvas = async () => { await page.mouse.click(760, 520); await page.waitForTimeout(220); };
+        const clickCanvas = async () => {
+            await page.mouse.click(760, 520);
+            // 收起是延迟 display:none 的（开合动画），等动画队列清空再读状态
+            await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
+        };
 
         // 归零：关闭全部浮层（webdriver 环境输入面板默认展开）
         await page.evaluate(() => window.__setInputPanelOpen(false));
-        await page.waitForTimeout(200);
+        await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
 
         // D1 使用说明：展开 → 点画布 → 自动收起
         await page.click('#guide-toggle');

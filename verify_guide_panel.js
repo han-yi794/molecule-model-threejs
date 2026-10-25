@@ -53,6 +53,8 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
 
         await page.screenshot({ path: 'd_guide_open.png' });
         await page.click('#guide-toggle');
+        // 收起是延迟 display:none 的（开合动画），等动画队列清空再断言
+        await page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
         out.S3b = await page.evaluate(() => ({
             closed: getComputedStyle(document.getElementById('guide-body')).display === 'none',
             tgl: document.getElementById('guide-toggle').textContent,

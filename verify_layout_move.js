@@ -19,6 +19,8 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         await page.waitForTimeout(1000);
         const out = {};
         const step = (name, ok, detail) => report.results.push({ name, ok: !!ok, detail });
+        // 开合动画（2026-10-25）：收起是延迟 display:none，等动画队列清空再断言「已收起」
+        const settle = () => page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
 
         // S1: input-panel 位于右上角;默认态按环境约定(自动化 navigator.webdriver=true 默认展开不写记忆,常规环境默认收起)
         out.S1 = await page.evaluate(() => {
@@ -35,6 +37,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         const s1DefaultOk = out.S1.webdriver ? out.S1.defaultState === 'open' : out.S1.defaultState === 'collapsed';
         // 无论默认态,收敛到收起态验证折叠机制
         await page.evaluate(() => window.__setInputPanelOpen(false));
+        await settle();
         out.S1.forcedCollapsed = await page.evaluate(() => document.getElementById('input-panel-body').style.display === 'none');
         step('S1 输入面板右上角,默认态符合环境约定且可收起', out.S1.top <= 25 && out.S1.right <= 25 && s1DefaultOk && out.S1.forcedCollapsed, out.S1);
 
@@ -50,6 +53,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
 
         // S1c: 再点收起,与原子库不重叠(记忆:常规环境 '0',自动化环境不写)
         await page.click('#input-panel-toggle');
+        await settle();
         out.S1c = await page.evaluate(() => {
             const p = document.getElementById('input-panel').getBoundingClientRect();
             const sb = document.getElementById('sidebar').getBoundingClientRect();
@@ -91,6 +95,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         await page.click('#btn-molecule-from-input');
         // 乙酸 8 原子;PubChem 3D 路径可能需数秒(超时后本地回退也是 8)
         await page.waitForFunction(() => window.__diag.atomPositions().length === 8, null, { timeout: 15000 }).catch(() => {});
+        await settle();   // 生成成功后输入面板播放收起动画，等它真正 display:none
         out.S4 = await page.evaluate(() => ({
             atoms: window.__diag.atomPositions().length,
             autoCollapsed: document.getElementById('input-panel-body').style.display === 'none'
