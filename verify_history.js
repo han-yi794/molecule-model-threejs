@@ -118,48 +118,40 @@ function posMatch(before, after, tol = 0.005) {
         });
         await page.waitForTimeout(250);
 
-        // ---------- H1 按钮：图标水合 / 标签 / 布局 / 空栈标记 / 配色一致 ----------
+        // ---------- H1 按钮：图标水合 / 顶栏布局 / 空栈标记 / 图标态 ----------
         {
             const h1 = await page.evaluate(() => {
                 const u = document.getElementById('btn-undo'), r = document.getElementById('btn-redo');
                 const cl = document.getElementById('btn-clear-molecule');
+                const op = document.getElementById('btn-optimize-all');
                 const rb = (el) => { const b = el.getBoundingClientRect(); return { l: Math.round(b.left), t: Math.round(b.top), r: Math.round(b.right), h: Math.round(b.height) }; };
                 const iconPaths = (el, name) => { const s = el.querySelector('svg[data-icon="' + name + '"]'); return s ? s.querySelectorAll('path').length : 0; };
-                const label = u.querySelector('.corner-label');
                 const styleSig = (el) => { const cs = getComputedStyle(el); return [cs.backgroundColor, cs.borderColor, cs.color, cs.opacity].join(' | '); };
                 return {
-                    ub: rb(u), rb2: rb(r), clb: rb(cl),
-                    labelOverflow: label ? label.scrollWidth > label.clientWidth + 1 : false,
+                    ub: rb(u), rb2: rb(r), clb: rb(cl), opb: rb(op),
                     uCls: u.className, rCls: r.className,
                     uIcon: iconPaths(u, 'undo-2'), rIcon: iconPaths(r, 'redo-2'),
-                    uLabel: (u.querySelector('.corner-label') || {}).textContent || '',
-                    rLabel: (r.querySelector('.corner-label') || {}).textContent || '',
+                    uLabel: u.getAttribute('aria-label') || '', rLabel: r.getAttribute('aria-label') || '',
+                    uText: (u.textContent || '').trim(), rText: (r.textContent || '').trim(),
                     uTitle: u.getAttribute('title') || '', rTitle: r.getAttribute('title') || '',
                     uEmpty: u.classList.contains('hist-empty'), rEmpty: r.classList.contains('hist-empty'),
-                    oSig: styleSig(document.getElementById('btn-optimize-all')), uSig: styleSig(u), rSig: styleSig(r),
+                    uEmptyColor: getComputedStyle(u).color, oColor: getComputedStyle(op).color,
+                    inTopbar: !!(u.closest('#topbar') && r.closest('#topbar')),
                     depth: window.__history.depth()
                 };
             });
             const ac = new AssertionCollector();
             ac.ok(h1.uIcon === 2 && h1.rIcon === 2, `图标水合（undo-2/redo-2 各 2 条 path，实际 ${h1.uIcon}/${h1.rIcon}）`);
-            ac.ok(h1.uLabel === '撤销' && h1.rLabel === '恢复', `标签（${h1.uLabel}/${h1.rLabel}）`);
+            ac.ok(h1.uLabel === '撤销' && h1.rLabel === '恢复', `aria-label（${h1.uLabel}/${h1.rLabel}）`);
             ac.ok(/Ctrl\+Z/i.test(h1.uTitle) && /Ctrl\+Y/i.test(h1.rTitle), `title 含快捷键说明（"${h1.uTitle}" / "${h1.rTitle}"）`);
-            ac.ok(h1.ub.t === 20 && h1.rb2.t === 20 && h1.ub.h === 32 && h1.rb2.h === 32, `与角落控件同行同高（t=${h1.ub.t}/${h1.rb2.t} h=${h1.ub.h}/${h1.rb2.h}）`);
-            ac.ok(h1.ub.l >= h1.clb.r && h1.ub.r <= h1.rb2.l, `排在清空右侧且互不重叠（清空右缘 ${h1.clb.r} / 撤销 ${h1.ub.l}-${h1.ub.r} / 恢复 ${h1.rb2.l}-${h1.rb2.r}）`);
-            ac.ok(!h1.labelOverflow, '按钮文字未被挤压溢出');
-            ac.ok(h1.uCls.includes('corner-widget') && h1.uCls.includes('corner-head') && h1.rCls.includes('corner-widget') && h1.rCls.includes('corner-head'), '统一角落控件结构（corner-widget corner-head）');
+            ac.ok(h1.inTopbar, '撤销/恢复位于顶栏主操作区');
+            ac.ok(h1.ub.t === h1.opb.t && h1.ub.h === 32 && h1.rb2.h === 32 && h1.clb.h === 32, `与顶栏其它按钮同行同高（t=${h1.ub.t}/${h1.opb.t} h=${h1.ub.h}/${h1.clb.h}）`);
+            ac.ok(h1.ub.r <= h1.rb2.l && h1.rb2.r <= h1.opb.l, `顺序为撤销→恢复→优化→清空且互不重叠（${h1.ub.l}-${h1.ub.r} / ${h1.rb2.l}-${h1.rb2.r} / 优化 ${h1.opb.l}-${h1.opb.r} / 清空 ${h1.clb.l}）`);
+            ac.ok(h1.uCls.includes('tb-btn') && h1.uCls.includes('tb-icon') && h1.rCls.includes('tb-btn') && h1.rCls.includes('tb-icon'), '顶栏图标按钮样式（tb-btn tb-icon）');
+            ac.ok(h1.uText === '' && h1.rText === '', `纯图标无文字（"${h1.uText}"/"${h1.rText}"）`);
             ac.ok(h1.uEmpty && h1.rEmpty && h1.depth.undo === 0 && h1.depth.redo === 0, `初始空栈标记 hist-empty（depth=${JSON.stringify(h1.depth)}）`);
-            ac.ok(h1.uSig === h1.oSig && h1.rSig === h1.oSig, `空栈时配色与「全局同步优化」完全一致（撤销 ${h1.uSig}）`);
-            // 悬停配色一致（2026-10-19 用户要求：撤销/恢复与相邻按钮风格一致）
-            await page.hover('#btn-undo');
-            await page.waitForTimeout(200);
-            const hovU = await page.evaluate(() => { const cs = getComputedStyle(document.getElementById('btn-undo')); return cs.borderColor + ' / ' + cs.color; });
-            await page.hover('#btn-optimize-all');
-            await page.waitForTimeout(200);
-            const hovO = await page.evaluate(() => { const cs = getComputedStyle(document.getElementById('btn-optimize-all')); return cs.borderColor + ' / ' + cs.color; });
-            ac.ok(hovU === hovO, `悬停配色与「全局同步优化」一致（撤销 ${hovU} vs 优化 ${hovO}）`);
-            await page.mouse.move(720, 420);
-            push('H1 撤销/恢复按钮：图标/标签/布局/空栈标记/配色一致', ac.failed === 0,
+            ac.ok(h1.uEmptyColor !== h1.oColor, `空栈时比可用按钮更暗（撤销 ${h1.uEmptyColor} vs 优化 ${h1.oColor}）`);
+            push('H1 撤销/恢复按钮：图标/顶栏布局/空栈标记', ac.failed === 0,
                 JSON.stringify({ ub: h1.ub, rb: h1.rb2, clb: h1.clb, depth: h1.depth }) + ' | ' + ac.failures.join('；'));
         }
 

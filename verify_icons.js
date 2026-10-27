@@ -76,7 +76,7 @@ class AssertionCollector {
     try {
         await page.goto(PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForFunction(
-            () => !!(window.__diag && window.__iconSvg && document.getElementById('guide-toggle')),
+            () => !!(window.__diag && window.__iconSvg && document.getElementById('btn-help')),
             null, { timeout: 30000 });
         await page.waitForTimeout(300);
 
@@ -98,17 +98,17 @@ class AssertionCollector {
         // ---------- I2 关键元素图标齐全 ----------
         {
             const sels = [
-                '#guide-toggle svg[data-icon="book-open"]',
-                '#settings-toggle svg[data-icon="settings"]',
-                '#input-panel-toggle svg[data-icon="flask-conical"]',
+                '#group-sidebar .panel-head svg[data-icon="shapes"]',
+                '#sidebar .panel-head svg[data-icon="atom"]',
+                '#inspect-panel .panel-head svg[data-icon="eye"]',
+                '#input-panel-toggle svg[data-icon="x"]',
+                '#btn-open-input svg[data-icon="flask-conical"]',
                 '#btn-optimize-all svg[data-icon="sparkles"]',
                 '#btn-clear-molecule svg[data-icon="trash-2"]',
                 '#btn-undo svg[data-icon="undo-2"]',
                 '#btn-redo svg[data-icon="redo-2"]',
                 '#btn-help svg[data-icon="circle-help"]',
                 '#help-close svg[data-icon="x"]',
-                '#group-sidebar .title svg[data-icon="shapes"]',
-                '#sidebar .title svg[data-icon="atom"]',
                 '#btn-open-keypad svg[data-icon="keyboard"]',
                 '#formula-keypad-backspace svg[data-icon="delete"]',
                 '#formula-keypad-close svg[data-icon="x"]',
@@ -119,16 +119,15 @@ class AssertionCollector {
                 '.clear-btn[data-clear="name-input"] svg[data-icon="x"]',
                 '.clear-btn[data-clear="smiles-input"] svg[data-icon="x"]',
                 '.clear-btn[data-clear="formula-input"] svg[data-icon="x"]',
-                '#settings-body svg[data-icon="wand-sparkles"]',
-                '#settings-body svg[data-icon="cloud"]',
-                '#settings-body svg[data-icon="grid-3x3"]',
-                '#settings-body svg[data-icon="orbit"]',
-                '#settings-body svg[data-icon="palette"]',
+                '#mobilebar #mb-build svg[data-icon="shapes"]',
+                '#mobilebar #mb-inspect svg[data-icon="eye"]',
+                '#mobilebar #mb-generate svg[data-icon="flask-conical"]',
                 '#help-card svg[data-icon="mouse"]',
                 '#help-card svg[data-icon="keyboard"]',
                 '#help-card svg[data-icon="hand"]',
                 '#help-card svg[data-icon="lightbulb"]',
-                '#settings-body svg[data-icon="eye"]'
+                '#group-sidebar .panel-caret svg[data-icon="chevron-left"]',
+                '#inspect-panel .panel-caret svg[data-icon="chevron-right"]'
             ];
             const missing = await page.evaluate((sels) => sels.filter(s => !document.querySelector(s)), sels);
             const ac = new AssertionCollector();
@@ -141,14 +140,14 @@ class AssertionCollector {
             const r3 = await page.evaluate(() => {
                 const legacy = /[📖🧪⚙✨🗑⌨⌫⇄🖱✋💡❔✕◐⚛▾▴✓×]/;
                 const targets = {
-                    'guide-toggle': '#guide-toggle',
-                    'settings-toggle': '#settings-toggle',
+                    'group-sidebar-head': '#group-sidebar .panel-head',
+                    'sidebar-head': '#sidebar .panel-head',
+                    'inspect-head': '#inspect-panel .panel-head',
                     'input-panel-toggle': '#input-panel-toggle',
+                    'btn-open-input': '#btn-open-input',
                     'smiles-help-toggle': '#smiles-help-toggle',
                     'btn-optimize-all': '#btn-optimize-all',
                     'btn-clear-molecule': '#btn-clear-molecule',
-                    'group-sidebar-title': '#group-sidebar .title',
-                    'sidebar-title': '#sidebar .title',
                     'btn-open-keypad': '#btn-open-keypad',
                     'formula-keypad-backspace': '#formula-keypad-backspace',
                     'formula-keypad-close': '#formula-keypad-close',
@@ -161,7 +160,8 @@ class AssertionCollector {
                     'btn-toggle-hydro': '#btn-toggle-hydro',
                     'btn-toggle-lp': '#btn-toggle-lp',
                     'btn-toggle-grid': '#btn-toggle-grid',
-                    'btn-toggle-deloc': '#btn-toggle-deloc'
+                    'btn-toggle-deloc': '#btn-toggle-deloc',
+                    'mobilebar': '#mobilebar'
                 };
                 const bad = [];
                 for (const [k, sel] of Object.entries(targets)) {
@@ -178,86 +178,90 @@ class AssertionCollector {
             const ac = new AssertionCollector();
             ac.ok(r3.bad.length === 0, `无残留符号（发现：${r3.bad.join(' | ')}）`);
             ac.ok(r3.helpBtnText === '', `btn-help 文本为空（实际 "${r3.helpBtnText}"）`);
-            ac.ok(r3.bothPi.length === 1, `唯一 btn-toggle-pi（设置面板）无符号（"${r3.bothPi.join(' / ')}"）`);
+            ac.ok(r3.bothPi.length === 1, `唯一 btn-toggle-pi（检查器视图段）无符号（"${r3.bothPi.join(' / ')}"）`);
             push('I3 文本无残留 emoji/符号', ac.failed === 0,
                 `pi="${r3.bothPi.join(' / ')}" help="${r3.helpBtnText}" | ${ac.failures.join('；')}`);
         }
 
-        // ---------- I4 勾选框选中态为 SVG 对勾 ----------
+        // ---------- I4 视图开关：28×16 滑块，勾选后滑块右移 + 琥珀描边 ----------
         {
-            const r4 = await page.evaluate(() => {
+            const readSwitch = () => page.evaluate(() => {
                 const chk = document.getElementById('chk-grid');
-                const box = chk.nextElementSibling; // .check-box
-                const before = getComputedStyle(box, '::after').backgroundImage;
-                chk.checked = true;
-                const after = getComputedStyle(box, '::after').backgroundImage;
-                chk.checked = false;
-                return { before, after };
+                const sw = chk.nextElementSibling;
+                const cs = getComputedStyle(sw);
+                const af = getComputedStyle(sw, '::after');
+                return { w: Math.round(parseFloat(cs.width)), h: Math.round(parseFloat(cs.height)), border: cs.borderTopColor, knob: af.transform, knobBg: af.backgroundColor, checked: chk.checked, cls: sw.className, rows: document.querySelectorAll('#inspect-body .toggle-row .switch').length };
             });
+            await page.evaluate(() => { document.getElementById('chk-grid').checked = false; });
+            await page.waitForTimeout(260);
+            const off = await readSwitch();
+            await page.evaluate(() => { document.getElementById('chk-grid').checked = true; });
+            await page.waitForTimeout(260);
+            const on = await readSwitch();
+            await page.evaluate(() => { document.getElementById('chk-grid').checked = false; });
             const ac = new AssertionCollector();
-            ac.ok(r4.after !== 'none', `选中态 ::after 有背景（实际 ${String(r4.after).slice(0, 60)}）`);
-            ac.ok(r4.after.includes('data:image/svg+xml'), `选中态为 SVG 图像（实际 ${String(r4.after).slice(0, 60)}）`);
-            push('I4 勾选框 SVG 对勾', ac.failed === 0, JSON.stringify(r4).slice(0, 220) + ' | ' + ac.failures.join('；'));
+            ac.ok(off.cls === 'switch' && off.rows === 5, `5 个视图开关均为 .switch（实际 ${off.rows}）`);
+            ac.ok(off.w === 28 && off.h === 16, `开关 28×16（实际 ${off.w}×${off.h}）`);
+            ac.ok(on.knob !== off.knob && /matrix\(1, 0, 0, 1, 12/.test(on.knob), `勾选后滑块右移 12px（${off.knob} → ${on.knob}）`);
+            ac.ok(on.border !== off.border && /240, 180, 90/.test(on.border), `勾选后描边变琥珀（${off.border} → ${on.border}）`);
+            ac.ok(on.knobBg !== off.knobBg, `勾选后滑块变亮（${off.knobBg} → ${on.knobBg}）`);
+            push('I4 视图开关滑块（28×16，勾选右移 + 琥珀描边）', ac.failed === 0, JSON.stringify({ off, on }) + ' | ' + ac.failures.join('；'));
         }
 
-        // ---------- I5 折叠交互：chevron 翻转 ----------
+        // ---------- I5 折叠交互：面板 caret 翻转 + 抽屉开合 ----------
         {
             const ac = new AssertionCollector();
             const detail = {};
+            const caretOf = (sel) => page.evaluate((s) => {
+                const el = document.querySelector(s);
+                const svg = el && el.querySelector('svg[data-icon]');
+                return { icon: svg ? svg.dataset.icon : null, svg: !!svg };
+            }, sel);
 
-            // 使用说明：默认收起（chevron-down）→ 点击展开（chevron-up）→ 再点收起
-            detail.guide0 = await page.evaluate(() => ({
-                down: !!document.querySelector('#guide-toggle svg[data-icon="chevron-down"]'),
-                up: !!document.querySelector('#guide-toggle svg[data-icon="chevron-up"]')
-            }));
-            await page.click('#guide-toggle');
-            detail.guide1 = await page.evaluate(() => ({
-                down: !!document.querySelector('#guide-toggle svg[data-icon="chevron-down"]'),
-                up: !!document.querySelector('#guide-toggle svg[data-icon="chevron-up"]'),
-                open: document.getElementById('guide-body').classList.contains('open')
-            }));
-            await page.click('#guide-toggle');
-            detail.guide2 = await page.evaluate(() => !!document.querySelector('#guide-toggle svg[data-icon="chevron-down"]'));
+            // 构建台：展开 chevron-left → 点击收起 chevron-right → 再点展开
+            detail.b0 = await caretOf('#group-sidebar .panel-caret');
+            await page.click('#group-sidebar-toggle');
+            await page.waitForTimeout(320);
+            detail.b1 = await caretOf('#group-sidebar .panel-caret');
+            detail.b1collapsed = await page.evaluate(() => document.getElementById('build-panel').classList.contains('collapsed'));
+            await page.click('#group-sidebar-toggle');
+            await page.waitForTimeout(320);
+            detail.b2 = await caretOf('#group-sidebar .panel-caret');
 
-            // 设置：默认无 chevron → 点击展开（chevron-up）→ 再点收起（无 chevron）
-            detail.set0 = await page.evaluate(() => !!document.querySelector('#settings-toggle svg'));
-            await page.click('#settings-toggle');
-            detail.set1 = await page.evaluate(() => ({
-                up: !!document.querySelector('#settings-toggle svg[data-icon="chevron-up"]'),
-                open: document.getElementById('settings-body').classList.contains('open')
-            }));
-            await page.click('#settings-toggle');
-            detail.set2 = await page.evaluate(() => ({
-                up: !!document.querySelector('#settings-toggle svg[data-icon="chevron-up"]'),
-                open: document.getElementById('settings-body').classList.contains('open')
-            }));
+            // 检查器：展开 chevron-right → 点击收起 chevron-left → 再点展开
+            detail.i0 = await caretOf('#inspect-panel .panel-caret');
+            await page.click('#inspect-toggle');
+            await page.waitForTimeout(320);
+            detail.i1 = await caretOf('#inspect-panel .panel-caret');
+            detail.i1collapsed = await page.evaluate(() => document.getElementById('inspect-panel').classList.contains('collapsed'));
+            await page.click('#inspect-toggle');
+            await page.waitForTimeout(320);
+            detail.i2 = await caretOf('#inspect-panel .panel-caret');
 
-            // 输入面板：webdriver 环境默认展开（chevron-up）→ 点击收起（down）→ 再点展开（up）
-            // 2026-10-20 手风琴：前面点开设置/说明会让输入面板自动收起，先显式展开再验开合
+            // 生成抽屉：按钮 aria-expanded 同步，关闭按钮图标为 x
             await page.evaluate(() => window.__setInputPanelOpen(true));
-            await page.waitForTimeout(120);
-            detail.in0 = await page.evaluate(() => ({
-                up: !!document.querySelector('#input-panel-toggle svg[data-icon="chevron-up"]'),
-                open: document.getElementById('input-panel').classList.contains('open')
+            await page.waitForTimeout(220);
+            detail.d0 = await page.evaluate(() => ({
+                open: document.getElementById('input-panel').classList.contains('open'),
+                aria: document.getElementById('btn-open-input').getAttribute('aria-expanded'),
+                closeIcon: !!document.querySelector('#input-panel-toggle svg[data-icon="x"]')
             }));
-            await page.click('#input-panel-toggle');
-            detail.in1 = await page.evaluate(() => ({
-                down: !!document.querySelector('#input-panel-toggle svg[data-icon="chevron-down"]'),
-                open: document.getElementById('input-panel').classList.contains('open')
+            await page.evaluate(() => window.__setInputPanelOpen(false));
+            await page.waitForTimeout(220);
+            detail.d1 = await page.evaluate(() => ({
+                open: document.getElementById('input-panel').classList.contains('open'),
+                aria: document.getElementById('btn-open-input').getAttribute('aria-expanded')
             }));
-            await page.click('#input-panel-toggle');
-            detail.in2 = await page.evaluate(() => !!document.querySelector('#input-panel-toggle svg[data-icon="chevron-up"]'));
 
-            ac.ok(detail.guide0.down && !detail.guide0.up, '说明初始 chevron-down');
-            ac.ok(detail.guide1.up && detail.guide1.open, '说明展开后 chevron-up + 内容开');
-            ac.ok(detail.guide2, '说明再点回 chevron-down');
-            ac.ok(detail.set0, '设置初始有 svg 图标（无 chevron）');
-            ac.ok(detail.set1.up && detail.set1.open, '设置展开后 chevron-up + 内容开');
-            ac.ok(!detail.set2.up && !detail.set2.open, '设置再点收起（无 chevron + 内容关）');
-            ac.ok(detail.in0.up && detail.in0.open, '输入面板初始展开 chevron-up（webdriver）');
-            ac.ok(detail.in1.down && !detail.in1.open, '输入面板收起 chevron-down');
-            ac.ok(detail.in2, '输入面板再点展开 chevron-up');
-            push('I5 折叠交互 chevron 翻转', ac.failed === 0, JSON.stringify(detail) + ' | ' + ac.failures.join('；'));
+            ac.ok(detail.b0.icon === 'chevron-left' && detail.b0.svg, '构建台展开时 caret=chevron-left（已水合）');
+            ac.ok(detail.b1.icon === 'chevron-right' && detail.b1collapsed, '构建台收起后 caret=chevron-right + 面板 collapsed');
+            ac.ok(detail.b2.icon === 'chevron-left', '构建台再点回 chevron-left');
+            ac.ok(detail.i0.icon === 'chevron-right' && detail.i0.svg, '检查器展开时 caret=chevron-right（已水合）');
+            ac.ok(detail.i1.icon === 'chevron-left' && detail.i1collapsed, '检查器收起后 caret=chevron-left + 面板 collapsed');
+            ac.ok(detail.i2.icon === 'chevron-right', '检查器再点回 chevron-right');
+            ac.ok(detail.d0.open && detail.d0.aria === 'true' && detail.d0.closeIcon, '抽屉打开 + aria-expanded=true + 关闭按钮 x 图标');
+            ac.ok(!detail.d1.open && detail.d1.aria === 'false', '抽屉关闭 + aria-expanded=false');
+            push('I5 面板 caret 翻转 + 抽屉开合图标', ac.failed === 0, JSON.stringify(detail) + ' | ' + ac.failures.join('；'));
         }
 
         // ---------- I6 帮助面板开合 ----------

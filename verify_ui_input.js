@@ -113,7 +113,7 @@ class AssertionCollector {
             const refilled = await page.evaluate(() => document.getElementById('smiles-input').value);
             ac.eq(refilled, 'CCO', 'SMILES 回填');
             const btnText = await page.evaluate(() => document.getElementById('btn-molecule-from-input').textContent);
-            ac.eq(btnText, '从输入生成', '按钮文字恢复');
+            ac.eq(btnText, '生成', '按钮文字恢复');
             const pass = ac.failed === 0;
             report.total++; pass ? report.passed++ : report.failed++;
             report.results.push({ name: '2 SMILES CCO 生成', pass, detail: pass ? '通过' : ac.failures.join('；') });
@@ -160,7 +160,7 @@ class AssertionCollector {
             // 环境无网络或 Cactus 对未知名返回 5xx 时，正确行为是 network 文案；有网络时为 not_found 文案
             ac.ok(/未找到该分子|网络错误/.test(toast), 'toast 为 not_found 或 network 中文文案（实际: ' + (toast || '(无)') + '）');
             const btnText = await page.evaluate(() => document.getElementById('btn-molecule-from-input').textContent);
-            ac.eq(btnText, '从输入生成', '按钮文字恢复');
+            ac.eq(btnText, '生成', '按钮文字恢复');
             const btnOpacity = await page.evaluate(() => document.getElementById('btn-molecule-from-input').style.opacity);
             ac.eq(btnOpacity, '1', '按钮透明度恢复');
             const pass = ac.failed === 0;

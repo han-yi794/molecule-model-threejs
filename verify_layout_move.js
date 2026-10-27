@@ -1,120 +1,186 @@
-// verify_layout_move.js — 输入面板右上角 + ? 按钮右下角 验证
+// verify_layout_move.js — 三栏工作台响应式几何验证（2026-10-27 重设计）
+// 覆盖 1440 / 1100 / 1024 / 768 / 700 / 640 / 390 七档：
+//   三栏网格列宽、8/10/12px 边距与间距、无横向溢出、顶栏 44px、
+//   768 双 44px 轨道、700-899 展开一侧自动收起另一侧、
+//   ≤699 底部栏出现 + 面板变底部抽屉（默认隐藏、打开不越界）、
+//   手机生成抽屉贴底不挡底部栏、零 console 错误。
+// 运行：cmd /c "node verify_layout_move.js > out.json 2>&1"（timeout 900000ms）
 const { chromium } = require('playwright');
 const http = require('http');
+const { spawn } = require('child_process');
+
 const PORT = 8047;
-const PAGE_URL = `http://127.0.0.1:${PORT}/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1&v=laymv1`;
+const PAGE_URL = `http://127.0.0.1:${PORT}/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1&v=layout2`;
+const SHOT = 'C:\\Users\\Administrator\\AppData\\Local\\Temp\\opencode\\';
+
 async function probe(url) { return new Promise(res => { const req = http.get(url, r => { r.resume(); res(true); }); req.on('error', () => res(false)); req.setTimeout(3000, () => { req.destroy(); res(false); }); }); }
 async function waitPort(ms) { const dl = Date.now() + ms; while (Date.now() < dl) { if (await probe(`http://127.0.0.1:${PORT}/`)) return true; await new Promise(r => setTimeout(r, 500)); } return false; }
-async function ensureServer() { if (await waitPort(1000)) return null; const { spawn } = require('child_process'); for (const bin of ['python', 'py']) { const p = spawn(bin, ['-m', 'http.server', String(PORT)], { stdio: 'ignore', cwd: process.cwd() }); if (await waitPort(15000)) return p; p.kill(); } return null; }
+async function ensureServer() { if (await waitPort(1000)) return null; for (const bin of ['python', 'py']) { const p = spawn(bin, ['-m', 'http.server', String(PORT)], { stdio: 'ignore', cwd: process.cwd() }); if (await waitPort(15000)) return p; p.kill(); } return null; }
+
 (async () => {
     const serverProc = await ensureServer();
     const browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width: 1289, height: 896 } });
     const report = { results: [], consoleErrors: [] };
-    page.on('pageerror', e => report.consoleErrors.push('PAGEERROR: ' + String(e).slice(0, 300)));
-    page.on('console', m => { if (m.type() === 'error') report.consoleErrors.push(m.text().slice(0, 250)); });
-    try {
+    const step = (name, ok, detail) => report.results.push({ name, ok: !!ok, detail });
+
+    // 每档独立 context：localStorage 干净，避免上一档的面板记忆影响断点默认值
+    const measure = async (w, h, opts = {}) => {
+        const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: !!opts.mobile, hasTouch: !!opts.mobile, deviceScaleFactor: opts.mobile ? 2 : 1 });
+        const page = await ctx.newPage();
+        page.on('pageerror', e => report.consoleErrors.push(`${w}x${h} PAGEERROR: ` + String(e).slice(0, 200)));
+        page.on('console', m => { if (m.type() === 'error') report.consoleErrors.push(`${w}x${h}: ` + m.text().slice(0, 200)); });
         await page.goto(PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
-        await page.waitForFunction(() => typeof window.__generateFromSmiles === 'function', null, { timeout: 30000 });
-        await page.waitForTimeout(1000);
-        const out = {};
-        const step = (name, ok, detail) => report.results.push({ name, ok: !!ok, detail });
-        // 开合动画（2026-10-25）：收起是延迟 display:none，等动画队列清空再断言「已收起」
-        const settle = () => page.waitForFunction(() => window.__ddAnim && window.__ddAnim.idle(), null, { timeout: 5000 });
-
-        // S1: input-panel 位于右上角;默认态按环境约定(自动化 navigator.webdriver=true 默认展开不写记忆,常规环境默认收起)
-        out.S1 = await page.evaluate(() => {
-            const p = document.getElementById('input-panel');
-            if (!p) return { fail: 'missing' };
-            const r = p.getBoundingClientRect();
-            return {
-                right: Math.round(innerWidth - r.right), top: Math.round(r.top),
-                webdriver: navigator.webdriver === true,
-                defaultState: (p.classList.contains('open') && document.getElementById('input-panel-body').style.display !== 'none') ? 'open' : 'collapsed',
-                toggleText: document.getElementById('input-panel-toggle').textContent
-            };
-        });
-        const s1DefaultOk = out.S1.webdriver ? out.S1.defaultState === 'open' : out.S1.defaultState === 'collapsed';
-        // 无论默认态,收敛到收起态验证折叠机制
+        await page.waitForFunction(() => !!(window.__panels && window.__diag), null, { timeout: 30000 });
         await page.evaluate(() => window.__setInputPanelOpen(false));
-        await settle();
-        out.S1.forcedCollapsed = await page.evaluate(() => document.getElementById('input-panel-body').style.display === 'none');
-        step('S1 输入面板右上角,默认态符合环境约定且可收起', out.S1.top <= 25 && out.S1.right <= 25 && s1DefaultOk && out.S1.forcedCollapsed, out.S1);
+        await page.waitForTimeout(350);
+        return { page, ctx };
+    };
 
-        // S1b: 收起点击 = 展开(记忆:常规环境 '1',自动化环境不写)
-        await page.click('#input-panel-toggle');
-        out.S1b = await page.evaluate(() => {
-            const p = document.getElementById('input-panel');
-            const body = document.getElementById('input-panel-body');
-            return { opened: body.style.display !== 'none', mem: localStorage.getItem('INPUT_PANEL_OPEN'), webdriver: navigator.webdriver === true };
-        });
-        const s1bMemOk = out.S1b.webdriver ? out.S1b.mem === null : out.S1b.mem === '1';
-        step('S1b 点击展开并记忆(自动化环境不写记忆)', out.S1b.opened && s1bMemOk, out.S1b);
+    const geom = (page) => page.evaluate(() => {
+        const r = (id) => { const el = document.getElementById(id); if (!el) return null; const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
+        const shell = document.getElementById('shell');
+        const cs = getComputedStyle(shell);
+        return {
+            vw: innerWidth, vh: innerHeight,
+            topbar: r('topbar'), build: r('build-panel'), well: r('well'), inspect: r('inspect-panel'),
+            canvasHost: r('canvas-host'), bar: r('status-bar'), mobilebar: r('mobilebar'),
+            mobilebarDisplay: getComputedStyle(document.getElementById('mobilebar')).display,
+            pad: [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].join(' '),
+            gap: cs.columnGap,
+            overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            buildCollapsed: document.getElementById('build-panel').classList.contains('collapsed'),
+            inspectCollapsed: document.getElementById('inspect-panel').classList.contains('collapsed'),
+            cols: cs.gridTemplateColumns
+        };
+    });
 
-        // S1c: 再点收起,与原子库不重叠(记忆:常规环境 '0',自动化环境不写)
-        await page.click('#input-panel-toggle');
-        await settle();
-        out.S1c = await page.evaluate(() => {
-            const p = document.getElementById('input-panel').getBoundingClientRect();
-            const sb = document.getElementById('sidebar').getBoundingClientRect();
-            return {
-                collapsed: document.getElementById('input-panel-body').style.display === 'none',
-                noOverlap: p.bottom <= sb.top + 2,
-                panelBottom: Math.round(p.bottom), sidebarTop: Math.round(sb.top),
-                mem: localStorage.getItem('INPUT_PANEL_OPEN'), webdriver: navigator.webdriver === true
-            };
-        });
-        const s1cMemOk = out.S1c.webdriver ? out.S1c.mem === null : out.S1c.mem === '0';
-        step('S1c 再点收起、与原子库不重叠且记忆', out.S1c.collapsed && out.S1c.noOverlap && s1cMemOk, out.S1c);
+    try {
+        // ---------- L1 1440：三栏 224 / 自适应 / 224 ----------
+        {
+            const { page, ctx } = await measure(1440, 900);
+            const g = await geom(page);
+            step('L1 1440×900：三栏 224 / 自适应 / 224，8px 边距 + 12px 间距，画布井 952',
+                g.topbar.h === 44 && g.build.w === 224 && g.inspect.w === 224
+                && g.build.x === 8 && g.inspect.r === 1432
+                && g.well.x === g.build.r + 12 && g.inspect.x === g.well.r + 12 && g.well.w === 952
+                && g.gap === '12px' && g.pad === '12px 8px 8px 8px'
+                && g.bar.b === g.well.b - 1 && g.canvasHost.h === g.well.h - 32
+                && g.mobilebarDisplay === 'none' && g.overflowX === 0,
+                { topbar: g.topbar, build: g.build, well: g.well, inspect: g.inspect, pad: g.pad, gap: g.gap });
+            await page.screenshot({ path: SHOT + 'layout_1440.png' });
+            await ctx.close();
+        }
 
-        // S2: btn-help 在右下角且不与 mode-badge 重叠
-        out.S2 = await page.evaluate(() => {
-            const h = document.getElementById('btn-help').getBoundingClientRect();
-            const b = document.getElementById('mode-badge').getBoundingClientRect();
-            const noOverlap = h.right <= b.left + 2 || h.left >= b.right - 2 || h.bottom <= b.top + 2 || h.top >= b.bottom - 2;
-            return {
-                helpRight: Math.round(innerWidth - h.right), helpBottom: Math.round(innerHeight - h.bottom),
-                badgeLeft: Math.round(b.left), helpRightEdge: Math.round(h.right),
-                noOverlap
-            };
-        });
-        step('S2 ? 在右下角(bottom≈16)且与徽章并排不重叠', out.S2.helpBottom <= 22 && out.S2.helpRight <= 140 && out.S2.noOverlap, out.S2);
+        // ---------- L2 1100：仍是三栏（≥1100 断点） ----------
+        {
+            const { page, ctx } = await measure(1100, 800);
+            const g = await geom(page);
+            step('L2 1100×800：仍为三栏（224/224），画布井 ≥600、无横向溢出',
+                g.build.w === 224 && g.inspect.w === 224 && g.well.w === 612 && g.well.w >= 600
+                && g.inspect.r === 1092 && g.overflowX === 0 && g.mobilebarDisplay === 'none',
+                { build: g.build, well: g.well, inspect: g.inspect, cols: g.cols });
+            await ctx.close();
+        }
 
-        // S3: sidebar 中不再含输入模块,功能仍可用
-        out.S3 = await page.evaluate(async () => {
-            const inSidebar = !!document.querySelector('#sidebar .molecule-input-row');
-            const r = await window.__generateFromSmiles('CCO');
-            return { inSidebar, ok: r && r.ok, atoms: r && r.atomCount };
-        });
-        step('S3 输入模块已从侧栏移出且生成功能正常', !out.S3.inSidebar && out.S3.ok && out.S3.atoms === 9, out.S3);
+        // ---------- L3 1024：三栏但间距收窄到 10px ----------
+        {
+            const { page, ctx } = await measure(1024, 768);
+            const g = await geom(page);
+            step('L3 1024×768：三栏 + 10px 间距（画布井 540）、无横向溢出',
+                g.build.w === 224 && g.inspect.w === 224 && g.gap === '10px' && g.well.w === 540
+                && g.well.x === g.build.r + 10 && g.overflowX === 0,
+                { build: g.build, well: g.well, inspect: g.inspect, gap: g.gap });
+            await ctx.close();
+        }
 
-        // S4: UI 路径生成(展开面板→输入→点按钮)后自动折叠
-        await page.evaluate(() => window.__setInputPanelOpen(true));
-        await page.fill('#name-input', '');
-        await page.fill('#smiles-input', 'CC(=O)O');
-        await page.click('#btn-molecule-from-input');
-        // 乙酸 8 原子;PubChem 3D 路径可能需数秒(超时后本地回退也是 8)
-        await page.waitForFunction(() => window.__diag.atomPositions().length === 8, null, { timeout: 15000 }).catch(() => {});
-        await settle();   // 生成成功后输入面板播放收起动画，等它真正 display:none
-        out.S4 = await page.evaluate(() => ({
-            atoms: window.__diag.atomPositions().length,
-            autoCollapsed: document.getElementById('input-panel-body').style.display === 'none'
-        }));
-        step('S4 生成成功(8原子乙酸)且输入面板自动折叠', out.S4.atoms === 8 && out.S4.autoCollapsed, out.S4);
+        // ---------- L4 768：两侧默认 44px 轨道 ----------
+        {
+            const { page, ctx } = await measure(768, 1024);
+            const g = await geom(page);
+            step('L4 768×1024：两侧默认 44px 轨道（画布井 644）、无横向溢出',
+                g.build.w === 44 && g.inspect.w === 44 && g.buildCollapsed && g.inspectCollapsed
+                && g.well.w === 644 && g.well.x === g.build.r + 10 && g.overflowX === 0
+                && g.mobilebarDisplay === 'none',
+                { build: g.build, well: g.well, inspect: g.inspect });
+            await page.screenshot({ path: SHOT + 'layout_768.png' });
+            await ctx.close();
+        }
 
-        // S5: 帮助按钮可点开 overlay
-        await page.click('#btn-help');
-        out.S5 = await page.evaluate(() => ({ overlayVisible: getComputedStyle(document.getElementById('help-overlay')).display !== 'none' }));
-        step('S5 ? 点击打开操作指南', out.S5.overlayVisible, out.S5);
-        await page.click('#help-close').catch(() => {});
-        await page.waitForTimeout(200);
+        // ---------- L5 700：展开一侧自动收起另一侧 ----------
+        {
+            const { page, ctx } = await measure(700, 900);
+            const g0 = await geom(page);
+            await page.click('#group-sidebar-toggle');
+            await page.waitForTimeout(450);
+            const g1 = await geom(page);
+            step('L5 700×900：默认双轨；展开构建台（224）自动收起检查器（44），画布不被挤破',
+                g0.build.w === 44 && g0.inspect.w === 44
+                && g1.build.w === 224 && !g1.buildCollapsed && g1.inspect.w === 44 && g1.inspectCollapsed
+                && g1.well.w === 396 && g1.overflowX === 0,
+                { before: { build: g0.build, inspect: g0.inspect, well: g0.well }, after: { build: g1.build, inspect: g1.inspect, well: g1.well } });
+            await ctx.close();
+        }
 
-        await page.screenshot({ path: 'd_laymv.png' });
-        console.log(JSON.stringify(report, null, 1));
+        // ---------- L6 640：底部栏出现、面板变隐藏的底部抽屉 ----------
+        {
+            const { page, ctx } = await measure(640, 900, { mobile: true });
+            const g = await geom(page);
+            const sheet = await page.evaluate(() => {
+                const p = document.getElementById('build-panel');
+                const r = p.getBoundingClientRect();
+                return { vis: getComputedStyle(p).visibility, y: Math.round(r.y), maxH: getComputedStyle(p).maxHeight, pos: getComputedStyle(p).position };
+            });
+            step('L6 640×900：底部栏出现、画布井满宽、面板改为隐藏的底部抽屉',
+                g.mobilebarDisplay === 'flex' && g.mobilebar.b === 900 && g.mobilebar.h >= 48
+                && g.well.w === 624 && g.overflowX === 0
+                && sheet.pos === 'fixed' && sheet.vis === 'hidden' && sheet.y >= 900 - 8,
+                { well: g.well, mobilebar: g.mobilebar, sheet, overflowX: g.overflowX });
+            await ctx.close();
+        }
+
+        // ---------- L7 390：手机三按钮 + 抽屉/生成面板不挡底部栏 ----------
+        {
+            const { page, ctx } = await measure(390, 844, { mobile: true });
+            const g = await geom(page);
+            const btns = await page.evaluate(() => [...document.querySelectorAll('#mobilebar .mb-btn')].map(b => ({ id: b.id, text: b.innerText.trim(), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) })));
+            await page.click('#mb-build');
+            await page.waitForTimeout(500);
+            const sheet = await page.evaluate(() => {
+                const p = document.getElementById('build-panel');
+                const r = p.getBoundingClientRect();
+                return { open: p.classList.contains('sheet-open'), y: Math.round(r.y), b: Math.round(r.bottom), h: Math.round(r.height), scrollH: p.scrollHeight, clientH: p.clientHeight };
+            });
+            await page.screenshot({ path: SHOT + 'layout_390_sheet.png' });
+            await page.click('#mb-generate');
+            await page.waitForTimeout(500);
+            const drawer = await page.evaluate(() => {
+                const d = document.getElementById('input-panel');
+                const r = d.getBoundingClientRect();
+                return { open: d.classList.contains('open'), vis: getComputedStyle(d).visibility, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), b: Math.round(r.bottom), h: Math.round(r.height) };
+            });
+            await page.screenshot({ path: SHOT + 'layout_390_drawer.png' });
+            const allButtonsInside = btns.length === 3 && btns.every(b => b.w > 100 && b.h >= 40);
+            step('L7 390×844：底部栏三按钮、构建抽屉停在栏上方、生成抽屉 374 宽不挡栏',
+                g.mobilebarDisplay === 'flex' && allButtonsInside
+                && g.well.w === 374 && g.overflowX === 0
+                && sheet.open && sheet.b <= 844 - 50 && sheet.y > 100
+                && drawer.open && drawer.vis === 'visible' && drawer.w === 374 && drawer.x === 8
+                && drawer.b <= 844 - 50 && drawer.y >= 44,
+                { mobilebar: g.mobilebar, btns, sheet, drawer });
+            await ctx.close();
+        }
+
+        // ---------- L8 零 console 错误 ----------
+        step('L8 七档断点全程零 console 错误', report.consoleErrors.length === 0, report.consoleErrors.slice(0, 5));
     } catch (e) {
-        report.results.push({ name: 'FATAL', ok: false, data: String(e).slice(0, 400) });
-        console.log(JSON.stringify(report, null, 1));
+        report.results.push({ name: 'FATAL', ok: false, detail: String(e && e.stack || e).slice(0, 900) });
     }
+
+    const passed = report.results.filter(r => r.ok).length;
+    report.summary = { total: report.results.length, passed, failed: report.results.length - passed };
+    console.log(JSON.stringify(report, null, 2));
+    console.log(`\n== verify_layout_move: ${passed}/${report.results.length} passed ==`);
     await browser.close();
     if (serverProc) serverProc.kill();
-})().catch(e => { console.error('FATAL', String(e).slice(0, 400)); process.exit(1); });
+    process.exit(passed === report.results.length ? 0 : 1);
+})().catch(e => { console.error(e); process.exit(1); });

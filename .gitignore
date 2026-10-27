@@ -17,5 +17,8 @@ view_*.js
 move_block.js
 check_module.js
 probe_*.out
+out_*.log
+# taste-skill（设计方向 / inspect 报告 / 截图，纯本地工作区产物）
+.taste-skill/
 # GoopSpec 本地工作区
 .goopspec/

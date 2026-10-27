@@ -1,14 +1,15 @@
-// verify_animations.js — 浮层开合动画验证（2026-10-25）
-// 覆盖：使用说明 / 设置 / 名称·SMILES 三个角落浮层的展开（高度+淡入）与收起（延迟 display:none）、
+// verify_animations.js — 浮层开合动画验证（2026-10-27 三栏重设计版）
+// 覆盖：生成抽屉（右侧 360px）开合过渡、面板折叠（grid-template-columns 180ms）、
 //       分子式小键盘（弹出动画、关闭瞬时）、异构体面板 / 键线式大图 / 帮助浮层 / 键菜单的淡入淡出、
-//       收起中间态 pointer-events:none、快速连点竞态（收起动画未播完又打开不得被藏掉）、零 console 错误。
+//       手机底部抽屉开合、快速连点竞态、原生 select 点画布失焦、零 console 错误。
+// 说明：旧版三个角落浮层（使用说明/设置/输入面板）已删除，相关 A1-A3 改为新外壳控件。
 // 运行：cmd /c "node verify_animations.js > verify_animations.json 2>&1"（timeout 900000ms）
 const { chromium } = require('playwright');
 const http = require('http');
 const { spawn } = require('child_process');
 
 const PORT = 8067;
-const PAGE_URL = `http://127.0.0.1:${PORT}/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1&v=anim1`;
+const PAGE_URL = `http://127.0.0.1:${PORT}/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1&v=anim2`;
 
 async function probe(url) { return new Promise(res => { const req = http.get(url, r => { r.resume(); res(true); }); req.on('error', () => res(false)); req.setTimeout(3000, () => { req.destroy(); res(false); }); }); }
 async function waitPort(ms) { const dl = Date.now() + ms; while (Date.now() < dl) { if (await probe(`http://127.0.0.1:${PORT}/`)) return true; await new Promise(r => setTimeout(r, 500)); } return false; }
@@ -30,101 +31,101 @@ class AssertionCollector {
     const step = (name, ac, extra) => push(name, ac.failed === 0, [extra, ac.failures.join('；')].filter(Boolean).join(' | '));
     const t0 = Date.now();
 
-    // 页面内快照：display / opacity / 是否有运行中的动画 / class / pointer-events
+    // 页面内快照：display / visibility / opacity / transform / 是否有运行中的动画 / class / pointer-events
     const snap = (id) => page.evaluate((eid) => {
         const el = document.getElementById(eid);
         if (!el) return { missing: true };
         const cs = getComputedStyle(el);
         return {
-            display: cs.display, opacity: cs.opacity, pointerEvents: cs.pointerEvents,
+            display: cs.display, visibility: cs.visibility, opacity: cs.opacity,
+            transform: cs.transform, pointerEvents: cs.pointerEvents,
             anims: el.getAnimations().length,
             cls: el.className,
             inlineMaxH: el.style.maxHeight, inlineOverflow: el.style.overflow,
-            open: el.classList.contains('open'), closing: el.classList.contains('dd-closing')
+            open: el.classList.contains('open'), closing: el.classList.contains('dd-closing'),
+            collapsed: el.classList.contains('collapsed'), sheetOpen: el.classList.contains('sheet-open')
         };
+    }, id);
+    const rectOf = (id) => page.evaluate((eid) => {
+        const el = document.getElementById(eid);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.x), y: Math.round(r.y) };
     }, id);
 
     try {
         await page.goto(PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForFunction(
-            () => !!(window.__diag && window.__ddAnim && window.__showFormulaKeypad && window.__showIsomerPanel
-                && window.__openSkeletalLightbox && document.getElementById('formula-input')),
+            () => !!(window.__diag && window.__ddAnim && window.__panels && window.__showFormulaKeypad
+                && window.__showIsomerPanel && window.__openSkeletalLightbox && document.getElementById('formula-input')),
             null, { timeout: 30000 });
         await page.waitForTimeout(600);
-        await page.evaluate(() => window.__setInputPanelOpen(false, { animate: false }));
-        await page.waitForTimeout(120);
+        await page.evaluate(() => window.__setInputPanelOpen(false));
+        await page.waitForTimeout(260);
         const IN = await page.evaluate(() => window.__ddAnim.inMs);
         const OUT = await page.evaluate(() => window.__ddAnim.outMs);
 
-        // ---------- A1 使用说明：展开动画 ----------
+        // ---------- A1 生成抽屉：打开过渡（transform + visibility） ----------
         {
             const ac = new AssertionCollector();
-            await page.click('#guide-toggle');
-            const a = await snap('guide-body');
-            await page.waitForTimeout(IN + 140);
-            const b = await snap('guide-body');
-            ac.ok(a.display === 'block', `展开瞬间即可见（${a.display}）`);
-            ac.ok(a.open === true, `展开瞬间 .open 已置位（${a.cls}）`);
-            ac.ok(a.anims >= 1, `展开瞬间有运行中的动画（${a.anims}）`);
-            ac.ok(b.display === 'block', `动画结束后仍可见（${b.display}）`);
-            ac.ok(b.opacity === '1', `动画结束后完全不透明（${b.opacity}）`);
-            ac.ok(b.inlineMaxH === '' && b.inlineOverflow === '', `动画结束后清理内联 maxHeight/overflow（"${b.inlineMaxH}"/"${b.inlineOverflow}"）`);
-            step(`A1 使用说明展开动画（${IN}ms 高度+淡入）`, ac, `anims=${a.anims}`);
+            await page.click('#btn-open-input');
+            const a = await snap('input-panel');
+            await page.waitForTimeout(IN + 160);
+            const b = await snap('input-panel');
+            const rb = await rectOf('input-panel');
+            ac.ok(a.open === true, `打开瞬间 .open 已置位（${a.cls}）`);
+            ac.ok(a.anims >= 1, `打开瞬间有运行中的过渡（${a.anims}）`);
+            ac.ok(b.visibility === 'visible', `过渡结束后可见（${b.visibility}）`);
+            ac.ok(b.transform === 'matrix(1, 0, 0, 1, 0, 0)' || b.transform === 'none', `过渡结束后回到原位（${b.transform}）`);
+            ac.ok(rb && rb.w === 360 && rb.x === 1289 - 360, `抽屉贴右 360px（x=${rb && rb.x} w=${rb && rb.w}）`);
+            ac.ok(b.opacity === '1', `过渡结束不透明（${b.opacity}）`);
+            step(`A1 生成抽屉打开过渡（${IN}ms transform+visibility）`, ac, `anims=${a.anims} transform=${b.transform}`);
         }
 
-        // ---------- A2 使用说明：收起动画（延迟 display:none）----------
+        // ---------- A2 生成抽屉：关闭过渡（visibility 延迟到结束才 hidden） ----------
         {
             const ac = new AssertionCollector();
-            await page.click('#guide-toggle');
-            const a = await snap('guide-body');
-            await page.waitForTimeout(OUT + 140);
-            const b = await snap('guide-body');
-            ac.ok(a.open === false, `收起瞬间 .open 已移除（${a.cls}）`);
-            ac.ok(a.closing === true, `收起瞬间处于 .dd-closing 中间态（${a.cls}）`);
-            ac.ok(a.display !== 'none', `收起动画期间仍可见（${a.display}）`);
-            ac.ok(a.pointerEvents === 'none', `收起动画期间不接收点击（${a.pointerEvents}）`);
-            ac.ok(b.display === 'none', `动画结束后 display:none（${b.display}）`);
-            ac.ok(b.closing === false, `动画结束后 .dd-closing 已摘除（${b.cls}）`);
-            step(`A2 使用说明收起动画（${OUT}ms 后 display:none）`, ac, `mid=${a.display} end=${b.display}`);
+            await page.click('#input-panel-toggle');
+            const a = await snap('input-panel');
+            await page.waitForTimeout(OUT + 160);
+            const b = await snap('input-panel');
+            ac.ok(a.open === false, `关闭瞬间 .open 已移除（${a.cls}）`);
+            ac.ok(a.anims >= 1, `关闭瞬间有运行中的过渡（${a.anims}）`);
+            ac.ok(a.visibility === 'visible', `关闭过渡期间仍可见（${a.visibility}）`);
+            ac.ok(b.visibility === 'hidden', `过渡结束 visibility:hidden（${b.visibility}）`);
+            ac.ok(/matrix\(1, 0, 0, 1, 360, 0\)/.test(b.transform), `过渡结束平移出屏（${b.transform}）`);
+            step('A2 生成抽屉关闭过渡（190ms 后 visibility:hidden）', ac, `mid=${a.visibility} end=${b.visibility}`);
         }
 
-        // ---------- A3 设置面板（display:flex 变体）----------
+        // ---------- A3 面板折叠：grid-template-columns 180ms 过渡 ----------
         {
             const ac = new AssertionCollector();
-            await page.click('#settings-toggle');
-            const a = await snap('settings-body');
-            await page.waitForTimeout(IN + 140);
-            const b = await snap('settings-body');
-            await page.click('#settings-toggle');
-            const c = await snap('settings-body');
-            await page.waitForTimeout(OUT + 140);
-            const d = await snap('settings-body');
-            ac.ok(a.display === 'flex' && a.anims >= 1, `展开瞬间 flex + 动画（${a.display}/${a.anims}）`);
-            ac.ok(b.display === 'flex' && b.opacity === '1', `展开完成（${b.display}/${b.opacity}）`);
-            ac.ok(c.display === 'flex' && c.closing === true, `收起期间仍可见（${c.display}/${c.cls}）`);
-            ac.ok(d.display === 'none', `收起完成 display:none（${d.display}）`);
-            step('A3 设置面板展开/收起动画', ac);
+            const before = await rectOf('build-panel');
+            await page.click('#group-sidebar-toggle');
+            const a = await page.evaluate(() => ({
+                anims: document.getElementById('shell').getAnimations().length,
+                collapsed: document.getElementById('build-panel').classList.contains('collapsed'),
+                bodyDisplay: getComputedStyle(document.getElementById('group-sidebar').querySelector('.panel-body')).display
+            }));
+            await page.waitForTimeout(360);
+            const b = await rectOf('build-panel');
+            const caret = await page.evaluate(() => {
+                const svg = document.querySelector('#group-sidebar .panel-caret svg[data-icon]');
+                return svg ? svg.dataset.icon : null;
+            });
+            await page.click('#group-sidebar-toggle');
+            await page.waitForTimeout(360);
+            const c = await rectOf('build-panel');
+            ac.ok(a.collapsed === true, `收起瞬间 .collapsed 已置位`);
+            ac.ok(a.anims >= 1, `收起瞬间 shell 有列宽过渡（${a.anims}）`);
+            ac.ok(b.w === 44, `收起后构建台 44px 轨道（${b.w}）`);
+            ac.ok(a.bodyDisplay === 'none', `收起后内容区隐藏（${a.bodyDisplay}）`);
+            ac.ok(caret === 'chevron-right', `收起后 caret 指向展开方向（${caret}）`);
+            ac.ok(c.w === 224 && c.w === before.w, `再展开回到 224px（${c.w}）`);
+            step('A3 面板折叠 180ms 列宽过渡（224 ↔ 44）', ac, `before=${before.w} collapsed=${b.w} after=${c.w}`);
         }
 
-        // ---------- A4 名称 / SMILES 输入面板 ----------
-        {
-            const ac = new AssertionCollector();
-            await page.evaluate(() => window.__setInputPanelOpen(true));
-            const a = await snap('input-panel-body');
-            await page.waitForTimeout(IN + 140);
-            const b = await snap('input-panel-body');
-            await page.evaluate(() => window.__setInputPanelOpen(false));
-            const c = await snap('input-panel-body');
-            await page.waitForTimeout(OUT + 140);
-            const d = await snap('input-panel-body');
-            ac.ok(a.display !== 'none' && a.anims >= 1, `展开瞬间可见 + 动画（${a.display}/${a.anims}）`);
-            ac.ok(b.display !== 'none' && b.opacity === '1', `展开完成（${b.display}/${b.opacity}）`);
-            ac.ok(c.display !== 'none', `收起期间仍可见（${c.display}）`);
-            ac.ok(d.display === 'none', `收起完成 display:none（${d.display}）`);
-            step('A4 输入面板展开/收起动画', ac);
-        }
-
-        // ---------- A5 分子式小键盘：弹出有动画，关闭瞬时 ----------
+        // ---------- A4 分子式小键盘：弹出有动画，关闭瞬时 ----------
         {
             const ac = new AssertionCollector();
             await page.evaluate(() => window.__showFormulaKeypad());
@@ -136,10 +137,10 @@ class AssertionCollector {
             ac.ok(a.display === 'block' && a.anims >= 1, `弹出瞬间可见 + 动画（${a.display}/${a.anims}）`);
             ac.ok(b.display === 'block' && b.opacity === '1', `弹出完成（${b.display}/${b.opacity}）`);
             ac.ok(c.display === 'none', `关闭保持瞬时（${c.display}）`);
-            step('A5 小键盘弹出动画 + 关闭瞬时', ac);
+            step('A4 小键盘弹出动画 + 关闭瞬时', ac);
         }
 
-        // ---------- A6 异构体面板 ----------
+        // ---------- A5 异构体面板 ----------
         {
             const ac = new AssertionCollector();
             await page.evaluate(() => window.__showIsomerPanel('C2H6O', [
@@ -158,10 +159,10 @@ class AssertionCollector {
             ac.ok(c.display === 'flex' && c.pointerEvents === 'none', `淡出期间仍可见且不接收点击（${c.display}/${c.pointerEvents}）`);
             ac.ok(d.display === 'none', `淡出完成 display:none（${d.display}）`);
             ac.ok(d.pointerEvents === 'auto', `淡出完成后恢复点击（${d.pointerEvents}）`);
-            step('A6 异构体面板淡入/淡出', ac);
+            step('A5 异构体面板淡入/淡出', ac);
         }
 
-        // ---------- A7 键线式大图 ----------
+        // ---------- A6 键线式大图 ----------
         {
             const ac = new AssertionCollector();
             await page.evaluate(() => window.__openSkeletalLightbox({ cid: 702, name: 'ethanol', formula: 'C2H6O', smiles: 'CCO', cond: 'CH₃CH₂OH' }));
@@ -178,10 +179,10 @@ class AssertionCollector {
             ac.ok(b.display === 'flex' && b.opacity === '1', `淡入完成（${b.display}/${b.opacity}）`);
             ac.ok(c.display === 'flex', `淡出期间仍可见（${c.display}）`);
             ac.ok(d.display === 'none', `淡出完成 display:none（${d.display}）`);
-            step('A7 键线式大图淡入/淡出', ac);
+            step('A6 键线式大图淡入/淡出', ac);
         }
 
-        // ---------- A8 帮助浮层 ----------
+        // ---------- A7 帮助浮层 ----------
         {
             const ac = new AssertionCollector();
             await page.click('#btn-help');
@@ -196,10 +197,10 @@ class AssertionCollector {
             ac.ok(b.display === 'flex' && b.opacity === '1', `淡入完成（${b.display}/${b.opacity}）`);
             ac.ok(c.display === 'flex', `淡出期间仍可见（${c.display}）`);
             ac.ok(d.display === 'none', `淡出完成 display:none（${d.display}）`);
-            step('A8 帮助浮层淡入/淡出', ac);
+            step('A7 帮助浮层淡入/淡出', ac);
         }
 
-        // ---------- A9 键菜单（debug 入口 + 真实鼠标点击键）----------
+        // ---------- A8 键菜单（debug 入口 + 真实鼠标点击键） ----------
         {
             const ac = new AssertionCollector();
             await page.evaluate(() => window.__ddAnim.bondMenu.show());
@@ -221,6 +222,7 @@ class AssertionCollector {
             // 真实鼠标：生成乙烷 → 点 C—C 键中点 → 菜单带弹出动画
             const mid = await page.evaluate(() => {
                 window.__diag.generate('ethane');
+                window.__fitView && window.__fitView();
                 const ats = window.__dragMode.atoms();
                 const c = ats.filter(a => a.t === 'C');
                 if (c.length < 2) return null;
@@ -237,47 +239,85 @@ class AssertionCollector {
                 await page.waitForTimeout(OUT + 120);
             }
             ac.ok(real.ok, `真实点击键弹出菜单并播放动画（${real.detail}）`);
-            step('A9 键菜单淡入/淡出 + 真实点击', ac);
+            step('A8 键菜单淡入/淡出 + 真实点击', ac);
         }
 
-        // ---------- A10 快速连点竞态：收起未播完又打开，不得被旧回调藏掉 ----------
+        // ---------- A9 快速连点竞态：收起未播完又打开，不得被旧状态覆盖 ----------
         {
             const ac = new AssertionCollector();
-            // 使用说明：展开 → 收起 → 立刻再展开
-            await page.click('#guide-toggle');           // open
-            await page.click('#guide-toggle');           // close（开始 120ms 收起动画）
-            await page.click('#guide-toggle');           // 立刻 open
-            await page.waitForTimeout(OUT + IN + 220);
-            const g = await snap('guide-body');
-            ac.ok(g.display === 'block' && g.open === true && g.closing === false,
-                `连点后仍展开（${g.display}/${g.cls}）`);
-            await page.click('#guide-toggle');
-            await page.waitForTimeout(OUT + 160);
+            // 生成抽屉：开 → 关 → 立刻再开
+            await page.evaluate(() => {
+                window.__setInputPanelOpen(true);
+                window.__setInputPanelOpen(false);
+                window.__setInputPanelOpen(true);
+            });
+            await page.waitForTimeout(OUT + IN + 260);
+            const i = await snap('input-panel');
+            ac.ok(i.open === true && i.visibility === 'visible'
+                && (i.transform === 'matrix(1, 0, 0, 1, 0, 0)' || i.transform === 'none'),
+                `抽屉连点后仍展开（${i.cls} / ${i.visibility} / ${i.transform}）`);
+            await page.evaluate(() => window.__setInputPanelOpen(false));
+            await page.waitForTimeout(OUT + 140);
 
-            // 输入面板：关闭 → 立刻打开
-            await page.evaluate(() => { window.__setInputPanelOpen(true); window.__setInputPanelOpen(false); window.__setInputPanelOpen(true); });
-            await page.waitForTimeout(OUT + IN + 220);
-            const i = await snap('input-panel-body');
-            ac.ok(i.display !== 'none', `输入面板连点后仍可见（${i.display}）`);
-            await page.evaluate(() => window.__setInputPanelOpen(false, { animate: false }));
-            step('A10 收起动画未播完又打开的竞态', ac, `guide=${g.display} input=${i.display}`);
+            // 构建台：收起 → 立刻展开
+            await page.click('#group-sidebar-toggle');
+            await page.click('#group-sidebar-toggle');
+            await page.waitForTimeout(420);
+            const b = await snap('build-panel');
+            const br = await rectOf('build-panel');
+            ac.ok(b.collapsed === false && br.w === 224, `面板连点后仍展开（collapsed=${b.collapsed} w=${br.w}）`);
+            step('A9 过渡未播完又打开的竞态', ac, `drawer=${i.transform} build=${br.w}`);
         }
 
-        // ---------- A11 原生 select 的「点别处收起」未被动画影响 ----------
+        // ---------- A10 原生 select 的「点别处收起」未被动画影响 ----------
         {
             const ac = new AssertionCollector();
-            await page.click('#settings-toggle');
-            await page.waitForTimeout(IN + 140);
             await page.focus('#atom-style-select');
             const f1 = await page.evaluate(() => document.activeElement && document.activeElement.id);
             await page.mouse.click(700, 500);
-            await page.waitForTimeout(160);
+            await page.waitForTimeout(200);
             const f2 = await page.evaluate(() => document.activeElement && document.activeElement.id);
-            const s = await snap('settings-body');
+            const ins = await page.evaluate(() => ({
+                body: getComputedStyle(document.getElementById('inspect-body')).display,
+                panel: getComputedStyle(document.getElementById('inspect-panel')).display
+            }));
             ac.ok(f1 === 'atom-style-select', `select 获得焦点（${f1}）`);
             ac.ok(f2 !== 'atom-style-select', `点画布后 select 失焦（${f2}）`);
-            ac.ok(s.display === 'none', `点画布后设置面板收起（${s.display}）`);
-            step('A11 原生 select 失焦 + 面板收起', ac);
+            ac.ok(ins.body !== 'none' && ins.panel !== 'none', `检查器常驻不被收起（body=${ins.body}）`);
+            step('A10 原生 select 失焦（检查器常驻）', ac);
+        }
+
+        // ---------- A11 手机底部抽屉开合过渡 ----------
+        {
+            const ac = new AssertionCollector();
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.waitForTimeout(400);
+            await page.click('#mb-build');
+            const a = await page.evaluate(() => ({
+                anims: document.getElementById('build-panel').getAnimations().length,
+                open: document.getElementById('build-panel').classList.contains('sheet-open'),
+                vis: getComputedStyle(document.getElementById('build-panel')).visibility
+            }));
+            await page.waitForTimeout(360);
+            const b = await page.evaluate(() => {
+                const p = document.getElementById('build-panel');
+                const cs = getComputedStyle(p);
+                const r = p.getBoundingClientRect();
+                return { tf: cs.transform, vis: cs.visibility, y: Math.round(r.y), b: Math.round(r.bottom) };
+            });
+            await page.click('#mb-build');
+            await page.waitForTimeout(360);
+            const c = await page.evaluate(() => {
+                const p = document.getElementById('build-panel');
+                const cs = getComputedStyle(p);
+                return { open: p.classList.contains('sheet-open'), vis: cs.visibility, tf: cs.transform };
+            });
+            ac.ok(a.open === true, `打开瞬间 .sheet-open 已置位`);
+            ac.ok(a.anims >= 1, `打开瞬间有过渡（${a.anims}）`);
+            ac.ok(b.vis === 'visible' && (b.tf === 'none' || b.tf === 'matrix(1, 0, 0, 1, 0, 0)'), `打开完成贴底可见（${b.vis}/${b.tf}）`);
+            ac.ok(b.b <= 844 - 50 && b.y > 100, `抽屉停在底部栏上方（y=${b.y} b=${b.b}）`);
+            ac.ok(c.open === false && c.vis === 'hidden' && c.tf !== 'none', `再点收起（${c.vis}/${c.tf}）`);
+            step('A11 手机底部抽屉开合过渡（translateY + visibility）', ac, `open=${b.tf} closed=${c.tf}`);
         }
 
         // ---------- A12 零 console / pageerror ----------

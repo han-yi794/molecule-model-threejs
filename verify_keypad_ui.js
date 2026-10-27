@@ -1,7 +1,7 @@
 // verify_keypad_ui.js — 原子库清理 + 分子式小键盘布局/移动端防溢出验证（球棍模型4.html）
 // 背景（2026-10-17）：
 //   ① 原子库（#sidebar）除原子卡片外的按钮/下拉全部移除（显示离域π键、π自测、示例下拉、生成、
-//      删除选中、自动测试全部）——π 高亮开关改在左上「设置」面板，删除原子用原子上的垃圾桶图标/Delete 键。
+//      删除选中、自动测试全部）——π 高亮开关在检查器「视图」段，删除原子用原子上的垃圾桶图标/Delete 键。
 //   ② 分子式小键盘布局优化（元素/数字分区 + .fkp-key 统一样式）并防止手机端超出屏幕
 //      （宽度 min(300px,100vw-16px) + 定位夹取视口 + 放不下翻到上方 + max-height 限高 + resize 重定位）。
 // 断言：
@@ -14,8 +14,8 @@
 //   K7 视口缩放（1440×900→800×360）后自动重定位、仍在屏内
 //   K8 收起输入面板时键盘同步收起
 //   S1 原子库只剩原子卡片（8 张）+ 提示文字，按钮/下拉（含拖动方式）数量 0
-//   S2 已移除元素不存在；#btn-toggle-pi 全文档唯一且在设置面板内
-//   S3 设置面板 π 开关仍可切换；原子生成/自测入口无回归（__diag.generate + window.runAllExamplesAndTests）
+//   S2 已移除元素不存在；#btn-toggle-pi 全文档唯一且在检查器「视图」段
+//   S3 检查器 π 开关仍可切换；原子生成/自测入口无回归（__diag.generate + window.runAllExamplesAndTests）
 //   S5 拖动方式仍可切换（右下角徽章点击循环 + Tab 快捷键）
 //   S4 控制台零错误
 // 运行：cmd /c "node verify_keypad_ui.js > verify_keypad_ui.json 2>&1"
@@ -201,7 +201,7 @@ class AssertionCollector {
                 hint: !!document.querySelector('#sidebar .hint'),
                 removed: ['molecule-select', 'btn-generate-molecule', 'btn-run-all-tests', 'btn-pi-test', 'drag-mode-select'].filter(id => document.getElementById(id)),
                 piCount: document.querySelectorAll('#btn-toggle-pi').length,
-                piInSettings: !!document.querySelector('#settings-panel #btn-toggle-pi')
+                piInInspector: !!document.querySelector('#inspect-panel #btn-toggle-pi')
             }));
             const ac = new AssertionCollector();
             ac.ok(r.atoms === 8, `8 张原子卡片（实际 ${r.atoms}）`);
@@ -209,27 +209,31 @@ class AssertionCollector {
             ac.ok(r.selects === 0, `原子库内无下拉（实际 ${r.selects}）`);
             ac.ok(r.hint, '提示文字保留');
             ac.ok(r.removed.length === 0, `已移除元素确认不存在（残留 ${r.removed.join(',') || '无'}）`);
-            ac.ok(r.piCount === 1 && r.piInSettings, `#btn-toggle-pi 全文档唯一且在设置面板（count=${r.piCount}）`);
+            ac.ok(r.piCount === 1 && r.piInInspector, `#btn-toggle-pi 全文档唯一且在检查器视图段（count=${r.piCount}）`);
             push('S1/S2 原子库只剩原子+提示，按钮/下拉全部消失', ac.failed === 0,
                 `atoms=${r.atoms} actionBtn=${r.actionBtns} select=${r.selects} pi=${r.piCount} | ${ac.failures.join('；')}`);
         }
 
         // ---------- S3 功能无回归 ----------
         {
-            await page.click('#settings-toggle');
-            await page.waitForTimeout(200);
+            // 抽屉是覆盖式浮层，会盖住右侧检查器；先收起再点视图段开关
+            await page.evaluate(() => window.__setInputPanelOpen(false));
+            await page.waitForFunction(() => {
+                const el = document.getElementById('input-panel');
+                return el && !el.classList.contains('open') && getComputedStyle(el).visibility === 'hidden';
+            }, null, { timeout: 5000 });
             await page.evaluate(() => { if (!window.__delocPiMode()) window.__setDelocPiMode(true); });
             const before = await page.evaluate(() => document.getElementById('chk-pi').checked);
-            await page.click('#settings-panel #btn-toggle-pi');
+            await page.click('#inspect-panel #btn-toggle-pi');
             const after = await page.evaluate(() => document.getElementById('chk-pi').checked);
             const gen = await page.evaluate(() => { try { window.__diag.generate('butane'); return window.__dragMode.atoms().length; } catch (e) { return 'ERR ' + e; } });
             const hasRun = await page.evaluate(() => typeof window.runAllExamplesAndTests === 'function');
             const ac = new AssertionCollector();
             ac.ok(before === false, `π 高亮初始关闭（chk-pi=${before}）`);
-            ac.ok(after === true, `点击设置面板 π 开关后 chk-pi=true（实际 ${after}）`);
+            ac.ok(after === true, `点击检查器视图段 π 开关后 chk-pi=true（实际 ${after}）`);
             ac.ok(gen === 14, `__diag 生成丁烷 14 原子（实际 ${gen}）`);
             ac.ok(hasRun, 'window.runAllExamplesAndTests 可调用');
-            push('S3 设置面板 π 开关 / 生成入口无回归', ac.failed === 0,
+            push('S3 检查器视图段 π 开关 / 生成入口无回归', ac.failed === 0,
                 `chk ${before}→${after} atoms=${gen} runAll=${hasRun} | ${ac.failures.join('；')}`);
         }
 
