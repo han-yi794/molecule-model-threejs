@@ -289,33 +289,44 @@
         #group-sidebar { flex: 1 1 auto; min-height: 120px; }
         #sidebar { flex: 0 0 auto; }
 
-        .group-list { display: flex; flex-direction: column; }
+        /* 基团按钮：沿用重设计前的球形（径向高光胶囊）外观——公式在上、名称在下 */
+        .group-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+            padding: 8px 0 2px;
+        }
         .group-card {
-            height: var(--row);
+            height: 46px;
+            border-radius: 23px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 0 8px;
-            border-radius: var(--r-chip);
-            border: 1px solid transparent;
-            font-size: var(--fs-md);
-            color: var(--text);
+            justify-content: center;
+            border: 2px solid rgba(255, 255, 255, 0.55);
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+            line-height: 1.15;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+            background: radial-gradient(circle at 30% 28%, #3a5a8a, #1a2a4a);
+            box-shadow: 0 5px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
             cursor: grab;
             user-select: none;
             touch-action: none;
-            transition: background 120ms ease;
+            transition: transform 160ms ease, box-shadow 160ms ease;
         }
-        .group-card + .group-card { border-top: 1px solid var(--rule); border-radius: 0; }
-        .group-card:hover { background: var(--active); }
-        .group-card:active { cursor: grabbing; background: #26282e; }
-        .group-card .g-form {
-            font-family: var(--mono);
-            font-size: var(--fs-xs);
-            color: var(--faint);
-            letter-spacing: 0.02em;
+        .group-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.32);
         }
-        .group-card:hover .g-form { color: var(--muted); }
+        .group-card:active {
+            cursor: grabbing;
+            transform: scale(0.96);
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .group-card .g-form { font-size: 15px; letter-spacing: 0.01em; }
+        .group-card .g-name { font-size: 11px; font-weight: 400; opacity: 0.85; }
 
         .element-grid {
             display: grid;
@@ -1425,6 +1436,8 @@
             .element-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
             .atom-card { height: 62px; gap: 3px; }
             .atom-card .a-sym { font-size: var(--fs-lg); }
+            /* 基团球形按钮手机上 3 列，保持 100×46 附近的球形比例（2 列会被拉成长条） */
+            .group-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
             /* 手机上「收起」是桌面态，底部抽屉里一律完整展示 */
             #build-panel.collapsed, #inspect-panel.collapsed { width: auto; }
             #build-panel.collapsed > .panel { flex: 0 0 auto; }
@@ -1575,15 +1588,15 @@
                 </div>
                 <div class="panel-body">
                     <div class="group-list">
-                        <div class="group-card" id="drag-group-methyl" data-group="methyl"><span class="g-name">甲基</span><span class="g-form">CH₃</span></div>
-                        <div class="group-card" id="drag-group-ethyl" data-group="ethyl"><span class="g-name">乙基</span><span class="g-form">C₂H₅</span></div>
-                        <div class="group-card" id="drag-group-phenyl" data-group="phenyl"><span class="g-name">苯基</span><span class="g-form">C₆H₅</span></div>
-                        <div class="group-card" id="drag-group-amino" data-group="amino"><span class="g-name">氨基</span><span class="g-form">NH₂</span></div>
-                        <div class="group-card" id="drag-group-carboxyl" data-group="carboxyl"><span class="g-name">羧基</span><span class="g-form">COOH</span></div>
-                        <div class="group-card" id="drag-group-carbonyl" data-group="carbonyl"><span class="g-name">羰基</span><span class="g-form">C=O</span></div>
-                        <div class="group-card" id="drag-group-aldehyde" data-group="aldehyde"><span class="g-name">醛基</span><span class="g-form">CHO</span></div>
-                        <div class="group-card" id="drag-group-ester" data-group="ester"><span class="g-name">酯基</span><span class="g-form">COOR</span></div>
-                        <div class="group-card" id="drag-group-hydroxyl" data-group="hydroxyl"><span class="g-name">羟基</span><span class="g-form">OH</span></div>
+                        <div class="group-card" id="drag-group-methyl" data-group="methyl"><span class="g-form">CH₃</span><span class="g-name">甲基</span></div>
+                        <div class="group-card" id="drag-group-ethyl" data-group="ethyl"><span class="g-form">C₂H₅</span><span class="g-name">乙基</span></div>
+                        <div class="group-card" id="drag-group-phenyl" data-group="phenyl"><span class="g-form">C₆H₅</span><span class="g-name">苯基</span></div>
+                        <div class="group-card" id="drag-group-amino" data-group="amino"><span class="g-form">NH₂</span><span class="g-name">氨基</span></div>
+                        <div class="group-card" id="drag-group-carboxyl" data-group="carboxyl"><span class="g-form">COOH</span><span class="g-name">羧基</span></div>
+                        <div class="group-card" id="drag-group-carbonyl" data-group="carbonyl"><span class="g-form">C=O</span><span class="g-name">羰基</span></div>
+                        <div class="group-card" id="drag-group-aldehyde" data-group="aldehyde"><span class="g-form">CHO</span><span class="g-name">醛基</span></div>
+                        <div class="group-card" id="drag-group-ester" data-group="ester"><span class="g-form">COOR</span><span class="g-name">酯基</span></div>
+                        <div class="group-card" id="drag-group-hydroxyl" data-group="hydroxyl"><span class="g-form">OH</span><span class="g-name">羟基</span></div>
                     </div>
                     <div class="hint"><i>拖至原子附近连接</i></div>
                 </div>
