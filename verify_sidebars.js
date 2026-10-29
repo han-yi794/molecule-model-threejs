@@ -39,6 +39,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             return {
                 found: true,
                 collapsed: p.classList.contains('collapsed'),
+                hidden: p.hidden,
                 width: Math.round(r.width), height: Math.round(r.height),
                 left: Math.round(r.left), right: Math.round(r.right),
                 top: Math.round(r.top), bottom: Math.round(r.bottom),
@@ -62,8 +63,14 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             vw: innerWidth, vh: innerHeight,
             mem: {
                 build: localStorage.getItem('PANEL_BUILD_OPEN'),
-                inspect: localStorage.getItem('PANEL_INSPECT_OPEN')
+                inspect: localStorage.getItem('PANEL_INSPECT_OPEN'),
+                lib: localStorage.getItem('BUILD_LIB')
             },
+            tabs: (() => {
+                const bs = [...document.querySelectorAll('#build-panel .build-tab')];
+                const on = bs.find(b => b.getAttribute('aria-selected') === 'true');
+                return { count: bs.length, selected: on ? on.textContent.trim() : '', labels: bs.map(b => b.textContent.trim()) };
+            })(),
             mobilebar: getComputedStyle(document.getElementById('mobilebar')).display,
             api: !!(window.__panels && window.__panels.set && window.__panels.state && window.__sidebars && window.__sidebars.set),
             overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth
@@ -81,20 +88,37 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         await page.evaluate(() => window.__setInputPanelOpen(false));
         await page.waitForTimeout(250);
 
-        // P1 桌面默认：两侧 224px、卡片齐全、标题水平、caret 指向收起侧
+        // P1 桌面默认：两侧 224px、默认「基团」页签单列 9 卡、元素库隐藏、caret 指向收起侧
         let st = await readPanels();
-        step('P1 桌面默认展开：构建台/检查器各 224px、卡片 8/9 齐全、caret 指向收起侧',
+        step('P1 桌面默认展开：构建台/检查器各 224px、默认基团单列 9 卡、元素库隐藏、caret 指向收起侧',
             st.build.found && st.inspect.found && !st.build.collapsed && !st.inspect.collapsed
             && st.build.width === 224 && st.inspect.width === 224
-            && st.atoms.visibleCards === 8 && st.atoms.totalCards === 8
-            && st.groups.visibleCards === 9 && st.groups.totalCards === 9
-            && st.groups.titleText === '基团' && st.atoms.titleText === '元素'
-            && !st.groups.titleVertical && !st.atoms.titleVertical
+            && st.groups.hidden === false && st.groups.visibleCards === 9 && st.groups.totalCards === 9
+            && st.atoms.hidden === true && st.atoms.totalCards === 8 && st.atoms.visibleCards === 0
+            && st.groups.titleText === '9 个基团' && st.atoms.titleText === '8 种元素'
+            && !st.groups.titleVertical
+            && st.tabs.count === 2 && st.tabs.selected === '基团' && st.tabs.labels.join('/') === '基团/元素'
             && st.groups.caret === 'chevron-left' && st.inspect.caret === 'chevron-right'
             && st.groups.caretSvg && st.inspect.caretSvg
             && st.mem.build === null && st.mem.inspect === null && st.api && st.overflowX === 0,
-            { build: st.build, inspect: st.inspect, groups: st.groups, atoms: st.atoms, mem: st.mem, api: st.api });
+            { build: st.build, inspect: st.inspect, groups: st.groups, atoms: st.atoms, tabs: st.tabs, mem: st.mem, api: st.api });
         await page.screenshot({ path: SHOT + 'panels_desktop_open.png' });
+
+        // P1b 页签切换：同一时刻只显示一组（单列），并记忆 BUILD_LIB
+        await page.click('#build-tab-atoms');
+        await page.waitForTimeout(300);
+        st = await readPanels();
+        const switched = st.groups.hidden === true && st.groups.visibleCards === 0
+            && st.atoms.hidden === false && st.atoms.visibleCards === 8
+            && st.tabs.selected === '元素' && st.mem.lib === 'atoms';
+        await page.screenshot({ path: SHOT + 'panels_desktop_atoms.png' });
+        await page.click('#build-tab-groups');
+        await page.waitForTimeout(300);
+        st = await readPanels();
+        const switchedBack = st.groups.hidden === false && st.groups.visibleCards === 9
+            && st.atoms.hidden === true && st.tabs.selected === '基团' && st.mem.lib === 'groups';
+        step('P1b 基团/元素互相切换：同一时刻只显示一组、页签状态与记忆同步',
+            switched && switchedBack, { switched, switchedBack, tabs: st.tabs, mem: st.mem });
 
         // P2 点击构建台头部 → 整栏收起 44px（两个 section 都变成竖排轨道）
         await page.click('#group-sidebar-toggle');
@@ -102,7 +126,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         st = await readPanels();
         step('P2 收起构建台：宽 44、卡片全隐、标题竖排、caret→、记忆 0、检查器不受影响',
             st.build.collapsed && st.build.width === 44 && st.build.visibleCards === 0
-            && st.groups.titleVertical && st.atoms.titleVertical
+            && st.groups.titleVertical
             && st.groups.caret === 'chevron-right' && st.atoms.caret === 'chevron-right'
             && st.groups.ariaExpanded === 'false' && st.mem.build === '0'
             && !st.inspect.collapsed && st.inspect.width === 224 && st.overflowX === 0,
@@ -114,7 +138,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         await page.waitForTimeout(400);
         st = await readPanels();
         step('P3 再点展开构建台：宽 224、卡片恢复、caret←、记忆 1',
-            !st.build.collapsed && st.build.width === 224 && st.atoms.visibleCards === 8 && st.groups.visibleCards === 9
+            !st.build.collapsed && st.build.width === 224 && st.groups.visibleCards === 9 && st.atoms.hidden === true
             && st.groups.caret === 'chevron-left' && st.groups.ariaExpanded === 'true' && st.mem.build === '1',
             { build: st.build, mem: st.mem });
 
@@ -190,6 +214,14 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             const p = document.getElementById('build-panel');
             return p.scrollHeight > 0 && p.getBoundingClientRect().bottom <= innerHeight - 50;
         });
+        // 手机抽屉里也能切换基团/元素（单列）
+        await page.click('#build-tab-atoms');
+        await page.waitForTimeout(300);
+        st = await readPanels();
+        const mobSwitch = st.atoms.hidden === false && st.atoms.visibleCards === 8 && st.groups.hidden === true
+            && st.tabs.selected === '元素' && st.overflowX === 0;
+        await page.click('#build-tab-groups');
+        await page.waitForTimeout(250);
         await page.screenshot({ path: SHOT + 'panels_mobile_build.png' });
         await page.click('#mb-inspect');
         await page.waitForTimeout(500);
@@ -204,14 +236,17 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         });
         const drawerOk = drawer.open && drawer.vis === 'visible' && drawer.bottom <= 844 - 50 && drawer.top >= 44;
         await page.screenshot({ path: SHOT + 'panels_mobile_drawer.png' });
-        step('P8 手机 390：底部栏可见、构建/检查抽屉互斥、生成抽屉停在底部栏上方',
-            mobDefault && mobBuild && sheetFits && mobInspect && drawerOk,
-            { mobDefault, mobBuild, sheetFits, mobInspect, drawer, mbBuild, mbInspect });
+        step('P8 手机 390：底部栏可见、构建/检查抽屉互斥、抽屉内可切换基团/元素、生成抽屉停在底部栏上方',
+            mobDefault && mobBuild && sheetFits && mobSwitch && mobInspect && drawerOk,
+            { mobDefault, mobBuild, sheetFits, mobSwitch, mobInspect, drawer, mbBuild, mbInspect });
 
         // P9 折叠往返后原子卡拖拽仍可用（碳卡 → 画布中心，原子数 +1）
         await page.setViewportSize({ width: 1289, height: 896 });
         await page.evaluate(() => { window.__setInputPanelOpen(false); window.__panels.set('build', false); window.__panels.set('inspect', false); });
         await page.waitForTimeout(450);
+        // 原子卡在「元素」页签里
+        await page.click('#build-tab-atoms');
+        await page.waitForTimeout(300);
         const before = await page.evaluate(() => window.__lpStats().length);
         const card = await page.locator('#drag-carbon').boundingBox();
         await page.mouse.move(card.x + card.width / 2, card.y + card.height / 2);

@@ -286,17 +286,49 @@
             min-height: 0;
             min-width: 0;
         }
-        #group-sidebar { flex: 1 1 auto; min-height: 120px; }
-        #sidebar { flex: 0 0 auto; }
+        #group-sidebar, #sidebar { flex: 1 1 auto; min-height: 0; }
 
-        /* 基团按钮：沿用重设计前的球形（径向高光胶囊）外观——公式在上、名称在下 */
+        /* 构建库切换（基团 / 元素）：同一时刻只显示一组，两组都是单列球形卡片 */
+        .build-tabs {
+            flex: 0 0 auto;
+            display: flex;
+            gap: 2px;
+            margin: 8px 8px 0;
+            padding: 2px;
+            background: var(--sunken);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+        }
+        .build-tab {
+            flex: 1 1 0;
+            height: 26px;
+            border: none;
+            border-radius: 5px;
+            background: transparent;
+            color: var(--faint);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            transition: background 120ms ease, color 120ms ease;
+        }
+        .build-tab:hover { color: var(--text); background: var(--raised); }
+        .build-tab[aria-selected="true"] { background: var(--active); color: var(--text); }
+        .build-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+        #build-panel.collapsed .build-tabs { display: none; }
+        #build-panel .panel[hidden] { display: none !important; }
+
+        /* 基团按钮：重设计前的球形（径向高光胶囊）外观——公式在上、名称在下，单列居中 */
         .group-list {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             gap: 6px;
-            padding: 8px 0 2px;
+            padding: 8px 0 4px;
         }
         .group-card {
+            width: 100px;
             height: 46px;
             border-radius: 23px;
             display: flex;
@@ -328,46 +360,61 @@
         .group-card .g-form { font-size: 15px; letter-spacing: 0.01em; }
         .group-card .g-name { font-size: 11px; font-weight: 400; opacity: 0.85; }
 
+        /* 元素卡片：恢复重设计前的 CPK 圆球（整颗球按元素着色）——单列居中 */
         .element-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             gap: 6px;
-            padding-top: 2px;
+            padding: 8px 0 4px;
         }
         .atom-card {
-            position: relative;
-            height: 76px;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 4px;
-            border-radius: var(--r-chip);
-            border: 1px solid var(--rule);
-            background: var(--raised);
-            color: var(--text);
+            gap: 1px;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            background: radial-gradient(circle at 30% 30%, var(--cpk, #505050), var(--cpk-lo, #222));
+            color: #fff;
+            font-weight: 700;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.28);
             cursor: grab;
             user-select: none;
             touch-action: none;
-            transition: background 120ms ease, border-color 120ms ease;
+            transition: transform 160ms ease, box-shadow 160ms ease;
         }
-        .atom-card:hover { background: var(--active); border-color: #2c2f36; }
-        .atom-card:active { cursor: grabbing; background: #26282e; }
-        .atom-card .a-sym { font-size: var(--fs-xl); font-weight: 600; line-height: 1.05; }
+        .atom-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+        }
+        .atom-card:active {
+            cursor: grabbing;
+            transform: scale(0.96);
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .atom-card .a-sym { font-size: 24px; font-weight: 700; line-height: 1; }
         .atom-card .a-name {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            font-size: var(--fs-xs);
-            color: var(--faint);
-            line-height: 1.2;
+            display: block;
+            font-size: 12px;
+            font-weight: 400;
+            line-height: 1.1;
+            color: inherit;
+            opacity: 0.92;
         }
-        .cpk {
-            width: 6px; height: 6px; border-radius: 50%;
-            background: var(--cpk, #505050);
-            flex: 0 0 6px;
-            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
-        }
+        /* CPK 配色（浅色高光 → 深色底），与 3D 场景原子一致 */
+        .atom-card[data-atom="C"]  { --cpk: #505050; --cpk-lo: #222222; }
+        .atom-card[data-atom="H"]  { --cpk: #f0f0f0; --cpk-lo: #aaaaaa; color: #262626; text-shadow: none; }
+        .atom-card[data-atom="O"]  { --cpk: #ff4d4d; --cpk-lo: #aa0000; }
+        .atom-card[data-atom="N"]  { --cpk: #4d88ff; --cpk-lo: #111188; }
+        .atom-card[data-atom="F"]  { --cpk: #9bcd6c; --cpk-lo: #3d7a2e; color: #1b2a12; text-shadow: none; }
+        .atom-card[data-atom="Cl"] { --cpk: #1f8a4c; --cpk-lo: #0a4a28; }
+        .atom-card[data-atom="Br"] { --cpk: #b54c3c; --cpk-lo: #6e2a1f; }
+        .atom-card[data-atom="I"]  { --cpk: #8b5a8c; --cpk-lo: #4a2c4a; }
         /* 当前待拖出的元素：名字下方 1px 琥珀线（与全局选中 move 一致） */
         .atom-card.current .a-name { color: var(--text); box-shadow: 0 1px 0 var(--accent); }
 
@@ -1432,12 +1479,9 @@
             #sidebar { flex: 0 0 auto; }
             #build-panel .panel-body { overflow: visible; }
             #inspect-panel { overflow-y: auto; }
-            /* 手机抽屉里元素库回到 4 列紧凑瓦片（桌面 2×4 大瓦片会撑高抽屉） */
-            .element-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-            .atom-card { height: 62px; gap: 3px; }
-            .atom-card .a-sym { font-size: var(--fs-lg); }
-            /* 基团球形按钮手机上 3 列，保持 100×46 附近的球形比例（2 列会被拉成长条） */
-            .group-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            /* 手机抽屉：单列球形卡片（整抽屉滚动，尺寸略收） */
+            .atom-card { width: 72px; height: 72px; }
+            .atom-card .a-sym { font-size: 21px; }
             /* 手机上「收起」是桌面态，底部抽屉里一律完整展示 */
             #build-panel.collapsed, #inspect-panel.collapsed { width: auto; }
             #build-panel.collapsed > .panel { flex: 0 0 auto; }
@@ -1580,10 +1624,14 @@
     <div id="shell">
         <!-- 左：构建台 -->
         <aside id="build-panel" aria-label="构建台">
-            <section id="group-sidebar" class="panel" aria-label="预设基团">
+            <div class="build-tabs" role="tablist" aria-label="构建库切换">
+                <button type="button" class="build-tab" id="build-tab-groups" role="tab" aria-selected="true" aria-controls="group-sidebar" tabindex="0">基团</button>
+                <button type="button" class="build-tab" id="build-tab-atoms" role="tab" aria-selected="false" aria-controls="sidebar" tabindex="-1">元素</button>
+            </div>
+            <section id="group-sidebar" class="panel" role="tabpanel" aria-label="预设基团">
                 <div class="panel-head" id="group-sidebar-toggle" role="button" tabindex="0" title="收起构建台" aria-label="收起构建台" aria-expanded="true">
                     <span class="ui-ic" data-icon="shapes" data-size="14"></span>
-                    <span class="panel-title">基团</span>
+                    <span class="panel-title">9 个基团</span>
                     <span class="panel-caret ui-ic" data-icon="chevron-left" data-size="12"></span>
                 </div>
                 <div class="panel-body">
@@ -1602,22 +1650,22 @@
                 </div>
             </section>
 
-            <section id="sidebar" class="panel" aria-label="元素">
+            <section id="sidebar" class="panel" role="tabpanel" aria-label="元素" hidden>
                 <div class="panel-head" id="sidebar-toggle" role="button" tabindex="0" title="收起构建台" aria-label="收起构建台" aria-expanded="true">
                     <span class="ui-ic" data-icon="atom" data-size="14"></span>
-                    <span class="panel-title">元素</span>
+                    <span class="panel-title">8 种元素</span>
                     <span class="panel-caret ui-ic" data-icon="chevron-left" data-size="12"></span>
                 </div>
                 <div class="panel-body">
                     <div class="element-grid">
-                        <div class="atom-card" id="drag-carbon" data-atom="C"><span class="a-sym">C</span><span class="a-name"><i class="cpk" style="--cpk:#505050"></i>碳</span></div>
-                        <div class="atom-card" id="drag-hydrogen" data-atom="H"><span class="a-sym">H</span><span class="a-name"><i class="cpk" style="--cpk:#f0f0f0"></i>氢</span></div>
-                        <div class="atom-card" id="drag-oxygen" data-atom="O"><span class="a-sym">O</span><span class="a-name"><i class="cpk" style="--cpk:#ff4d4d"></i>氧</span></div>
-                        <div class="atom-card" id="drag-nitrogen" data-atom="N"><span class="a-sym">N</span><span class="a-name"><i class="cpk" style="--cpk:#4d88ff"></i>氮</span></div>
-                        <div class="atom-card" id="drag-fluorine" data-atom="F"><span class="a-sym">F</span><span class="a-name"><i class="cpk" style="--cpk:#9bcd6c"></i>氟</span></div>
-                        <div class="atom-card" id="drag-chlorine" data-atom="Cl"><span class="a-sym">Cl</span><span class="a-name"><i class="cpk" style="--cpk:#1f8a4c"></i>氯</span></div>
-                        <div class="atom-card" id="drag-bromine" data-atom="Br"><span class="a-sym">Br</span><span class="a-name"><i class="cpk" style="--cpk:#b54c3c"></i>溴</span></div>
-                        <div class="atom-card" id="drag-iodine" data-atom="I"><span class="a-sym">I</span><span class="a-name"><i class="cpk" style="--cpk:#8b5a8c"></i>碘</span></div>
+                        <div class="atom-card" id="drag-carbon" data-atom="C"><span class="a-sym">C</span><span class="a-name">碳</span></div>
+                        <div class="atom-card" id="drag-hydrogen" data-atom="H"><span class="a-sym">H</span><span class="a-name">氢</span></div>
+                        <div class="atom-card" id="drag-oxygen" data-atom="O"><span class="a-sym">O</span><span class="a-name">氧</span></div>
+                        <div class="atom-card" id="drag-nitrogen" data-atom="N"><span class="a-sym">N</span><span class="a-name">氮</span></div>
+                        <div class="atom-card" id="drag-fluorine" data-atom="F"><span class="a-sym">F</span><span class="a-name">氟</span></div>
+                        <div class="atom-card" id="drag-chlorine" data-atom="Cl"><span class="a-sym">Cl</span><span class="a-name">氯</span></div>
+                        <div class="atom-card" id="drag-bromine" data-atom="Br"><span class="a-sym">Br</span><span class="a-name">溴</span></div>
+                        <div class="atom-card" id="drag-iodine" data-atom="I"><span class="a-sym">I</span><span class="a-name">碘</span></div>
                     </div>
                     <div class="hint"><i>按住拖至空间释放</i></div>
                 </div>
@@ -11359,6 +11407,66 @@ if (smilesInput) smilesInput.value = smilesToUse;
             window.addEventListener('resize', () => {
                 if (!window.matchMedia('(max-width: 699px)').matches) closeMobileSheets();
             });
+        })();
+        // 构建库切换（2026-10-29）：基团 / 元素两组单列卡片，同一时刻只显示一组。
+        // 只切 hidden，不动折叠状态；记忆键 BUILD_LIB（'groups' | 'atoms'）。
+        const BUILD_LIB_KEY = 'BUILD_LIB';
+        function currentBuildLib() {
+            const a = document.getElementById('sidebar');
+            return a && !a.hidden ? 'atoms' : 'groups';
+        }
+        function setBuildLib(lib, opts) {
+            const groups = lib !== 'atoms';
+            const gEl = document.getElementById('group-sidebar');
+            const aEl = document.getElementById('sidebar');
+            if (!gEl || !aEl) return false;
+            gEl.hidden = !groups;
+            aEl.hidden = groups;
+            [['build-tab-groups', groups], ['build-tab-atoms', !groups]].forEach(pair => {
+                const btn = document.getElementById(pair[0]);
+                if (!btn) return;
+                btn.setAttribute('aria-selected', pair[1] ? 'true' : 'false');
+                btn.tabIndex = pair[1] ? 0 : -1;
+            });
+            if (!opts || !opts.silent) {
+                try { localStorage.setItem(BUILD_LIB_KEY, groups ? 'groups' : 'atoms'); } catch (e) {}
+            }
+            return true;
+        }
+        (function initBuildLib() {
+            let saved = 'groups';
+            try {
+                const v = localStorage.getItem(BUILD_LIB_KEY);
+                if (v === 'groups' || v === 'atoms') saved = v;
+            } catch (e) {}
+            setBuildLib(saved, { silent: true });
+            const tabs = [document.getElementById('build-tab-groups'), document.getElementById('build-tab-atoms')];
+            tabs.forEach((btn, i) => {
+                if (!btn) return;
+                btn.addEventListener('click', () => setBuildLib(i === 0 ? 'groups' : 'atoms'));
+                btn.addEventListener('keydown', (e) => {
+                    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                    e.preventDefault();
+                    const next = i === 0 ? 1 : 0;
+                    setBuildLib(next === 0 ? 'groups' : 'atoms');
+                    if (tabs[next]) tabs[next].focus();
+                });
+            });
+            window.__buildLib = {
+                get: currentBuildLib,
+                set: (lib) => setBuildLib(lib),
+                state: () => {
+                    const g = document.getElementById('group-sidebar');
+                    const a = document.getElementById('sidebar');
+                    return {
+                        lib: currentBuildLib(),
+                        groupsHidden: !!(g && g.hidden),
+                        atomsHidden: !!(a && a.hidden),
+                        groupCards: g ? g.querySelectorAll('.group-card').length : 0,
+                        atomCards: a ? a.querySelectorAll('.atom-card').length : 0
+                    };
+                }
+            };
         })();
         // 兼容旧调试接口（2026-10-24 的 __sidebars）：旧 id 作为别名保留
         window.__sidebars = {

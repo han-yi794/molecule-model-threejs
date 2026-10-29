@@ -116,7 +116,9 @@ function posMatch(before, after, tol = 0.005) {
             try { window.__setInputPanelOpen(false); } catch (e) {}
             window.__history.reset();
         });
-        await page.waitForTimeout(250);
+        // 原子卡现在在「元素」页签里（默认显示「基团」），拖新碳原子前先切换
+        await page.click('#build-tab-atoms');
+        await page.waitForTimeout(300);
 
         // ---------- H1 按钮：图标水合 / 顶栏布局 / 空栈标记 / 图标态 ----------
         {
