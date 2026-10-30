@@ -3376,6 +3376,7 @@
 
             // 保守估算孤对数：以价电子减去键参与的电子数并除以 2
             let estLonePairs = Math.max(0, Math.floor((valence - Math.round(bondOrderSum)) / 2));
+            const rawLonePairs = estLonePairs;   // 共轭扣减前的孤对数（见下方 2 配位 N 分支）
 
             // 若孤对可能参与共轭/芳香（如吡咯中的 N），则将一个孤对视作离域（不计入 VSEPR 电子域）
             try {
@@ -3403,6 +3404,11 @@
                 }
             }
             if (DELOCAL_PI_ENABLED && type === 'N' && neighbors.length <= 3 && estLonePairs >= 1 && conjugatedToAtom) return 'sp2';   // 苯胺型 N（仅离域π模式）
+            // 2 配位共轭 N（酰胺/亚胺；典型于只有重原子的 PDB 蛋白模型）：孤对被判离域后
+            // 电子域只剩 2 个 → 会被误判 sp（理想 180°），而酰胺 N 实际是 sp2（~120°）。
+            // 只在「2 个 σ 邻居 + 共轭扣减前有孤对 + 邻接双键/芳香」时生效：普通胺
+            // （R-NH2 补氢后 3 个 σ 邻居）与苯胺（3 个 σ 邻居）都不受影响。
+            if (DELOCAL_PI_ENABLED && type === 'N' && neighbors.length === 2 && rawLonePairs >= 1 && conjugatedToAtom) return 'sp2';
 
             // 基于电子域数进行直接映射（与 VSEPR 一致）
             if (electronDomainCount >= 4) return 'sp3';
@@ -8929,9 +8935,36 @@ const fSide = new Set();
         // SMILES → 分子完整管线：spec → 粗坐标 → 补氢 + 全局优化
         // generateFromSpec 内部已 updateBonds + refreshLonePairVisuals(true)；
         // optimizeAllWithAutoHydrogen 内部 addMissingHydrogens（同样带 lp 重算）+ optimizeAllAtoms。
+        // 多肽守卫（2026-10-30）：酰胺键（C(=O)-N）数量是判断「这是不是蛋白质」的可靠信号。
+        // 本地管线对 ≥10 个酰胺键的大分子只能给粗坐标，会塌缩成碎片（实测胰岛素 404 重原子
+        // → 23 个碎片），因此直接拒绝并引导用户改用蛋白质序列/名称路线，优于生成垃圾结构。
+        function countPeptideBonds(spec) {
+            try {
+                const types = spec.types, bonds = spec.bonds;
+                const carbonylC = new Set();
+                for (const b of bonds) {
+                    if ((b[2] || 1) < 1.5) continue;
+                    if (types[b[0]] === 'C' && types[b[1]] === 'O') carbonylC.add(b[0]);
+                    else if (types[b[1]] === 'C' && types[b[0]] === 'O') carbonylC.add(b[1]);
+                }
+                let n = 0;
+                for (const b of bonds) {
+                    if ((b[2] || 1) >= 1.5) continue;   // 酰胺键是单键
+                    if (types[b[0]] === 'C' && types[b[1]] === 'N' && carbonylC.has(b[0])) n++;
+                    else if (types[b[1]] === 'C' && types[b[0]] === 'N' && carbonylC.has(b[1])) n++;
+                }
+                return n;
+            } catch (e) { return 0; }
+        }
+        window.__countPeptideBonds = countPeptideBonds;
+
         async function generateFromSmiles(smiles, opts) {
             const spec = smilesToSpec(smiles);
             if (spec.error) return { ok: false, error: spec.error };
+            const peptideBonds = countPeptideBonds(spec);
+            if (peptideBonds >= 10) {
+                return { ok: false, error: { pos: 0, msg: '该结构含 ' + peptideBonds + ' 个酰胺键，属于蛋白质/多肽；本地粗坐标无法正确排布大分子骨架。请改用「蛋白质序列」输入框，或直接输入蛋白质名称（如 胰岛素 / 溶菌酶）' } };
+            }
             // 大分子路线（2026-10-30 放宽）：旧版 >250 重原子直接拒绝，导致蛋白/
             // 大型天然产物在 PubChem 3D 缺失时完全无法生成。现在 >250 走「粗坐标 +
             // 补氢 + 限时优化」降级路线（优化器带时间预算，不会卡死），只在真正
@@ -9115,13 +9148,28 @@ const fSide = new Set();
         // （免 key、CORS 开放、限 ~400 残基），返回 PDB 文本 → 解析为真实 3D 坐标。
         // PDB 无 CONECT 记录 → 按 getTargetBondLength×1.35 距离阈值重建键
         // （蛋白相邻残基 Cα-Cα≈3.8Å 远大于键长，不会误建跨残基键）。
-        function parsePDB(text) {
+        // opts.proteinOnly：只保留 ATOM 记录，跳过 HETATM（晶体结构里的水/金属/配体）。
+        //   蛋白名称路线必须过滤——3I40 原始文件含 35 个 HOH 氧原子，不过滤会散落一地。
+        // opts.altLocFirst：交替构象只保留 altLoc 为空或 A 的原子（3I40 有 16 个 B 构象原子，
+        //   两条都留会在同一位置出现双份原子、距离阈值建键混乱）。
+        // 默认两项都关闭 → ESMFold 序列路线行为完全不变。
+        function parsePDB(text, opts) {
+            const o = opts || {};
+            const proteinOnly = !!o.proteinOnly;
+            const altLocFirst = !!o.altLocFirst;
             const lines = String(text).split(/\r?\n/);
             const atoms = [];
             const atomIndex = new Map();
             for (let i = 0; i < lines.length; i++) {
                 const ln = lines[i];
-                if (ln.startsWith('ATOM  ') || ln.startsWith('HETATM')) {
+                const isAtomRecord = ln.startsWith('ATOM  ');
+                if (!(isAtomRecord || ln.startsWith('HETATM'))) continue;
+                if (proteinOnly && !isAtomRecord) continue;
+                if (altLocFirst) {
+                    const alt = ln.charAt(16);
+                    if (alt !== ' ' && alt !== 'A') continue;
+                }
+                {
                     const serial = parseInt(ln.slice(6, 11), 10);
                     const x = parseFloat(ln.slice(30, 38));
                     const y = parseFloat(ln.slice(38, 46));
@@ -9245,6 +9293,101 @@ const fSide = new Set();
             return { ok: true, count, seqLen: r.seq.length };
         }
         window.__generateFromProteinSeq = generateFromProteinSeq;
+
+        // ============ 蛋白质名称 → RCSB PDB 实验结构（2026-10-30 新增）============
+        // 背景：胰岛素等蛋白质在 PubChem 只有 2D 拓扑（CID 70678557 无 3D 记录）→ 旧流程
+        // 回退本地「SMILES → 粗坐标 → 补氢」管线，404 个重原子的多肽链会塌缩成一团
+        // （实测 23 个碎片、173 处原子重叠、25 条坏键）。蛋白质的 3D 结构应从实验结构库拿：
+        // RCSB PDB 免费、免 key、CORS 开放，且带真实二硫键与主链构象。
+        // 只收录人工核对过质量（过滤 HETATM/altLoc 后单连通、0 碰撞）的条目。
+        const PROTEIN_NAME_LIB = {
+            '胰岛素': '3I40', 'insulin': '3I40', 'human insulin': '3I40', '人胰岛素': '3I40',
+            '溶菌酶': '2LYZ', 'lysozyme': '2LYZ',
+            '核糖核酸酶a': '7RSA', 'rnase a': '7RSA', 'ribonuclease a': '7RSA',
+            '细胞色素c': '1HRC', 'cytochrome c': '1HRC',
+        };
+        function normalizeProteinKey(s) {
+            return String(s || '').trim().toLowerCase().replace(/[，,、\s\-_]+/g, '');
+        }
+        const _PROTEIN_INDEX = {};
+        for (const k in PROTEIN_NAME_LIB) _PROTEIN_INDEX[normalizeProteinKey(k)] = PROTEIN_NAME_LIB[k];
+        // 返回 { pdbId, label } 或 null。label 只用于提示文案，取用户原始输入。
+        function resolveProteinName(input) {
+            const key = normalizeProteinKey(input);
+            if (!key) return null;
+            const id = _PROTEIN_INDEX[key];
+            return id ? { pdbId: id, label: String(input).trim() } : null;
+        }
+        window.__resolveProteinName = resolveProteinName;
+        window.__PROTEIN_NAME_LIB = PROTEIN_NAME_LIB;
+
+        // PDB 键级推断（仅 RCSB 路线启用）：PDB 文件不写键级，parsePDB 全按单键建。
+        // 只把「C 的**唯一** O 邻居且 C-O ≤ 1.32 Å」升级为双键 —— 肽键羰基 / 侧链羰基 /
+        // 羧基的 C=O（羧基另一个 O 是单键羟基，oNbs 长度为 2 → 跳过，保持全单键，
+        // 避免把羧酸根画成两个双键）。键数不变，仅影响渲染与后续键长语义。
+        function inferPdbCarbonylBonds(struct) {
+            let n = 0;
+            try {
+                const atoms = struct.atoms, bonds = struct.bonds;
+                const nbs = atoms.map(() => []);
+                for (let i = 0; i < bonds.length; i++) {
+                    nbs[bonds[i][0]].push(i);
+                    nbs[bonds[i][1]].push(i);
+                }
+                for (let i = 0; i < bonds.length; i++) {
+                    const b = bonds[i];
+                    const t0 = atoms[b[0]].type, t1 = atoms[b[1]].type;
+                    let ci = -1, oi = -1;
+                    if (t0 === 'C' && t1 === 'O') { ci = b[0]; oi = b[1]; }
+                    else if (t0 === 'O' && t1 === 'C') { ci = b[1]; oi = b[0]; }
+                    if (ci < 0) continue;
+                    if (atoms[ci].pos.distanceTo(atoms[oi].pos) > 1.32) continue;
+                    let oCount = 0;
+                    for (const bi of nbs[ci]) {
+                        const bb = bonds[bi];
+                        const other = bb[0] === ci ? bb[1] : bb[0];
+                        if (atoms[other].type === 'O') oCount++;
+                    }
+                    if (oCount !== 1) continue;
+                    b[2] = 2;
+                    n++;
+                }
+            } catch (e) { /* 推断失败不影响主流程 */ }
+            return n;
+        }
+        window.__inferPdbCarbonylBonds = inferPdbCarbonylBonds;
+
+        // 按 PDB ID 拉取实验结构（RCSB files.rcsb.org，4 字符 ID，如 3I40）。
+        async function fetchProteinPDBById(pdbId) {
+            const id = String(pdbId || '').trim().toUpperCase();
+            if (!/^[0-9][A-Z0-9]{3}$/.test(id)) return { error: '无效的 PDB ID: ' + pdbId };
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(60000) : undefined;
+                const res = await fetch('https://files.rcsb.org/download/' + id + '.pdb', { signal: ctrl });
+                if (!res.ok) return { error: 'RCSB PDB 返回 HTTP ' + res.status };
+                const text = await res.text();
+                // proteinOnly/altLocFirst：跳过水分子与 B 构象，保证单连通（3I40 → 403 原子）
+                const struct = parsePDB(text, { proteinOnly: true, altLocFirst: true });
+                if (!struct) return { error: 'PDB ' + id + ' 无可用原子坐标' };
+                const carbonyls = inferPdbCarbonylBonds(struct);
+                return { ok: true, struct, pdbId: id, pdbLen: text.length, carbonyls };
+            } catch (e) {
+                return { error: 'RCSB PDB 请求失败: ' + (e && e.message ? e.message : String(e)) };
+            }
+        }
+        window.__fetchProteinPDBById = fetchProteinPDBById;
+
+        async function generateFromProteinPDB(pdbId, label) {
+            const r = await fetchProteinPDBById(pdbId);
+            if (!r.ok) {
+                // 蛋白名称路线不做本地管线回退：粗坐标生成的多肽链必然是垃圾
+                return { ok: false, error: r.error || '未知错误', pdbId: String(pdbId || '').toUpperCase() };
+            }
+            const count = generateFromPDB(r.struct);
+            console.log(`[分子来源] RCSB PDB ${r.pdbId} · ${label || r.pdbId} · ${count} 原子 · 双键 ${r.carbonyls}`);
+            return { ok: true, count, pdbId: r.pdbId, carbonyls: r.carbonyls };
+        }
+        window.__generateFromProteinPDB = generateFromProteinPDB;
 
         // ============ 名称解析：内置库 NAME_LIBRARY + PubChem/Cactus 在线兜底 ============
         const NAME_LIBRARY = {
@@ -11078,6 +11221,23 @@ function smilesToCondensed(smiles) {
             if (btn) { btn.textContent = '解析中…'; btn.style.opacity = '0.6'; }
             try {
                 if (seq) {
+                    // 序列框里也可能填蛋白质名称（用户未必分得清三个输入框）→ 先查蛋白库，
+                    // 命中则走 RCSB PDB 实验结构，而不是把中文名丢给 ESMFold 报错。
+                    const seqProt = resolveProteinName(seq);
+                    if (seqProt) {
+                        showToast('正在从 RCSB PDB 获取 ' + seqProt.label + ' 结构…', 2200);
+                        const pr = await generateFromProteinPDB(seqProt.pdbId, seqProt.label);
+                        if (!pr.ok) {
+                            showToast('蛋白质结构获取失败：' + pr.error + '（可改用氨基酸序列，由 ESMFold 预测）', 4600);
+                            return false;
+                        }
+                        if (smilesInput) smilesInput.value = '';
+                        syncInputClearButtons();
+                        setInputPanelOpen(false);
+                        setMoleculeName(seqProt.label);
+                        showToast(`已从名称生成: ${seqProt.label} (${pr.count} 原子 · PDB ${pr.pdbId})`, 3400);
+                        return true;
+                    }
                     const r = await generateFromProteinSeq(seq);
                     if (r.ok) {
                         if (smilesInput) smilesInput.value = '';
@@ -11150,7 +11310,28 @@ function smilesToCondensed(smiles) {
                 let used3D = false;
                 let finalCount = 0;
                 let resolvedCid = 0;
+                let largeMol = false;
                 if (!smiles) {
+                    // 蛋白质名称优先（2026-10-30）：必须早于 precheckNameInput 与 PubChem 解析——
+                    // 胰岛素在 PubChem 只有 2D 拓扑（CID 70678557 无 3D），旧流程会回退本地粗坐标
+                    // 把 404 个重原子的多肽链排成 23 个碎片。命中蛋白库直接取 RCSB 实验结构。
+                    const protEntry = resolveProteinName(name);
+                    if (protEntry) {
+                        showToast('正在从 RCSB PDB 获取 ' + (protEntry.label || name) + ' 结构…', 2200);
+                        const pr = await generateFromProteinPDB(protEntry.pdbId, protEntry.label || name);
+                        if (!pr.ok) {
+                            showToast('蛋白质结构获取失败：' + pr.error + '（可改用氨基酸序列框，由 ESMFold 预测）', 4600);
+                            return false;
+                        }
+                        if (smilesInput) smilesInput.value = '';
+                        const _pf = document.getElementById('formula-input');
+                        if (_pf) _pf.value = '';
+                        syncInputClearButtons();
+                        setInputPanelOpen(false);
+                        setMoleculeName(name);
+                        showToast(`已从名称生成: ${name} (${pr.count} 原子 · PDB ${pr.pdbId})`, 3400);
+                        return true;
+                    }
                     usedName = true;
                     const pre = precheckNameInput(name);
                     if (pre && pre.kind === 'looks_smiles') { showToast('输入看起来像 SMILES，请填入 SMILES 输入框', 2800); return false; }
@@ -11197,14 +11378,19 @@ function smilesToCondensed(smiles) {
                             if (r2 && r2.ok) {
                                 smilesToUse = stripped;
                                 finalCount = r2.atomCount;
+                                largeMol = !!r2.large;
 if (smilesInput) smilesInput.value = smilesToUse;
                                 syncInputClearButtons();
 setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                                 setMoleculeName(usedName ? name : stripped);
-                                if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子)`, 2800);
-                                else showToast(`已生成: ${finalCount} 原子`, 2200);
-                                console.log(`[分子来源] 本地管线 · SMILES=${stripped} · ${finalCount} 原子（剥除立体标记重试）`);
+                                if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子${largeMol ? ' · 几何近似' : ''})`, 2800);
+                                else showToast(`已生成: ${finalCount} 原子${largeMol ? ' · 几何近似' : ''}`, 2200);
+                                console.log(`[分子来源] 本地管线 · SMILES=${stripped} · ${finalCount} 原子（剥除立体标记重试）${largeMol ? ' · 大分子近似' : ''}`);
                                 return true;
+                            }
+                            if (r2 && !r2.ok && r2.error && /酰胺键/.test(r2.error.msg || '')) {
+                                showToast(r2.error.msg, 5200);
+                                return false;
                             }
                         }
                     }
@@ -11213,10 +11399,12 @@ setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                         const err = res && res.error ? res.error : {};
                         const pos = err.pos !== undefined ? err.pos : '?';
                         const msg = err.msg || '未知错误';
-                        showToast('SMILES 语法错误：位置 ' + pos + '，原因 ' + msg, 3200);
+                        if (/酰胺键/.test(msg)) showToast(msg, 5200);
+                        else showToast('SMILES 语法错误：位置 ' + pos + '，原因 ' + msg, 3200);
                         return false;
                     }
                     finalCount = res.atomCount;
+                    largeMol = !!res.large;
                 }
 if (smilesInput) smilesInput.value = smilesToUse;
                 const _fIn = document.getElementById('formula-input');
@@ -11224,9 +11412,9 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 syncInputClearButtons();
                 setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                 setMoleculeName(usedName ? name : smilesToUse);
-                if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子${used3D ? ' · 3D 坐标' : ''})`, 2800);
-                else showToast(`已生成: ${finalCount} 原子${used3D ? ' · 3D 坐标' : ''}`, 2200);
-                console.log(`[分子来源] ${used3D ? 'PubChem 3D' : '本地管线'} · ${usedName ? '名称=' + name : 'SMILES=' + smilesToUse} · ${finalCount} 原子`);
+                if (usedName) showToast(`已从名称生成: ${name} (${finalCount} 原子${used3D ? ' · 3D 坐标' : ''}${largeMol ? ' · 几何近似' : ''})`, largeMol ? 5200 : 2800);
+                else showToast(`已生成: ${finalCount} 原子${used3D ? ' · 3D 坐标' : ''}${largeMol ? ' · 几何近似' : ''}`, largeMol ? 5200 : 2200);
+                console.log(`[分子来源] ${used3D ? 'PubChem 3D' : '本地管线'} · ${usedName ? '名称=' + name : 'SMILES=' + smilesToUse} · ${finalCount} 原子${largeMol ? ' · 大分子近似' : ''}`);
                 return true;
             } catch (e) {
                 showToast('生成失败: ' + (e && e.message ? e.message : String(e)), 2800);

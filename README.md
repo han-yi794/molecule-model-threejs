@@ -24,7 +24,7 @@
 - **几何引擎**:VSEPR 杂化推断 + 迭代优化(sp3 精确四面体模板、sp2 平面、sp 线性、环感知键角),33 例自动自测全绿(键长/键角/连通性);大分子(>250 原子)改「粗坐标 + 补氢 + 限时优化」降级生成(上限 2000 重原子),300 碳 / 902 原子约 11 秒完成。
 - **卟啉 / 血红素**:解析式平面卟啉模板(4 吡咯 + 4 meso 桥),金属离子(Fe/Mg/Zn/Co/Ni/Cu/Mn)自动配位到环心(Fe–N 2.05 Å);配位键渲染为青蓝色细杆并排除在化学邻接/环枚举之外,核心作为刚体保持平面。
 - **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
-- **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构。
+- **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构;蛋白质名称(胰岛素/溶菌酶/核糖核酸酶A/细胞色素c)直接取 **RCSB PDB 实验结构**(真实主链构象与二硫键,如胰岛素 3I40 403 原子单连通),不再走粗坐标管线生成长链碎片。
 - **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 / 中间画布 / 右侧检查器,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
 - **可视化**:分子状态条(分子式 / 原子 / 键 / 环 / 芳香 / ∠RMS 实时读数)、检查器(选中原子或键的详情、环清单、视图开关)、蓝色半透明水滴形孤对电子云(NEBOOK 风格、受光立体)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮。
 - **自测体系**:页面内自动测试 + Playwright 回归脚本(33 几何 + 23 π + 36 基团方位,全绿)。
@@ -44,6 +44,7 @@
     - *候选筛选*:面板顶部可按**官能团**(羟基/醛基/羧基/酯基/醚键/酮羰基/氨基/酰胺/氰基/硝基/苯环/芳香环/环/甲基/C=C/C≡C/卤素)与 **¹H NMR 特征**筛选候选——峰组数表达式(如 `3` / `≥3` / `2-4`)、可排除活泼氢、氢类型(醛氢/芳香氢/烯氢/炔氢/羧酸氢/羟基氢/氨基氢/硫醇氢);多条件支持"满足全部/任一";每行下方实时显示该分子的基团与 ¹H NMR(组数+积分比,如 `3 组 (3:2:1)`),"全选"只勾选当前可见行。
     - *大分子式：检索前筛选*:候选超过 400 个的分子式(如 C₁₂H₁₃N₃O₂,PubChem 上有一万多条记录)不再一次性全量拉取(旧版会因请求超时报"请求失败"),而是先弹出**检索前筛选**面板——同样按官能团 / ¹H NMR 条件收窄,并可选每次上限(30/60/120 个);检索从前往后扫描、命中达到上限即停,顶部实时显示"已扫描 / 总数 · 命中数";结果面板可点**继续检索更多**往后取下一批,预筛选条件会自动带入结果面板的筛选条(可再收窄)。小分子式(≤400 候选)仍直接出结果。
   - *蛋白质序列*:输入氨基酸序列(中文名/三字母/单字母混合均可,≤400 残基),经 **ESMFold** 在线预测 3D 结构(必须联网)。
+  - *蛋白质名称*:胰岛素 / 溶菌酶 / 核糖核酸酶A / 细胞色素c(中英文、大小写、空格均可)直接下载 **RCSB PDB 实验结构**——自动过滤水分子与 B 构象、推断羰基双键,得到真实折叠的多肽链(胰岛素 3I40:403 原子 / 414 键 / 3 条二硫键,单连通无碎片);名称框或序列框填均可。失败时不会回退粗坐标管线,而是提示改用氨基酸序列由 ESMFold 预测。含 ≥10 个酰胺键的 SMILES 会被拒绝并给出同样的引导(本地管线无法排布大分子骨架)。
   - 在线 API(PubChem/CACTUS/ESMFold)均免费免 key,失败静默回退本地管线,控制台标注分子来源。
 - **自由搭骨架**:左侧构建台顶部切到「元素」页签,单列拖出 **8 种原子**(C/H/O/N/F/Cl/Br/I,CPK 彩色圆球)到画布,靠近已有原子松开即自动成键。
 - **基团拖拽**:左侧构建台顶部切到「基团」页签,单列 **9 个球形预设基团按钮** —— 甲基 CH₃ / 乙基 C₂H₅ / 苯基 Ph / 氨基 NH₂ / 羧基 COOH / 羰基 C=O / 醛基 CHO / 酯基 COOR / 羟基 OH,拖到分子上自动吸附到最近可键合原子,绕连接轴 6 角度选无碰撞朝向(未饱和中心直接成键、保留原有 H;饱和中心沿某 H 方向放置并替换该 H)。
@@ -89,7 +90,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `球棍模型4.html` | 唯一主文件:几何引擎 + 输入管线(名称/SMILES/分子式异构体/蛋白质 ESMFold)+ 交互建模全功能集(见下);2/3 号副本已移除,历史版本可在 git 历史中找回 |
+| `球棍模型4.html` | 唯一主文件:几何引擎 + 输入管线(名称/SMILES/分子式异构体/蛋白质名称 PDB/蛋白质 ESMFold)+ 交互建模全功能集(见下);2/3 号副本已移除,历史版本可在 git 历史中找回 |
 | `playwright-verify.js` | 主验证脚本:加载 4 号页面、触发并采集 33 例自测结果、输出 JSON |
 | `verify_regression.js` | 回归总装:33 几何 + 23 π |
 | `verify_distort.js` | 大畸变专项:手摆乙醛甲基 H 聚拢(3 档)→一键优化键角恢复+连接保持 |
@@ -97,6 +98,7 @@
 | `verify_isomer_condensed.js` | 异构体面板:结构简式转换器电池、真实弹窗(C2H6O)、键线式放大查看器(含 ‹›/←→ 切换、勾选"生成此分子"、本地画布渲染与缩放回归保护,25 项) |
 | `verify_isomer_filter.js` | 异构体候选筛选:分析器电池 39 例、峰组数表达式、真实 UI 筛选/全选/重置/C4H8 数据驱动/筛选内放大切换范围(26 项) |
 | `verify_isomer_presearch.js` | 大分子式检索前筛选:候选探测(401/capped)、属性抓取、真实 UI(C₁₂H₁₃N₃O₂ 芳香环筛选 30 个、说明条/继续 30→60、条件带入、Esc/停止/取消、无筛选前 30)、手机 375×667/375×400 不超屏可滚动、C2H6O/C6H6 回归(23 项) |
+| `verify_protein_pdb.js` | 蛋白质名称 → RCSB PDB:名称库解析、`parsePDB` 过滤(proteinOnly/altLocFirst)、3I40 拉取与羰基双键推断、生成几何(单连通/二硫键/零碰撞/键长)、真实 UI「胰岛素」「溶菌酶」、多肽守卫、非法 ID、33 几何(23 项) |
 | `verify_history.js` | 撤销/恢复专项(12 项):按钮/图标/布局/初始状态、空栈提示、拖拽/删除/移动/优化/清空/生成的提交点、复合操作恰记一条、键盘微移合并、redo 失效规则、快捷键、位置精确还原 |
 | `verify_shell.js` | 三栏外壳:顶栏结构(分子名/撤销/恢复/优化/清空/帮助/生成…)、三栏几何(224 / 中间 / 224)、旧角落控件已删除、手机底部栏与底部抽屉(9 项) |
 | `verify_help.js` | 帮助浮层:顶栏 `#btn-help` 打开,四段内容 + Esc 说明,✕ / 点暗背景 / Escape 三种关闭,手机端(8 项) |
@@ -139,7 +141,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ```
 
 - 自测报告读取:轮询 `window.lastRunResults`(33 例全跑完才写入);页面内 `window.runAllExamplesAndTests()` 可手动触发。
-- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
+- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 23/23、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
 
 ## 复现与分析
 
@@ -173,6 +175,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - `window.__dragMode`{project/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
 - `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
 - 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__probeFormulaCandidates`/`__isomerPresearch`{open/close/start/stop/continue/reset/set/state/matches}/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
+- 蛋白名称 PDB:`window.__PROTEIN_NAME_LIB`/`__resolveProteinName`/`__fetchProteinPDBById`/`__inferPdbCarbonylBonds`/`__generateFromProteinPDB`/`__countPeptideBonds`
 - 异构体/键线式:`window.__smilesToCondensed`/`__toSubscriptCondensed`/`__analyzeIsomerStructure`/`__isomerFilter`{analyze/state/set/reset/rows}、`window.__skeletalRender`/`__openSkeletalLightbox`/`__hideSkeletalLightbox`/`__skeletalLightbox`{state/next/prev}
 - 参数注入:`window.OPT_PARAMS`、`localStorage.OPT_PARAMS_OVERRIDE`(见 HTML 内 `DEFAULT_OPT_PARAMS`)
 
