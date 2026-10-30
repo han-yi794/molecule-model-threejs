@@ -13,6 +13,9 @@
 //   K6 极矮 375×300（横屏场景）：max-height 生效、整体仍在屏内
 //   K7 视口缩放（1440×900→800×360）后自动重定位、仍在屏内
 //   K8 收起输入面板时键盘同步收起
+//   K9 拖动标题栏移动键盘（真实鼠标）：拖动中保持展开、位移生效、焦点保持、按键仍可用、
+//      重新弹出保持位置、resetPosition 回锚定；关闭按钮不是拖动把手
+//   K10 手机触摸拖动（CDP touch 事件）：触摸可移动、不超出屏幕
 //   S1 原子库只剩原子卡片（8 张）+ 提示文字，按钮/下拉（含拖动方式）数量 0
 //   S2 已移除元素不存在；#btn-toggle-pi 全文档唯一且在检查器「视图」段
 //   S3 检查器 π 开关仍可切换；原子生成/自测入口无回归（__diag.generate + window.runAllExamplesAndTests）
@@ -192,6 +195,83 @@ class AssertionCollector {
             push('K8 收起输入面板同步收起键盘', ac.failed === 0, `before=${before} after=${after} | ${ac.failures.join('；')}`);
         }
 
+        // ---------- K9 拖动标题栏移动键盘（2026-10-30） ----------
+        {
+            await page.waitForTimeout(250);
+            await page.evaluate(() => window.__formulaKeypad.resetPosition());
+            await page.fill('#formula-input', '');
+            await page.click('#formula-input');
+            await page.waitForTimeout(200);
+            const before = await page.evaluate(() => {
+                const kp = document.getElementById('formula-keypad');
+                const r = kp.getBoundingClientRect();
+                return { left: r.left, top: r.top, display: kp.style.display };
+            });
+            const head = await page.locator('#formula-keypad .fkp-head').boundingBox();
+            const dx = 60, dy = 90;
+            const sx = head.x + head.width / 2 - 20, sy = head.y + head.height / 2;
+            await page.mouse.move(sx, sy);
+            await page.mouse.down();
+            await page.mouse.move(sx + dx, sy + dy, { steps: 6 });
+            const midDisplay = await page.evaluate(() => document.getElementById('formula-keypad').style.display);
+            await page.mouse.up();
+            await page.waitForTimeout(120);
+            const after = await page.evaluate(() => {
+                const kp = document.getElementById('formula-keypad');
+                const r = kp.getBoundingClientRect();
+                return { left: r.left, top: r.top, display: kp.style.display,
+                         moved: window.__formulaKeypad.isMoved(),
+                         dragging: kp.querySelector('.fkp-head').classList.contains('dragging'),
+                         active: document.activeElement && document.activeElement.id,
+                         cursor: getComputedStyle(kp.querySelector('.fkp-head')).cursor };
+            });
+            await page.click('#formula-keypad-els .fkp-key >> nth=0');   // C
+            const val = await page.inputValue('#formula-input');
+            // 关闭按钮不是拖动把手：按住拖它键盘不移动
+            const closeBox = await page.locator('#formula-keypad-close').boundingBox();
+            await page.mouse.move(closeBox.x + closeBox.width / 2, closeBox.y + closeBox.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(closeBox.x + 50, closeBox.y + 40, { steps: 4 });
+            await page.mouse.up();
+            await page.waitForTimeout(100);
+            const afterCloseDrag = await page.evaluate(() => {
+                const kp = document.getElementById('formula-keypad');
+                const r = kp.getBoundingClientRect();
+                return { left: r.left, top: r.top, display: kp.style.display };
+            });
+            await page.click('#formula-keypad-close');
+            await page.click('#formula-input');
+            await page.waitForTimeout(150);
+            const reopen = await page.evaluate(() => {
+                const r = document.getElementById('formula-keypad').getBoundingClientRect();
+                return { left: r.left, top: r.top };
+            });
+            await page.evaluate(() => window.__formulaKeypad.resetPosition());
+            const reset = await page.evaluate(() => {
+                const kp = document.getElementById('formula-keypad').getBoundingClientRect();
+                const inp = document.getElementById('formula-input').getBoundingClientRect();
+                return { top: kp.top, left: kp.left, inputBottom: inp.bottom, moved: window.__formulaKeypad.isMoved() };
+            });
+            const ac = new AssertionCollector();
+            ac.ok(midDisplay === 'block', `拖动中保持展开（display=${midDisplay}）`);
+            ac.ok(Math.abs(after.left - (before.left + dx)) < 2 && Math.abs(after.top - (before.top + dy)) < 2,
+                `拖动位移 +${dx}/+${dy}（${Math.round(before.left)},${Math.round(before.top)} → ${Math.round(after.left)},${Math.round(after.top)}）`);
+            ac.ok(after.moved && !after.dragging, `isMoved=${after.moved}，dragging 类已清除=${!after.dragging}`);
+            ac.ok(after.active === 'formula-input', `拖动后输入框仍聚焦（${after.active}）`);
+            ac.ok(after.cursor === 'grab', `标题栏 cursor=grab（${after.cursor}）`);
+            ac.ok(val === 'C', `拖动后点键仍输入（"${val}"）`);
+            ac.ok(afterCloseDrag.display === 'block'
+                && Math.abs(afterCloseDrag.left - after.left) < 1 && Math.abs(afterCloseDrag.top - after.top) < 1,
+                `按住关闭按钮拖动不移动键盘（${Math.round(afterCloseDrag.left)},${Math.round(afterCloseDrag.top)}）`);
+            ac.ok(Math.abs(reopen.left - after.left) < 2 && Math.abs(reopen.top - after.top) < 2,
+                `重新弹出保持拖动位置（${Math.round(reopen.left)},${Math.round(reopen.top)}）`);
+            ac.ok(reset.moved === false && reset.top >= reset.inputBottom - 1 && reset.top - reset.inputBottom < 10
+                && Math.abs(reset.left - before.left) < 2,
+                `resetPosition 回输入框锚定（top=${Math.round(reset.top)} inputBottom=${Math.round(reset.inputBottom)}）`);
+            push('K9 拖动标题栏移动键盘（位置保持/复位/按键无回归）', ac.failed === 0,
+                `before=(${Math.round(before.left)},${Math.round(before.top)}) after=(${Math.round(after.left)},${Math.round(after.top)}) | ${ac.failures.join('；')}`);
+        }
+
         // ---------- S1/S2 原子库清理 ----------
         {
             const r = await page.evaluate(() => ({
@@ -304,6 +384,55 @@ class AssertionCollector {
             push('K6 极矮视口（375×300）防溢出', ac.failed === 0,
                 `rect t=${Math.round(r.t)} b=${Math.round(r.b)} h=${Math.round(r.h)} | ${ac.failures.join('；')}`);
             await s.close();
+        }
+
+        // ---------- K10 手机触摸拖动（CDP touch 事件） ----------
+        {
+            const ctx = await browser.newContext({ viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true });
+            const tp = await ctx.newPage();
+            tp.on('pageerror', e => report.consoleErrors.push('PAGEERROR: ' + String(e).slice(0, 300)));
+            tp.on('console', m => { if (m.type() === 'error') report.consoleErrors.push(m.text().slice(0, 300)); });
+            await tp.goto(PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
+            await tp.waitForFunction(() => !!(window.__formulaKeypad && window.__diag), null, { timeout: 30000 });
+            await tp.evaluate(() => window.__setInputPanelOpen(true));
+            await tp.evaluate(() => window.__showFormulaKeypad());
+            await tp.waitForTimeout(300);
+            const before = await tp.evaluate(() => {
+                const kp = document.getElementById('formula-keypad');
+                const r = kp.getBoundingClientRect();
+                return { left: r.left, top: r.top, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight };
+            });
+            const head = await tp.locator('#formula-keypad .fkp-head').boundingBox();
+            const dx = 30, dy = 40;
+            const sx = head.x + head.width / 2 - 10, sy = head.y + head.height / 2;
+            const client = await ctx.newCDPSession(tp);
+            const point = (x, y) => [{ x, y, id: 1, radiusX: 2, radiusY: 2, force: 1 }];
+            await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(sx, sy) });
+            await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(sx + dx / 2, sy + dy / 2) });
+            await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(sx + dx, sy + dy) });
+            await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            await tp.waitForTimeout(200);
+            const after = await tp.evaluate(() => {
+                const kp = document.getElementById('formula-keypad');
+                const r = kp.getBoundingClientRect();
+                return { left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+                         moved: window.__formulaKeypad.isMoved(),
+                         dragging: kp.querySelector('.fkp-head').classList.contains('dragging'),
+                         vw: innerWidth, vh: innerHeight, display: kp.style.display };
+            });
+            const expLeft = Math.max(8, Math.min(before.left + dx, after.vw - before.w - 8));
+            const expTop = Math.max(8, Math.min(before.top + dy, after.vh - before.h - 8));
+            const ac = new AssertionCollector();
+            ac.ok(after.display === 'block', `触摸拖动后仍展开（display=${after.display}）`);
+            ac.ok(Math.abs(after.left - expLeft) < 2 && Math.abs(after.top - expTop) < 2,
+                `触摸位移生效（${Math.round(before.left)},${Math.round(before.top)} → ${Math.round(after.left)},${Math.round(after.top)}，期望 ${Math.round(expLeft)},${Math.round(expTop)}）`);
+            ac.ok(after.moved === true && after.dragging === false, `isMoved=${after.moved}，dragging 已清除=${!after.dragging}`);
+            ac.ok(after.left >= 7 && after.top >= 7 && after.right <= after.vw - 7 && after.bottom <= after.vh - 7,
+                `仍在屏内（${Math.round(after.left)},${Math.round(after.top)} - ${Math.round(after.right)},${Math.round(after.bottom)} / ${after.vw}×${after.vh}）`);
+            push('K10 手机触摸拖动键盘', ac.failed === 0,
+                `before=(${Math.round(before.left)},${Math.round(before.top)}) after=(${Math.round(after.left)},${Math.round(after.top)}) | ${ac.failures.join('；')}`);
+            await tp.close();
+            await ctx.close();
         }
 
         // ---------- S4 控制台零错误 ----------
