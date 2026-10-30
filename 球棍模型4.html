@@ -1835,7 +1835,7 @@
                 <b>环</b>：用数字标记首尾原子，如 <code>c1ccccc1</code> = 苯（小写 c 表示芳香环碳）。<br/>
                 <b>电荷 / 离子</b>：写在方括号里，如 <code>[N+]</code> 带正电的氮、<code>[O-]</code> 带负电的氧。<br/>
                 <b>其他写法</b>：芳香环也可大写（自动判环）；立体标记（如 <code>@</code>、<code>/</code>）会被自动忽略后重试。<br/>
-                <b>例子</b>：<code>CCO</code> 乙醇、<code>c1ccccc1</code> 苯、<code>CC(=O)Oc1ccccc1C(=O)O</code> 阿司匹林
+                <b>例子</b>：<code>CCO</code> 乙醇、<code>c1ccccc1</code> 苯、<code>CC(=O)Oc1ccccc1C(=O)O</code> 阿司匹林、鞘磷脂（长链示例）
             </div>
         </div>
     </div>
@@ -2190,6 +2190,46 @@
                 ddSlideHide(body, () => body.classList.remove('dd-closing'));
             }
         }
+        // SMILES 说明（生成抽屉内）：三栏重设计时 toggle 漏接管 → 补回展开/收起
+        function setSmilesHelpOpen(open) {
+            const body = document.getElementById('smiles-help');
+            if (!body) return;
+            if (open) {
+                body.classList.remove('dd-closing');
+                body.classList.add('open');
+                body.style.display = 'block';
+                ddFadeShow(body, [{ opacity: 0 }, { opacity: 1 }]);
+            } else {
+                if (!body.classList.contains('open') && !body.classList.contains('dd-closing')) return;
+                body.classList.remove('open');
+                body.classList.add('dd-closing');
+                ddFadeHide(body, [{ opacity: 1 }, { opacity: 0 }], () => {
+                    body.classList.remove('dd-closing');
+                    body.style.display = '';
+                });
+            }
+            const tgl = document.getElementById('smiles-help-toggle');
+            if (tgl) {
+                tgl.classList.toggle('open', open);
+                tgl.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+        }
+        (function bindSmilesHelpToggle() {
+            const tgl = document.getElementById('smiles-help-toggle');
+            const body = document.getElementById('smiles-help');
+            if (!tgl || !body) return;
+            tgl.setAttribute('role', 'button');
+            tgl.setAttribute('tabindex', '0');
+            tgl.setAttribute('aria-expanded', 'false');
+            const toggle = (e) => {
+                if (e) e.preventDefault();
+                setSmilesHelpOpen(!body.classList.contains('open'));
+            };
+            tgl.addEventListener('click', toggle);
+            tgl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); }
+            });
+        })();
         // 淡入 / 淡出（弹窗）：frames 由调用方给，保留各自的居中 transform
         function ddFadeShow(el, frames) {
             if (!el) return;
@@ -2541,6 +2581,21 @@
         const BOND_RADIUS = 0.1;
         const BOND_OFFSET = 0.2;
         let bonds = [];
+        // 键→原子邻接表缓存（2026-10-30 大分子性能）：getBondsForAtom 旧实现是
+        // bonds.filter(...)，每次 O(m)。大分子（902 原子/901 键）生成、补氢、孤对
+        // 刷新与每帧 updateLonePairVisuals 会把它调用数万次，叠加 analyzeRings /
+        // inferHybridization 内部的重复调用变成 O(n·m) 灾难——实测 300 碳直链：
+        // 放置 47s、补氢 44s、优化单轮 >100s（时间预算都来不及生效）。
+        // 改为惰性重建的 Map<atom, bond[]>，键表结构变化时 markBondsChanged() 置脏。
+        let _bondAdjCache = null;
+        function markBondsChanged() {
+            _bondAdjCache = null;
+            // 键表变化（含键级变化，如 1→1.5）→ 环枚举缓存失效。
+            // 注意：几何更新（updateBonds(true) 每帧）不调用本函数，环缓存得以保留。
+            try { delete window.__RINGS_CACHE; } catch (e) {}
+            // 芳香原子判定缓存同样按键表失效（芳香性只看 π 拓扑，与几何无关）
+            try { if (window.__AROM_ATOM_CACHE) window.__AROM_ATOM_CACHE.clear(); } catch (e) {}
+        }
         let isOptimizing = false;
         // 记录最近一次优化结束时间（ms），用于在优化后短时内抑制断键操作
         let lastOptimizationEndTime = 0;
@@ -2884,6 +2939,8 @@
             let sum = 0;
             for (const bond of bonds) {
                 if (bond.atomA === atom || bond.atomB === atom) {
+                    // 配位键（卟啉 Fe–N）按 1 条 σ 计入：它占用配体原子（N）的价域，
+                    // 使 [N-] 吡咯氮（2 条环键 + 1 条配位 = 3）判定饱和、补氢不再加 H。
                     const t = bond.type || 1;
                     sum += (t > 1.01 && t < 1.99) ? 1 : t;
                 }
@@ -2902,7 +2959,26 @@
         }
 
         function getBondsForAtom(atom) {
-            return bonds.filter(bond => bond.atomA === atom || bond.atomB === atom);
+            // 邻接表缓存（见 markBondsChanged 注释）。返回的数组是内部缓存，
+            // 调用方只读（全仓库检索确认无 push/sort/splice 等原地修改）。
+            // 配位键（bond.coordination，如卟啉 Fe–N）不进入化学邻接表：它不参与
+            // 杂化推断 / 键角统计 / 环枚举 / 补氢容量计算，只在 bonds 里供渲染与
+            // updateBonds 保活（否则 Fe 会被当成 4 配位共价中心把几何拉散）。
+            if (!_bondAdjCache) {
+                const map = new Map();
+                for (const bond of bonds) {
+                    if (bond.coordination) continue;
+                    const a = bond.atomA, b = bond.atomB;
+                    let la = map.get(a);
+                    if (!la) { la = []; map.set(a, la); }
+                    la.push(bond);
+                    let lb = map.get(b);
+                    if (!lb) { lb = []; map.set(b, lb); }
+                    lb.push(bond);
+                }
+                _bondAdjCache = map;
+            }
+            return _bondAdjCache.get(atom) || [];
         }
 
         // 原子的"可接受 σ 键数"上限。芳香 1.5 键在 getAtomBondOrderSum 中按 1 条 σ 计，
@@ -2913,8 +2989,8 @@
         function effectiveSigmaCapacity(atom) {
             const base = atomTypes[atom.userData.atomType]?.maxBond;
             if (base === undefined) return undefined;
-            for (const b of bonds) {
-                if ((b.atomA === atom || b.atomB === atom) && (b.type || 1) > 1.01 && (b.type || 1) < 1.99) {
+            for (const b of getBondsForAtom(atom)) {
+                if ((b.type || 1) > 1.01 && (b.type || 1) < 1.99) {
                     return Math.min(base, 3);
                 }
             }
@@ -3232,19 +3308,28 @@
         }
 
         // 判断原子是否被标记为芳香环（简单检测：存在芳香键或属于苯环检测结果）
+        // 结果按键表缓存（markBondsChanged 清空）：analyzeRings 的芳香性只看 π 电子
+        // 拓扑，与几何无关；优化循环里 inferHybridization 每轮对每个原子都会问一次，
+        // 不缓存等于每轮几十次全量环枚举 + 平面 RMSD（血红素实测占优化时间 80%）。
+        // 缓存挂在 window 上而非模块级 let：markBondsChanged() 定义在本函数之前
+        // （行号更靠前），用块级变量会在初始化前被引用而抛 TDZ 错误。
         function isAtomInAromaticRing(atom) {
             if (!atom || !atom.userData) return false;
             // 优先使用明确的芳香键标记
             const bs = getBondsForAtom(atom);
             if (bs.some(b => b.type === 1.5)) return true;
+            const cache = window.__AROM_ATOM_CACHE || (window.__AROM_ATOM_CACHE = new Map());
+            if (cache.has(atom)) return cache.get(atom);
+            let found = false;
             // 回退：检查所有环并判断是否存在芳香环包含该原子（稍微昂贵但健壮）
             try {
                 const rings = analyzeRings();
                 for (const r of rings) {
-                    if (r.aromaticity === 'aromatic' && r.atoms && r.atoms.includes(atom)) return true;
+                    if (r.aromaticity === 'aromatic' && r.atoms && r.atoms.includes(atom)) { found = true; break; }
                 }
             } catch (e) {}
-            return false;
+            cache.set(atom, found);
+            return found;
         }
 
         // 根据原子连接关系推断杂化类型（可被用户覆盖）
@@ -3536,7 +3621,12 @@
                         }
                     }
                     try {
-                    if (atom.userData) atom.userData.__sp2AnchorIdx = preferredIdx; } catch (e10) {}
+                    if (atom.userData) {
+                        atom.userData.__sp2AnchorIdx = preferredIdx;
+                        // 与 sp3 锚定缓存互斥（见 anchorForcedIdx 处注释）
+                        delete atom.userData.__sp3AnchorIdx;
+                    }
+                    } catch (e10) {}
                     // 起始基向量：若存在多键邻居则使用它的方向，否则使用第一个当前方向或 Y 轴后备
                     let start = null;
                     if (preferredIdx >= 0 && neighbors[preferredIdx]) {
@@ -3725,6 +3815,8 @@
                         // 主键邻居被挤到 109.47° 槽 → H 与主键重叠（isobutene 的
                         // CH3 实测 C-C-H 10.4°、H-H 29.1°）。
                         atom.userData.__sp3AnchorIdx = anchorIdx;
+                        // 与 sp2 锚定缓存互斥（见 anchorForcedIdx 处注释）
+                        delete atom.userData.__sp2AnchorIdx;
                     }
                     if (atom.userData && atom.userData.__sp3Anchor && atom.userData.__sp3Anchor.lengthSq() > 1e-6) {
                         reference = atom.userData.__sp3Anchor;
@@ -3785,9 +3877,25 @@
             let anchorForcedIdx = -1;
             try {
                 if (atom.userData) {
-                    const a2 = (atom.userData.__sp2AnchorIdx >= 0) ? atom.userData.__sp2AnchorIdx : -1;
-                    const a3 = (a2 < 0 && atom.userData.__sp3AnchorIdx >= 0) ? atom.userData.__sp3AnchorIdx : -1;
-                    anchorForcedIdx = (a2 >= 0) ? a2 : a3;
+                    // 锚定槽必须与当前杂化匹配：两个缓存键是各自杂化分支专用的。
+                    // 历史 bug（2026-10-30 修复）：SMILES 生成的分子在 generateFromSpec
+                    // 末尾 refreshLonePairVisuals 时会先用「缺 H 的粗坐标」跑一次
+                    // getIdealDirections——此时链碳只有 2 个 C 邻居、缺价被算成孤对
+                    // → 判 sp2 → 写入 __sp2AnchorIdx。随后补氢、优化时杂化已变 sp3，
+                    // 但这里无条件优先读 __sp2AnchorIdx，把**旧的 sp2 锚定邻居索引**
+                    // 当成 sp3 锚定索引强制占 0° 槽，而 baseDirs[0] 却按当前 sp3 锚
+                    // （另一邻居）生成 → 主键与模板错位 109.47°：CCCC 优化第一轮就把
+                    // C1-C2-C3 压到 7.7°、键长 1.39/1.79（实测）。预置 spec 因显式
+                    // H 存在、首轮即 sp3，从未触发。
+                    if (hyb === 'sp2' && typeof atom.userData.__sp2AnchorIdx === 'number'
+                        && atom.userData.__sp2AnchorIdx >= 0) {
+                        anchorForcedIdx = atom.userData.__sp2AnchorIdx;
+                    }
+                    if (anchorForcedIdx < 0 && hyb === 'sp3'
+                        && typeof atom.userData.__sp3AnchorIdx === 'number'
+                        && atom.userData.__sp3AnchorIdx >= 0) {
+                        anchorForcedIdx = atom.userData.__sp3AnchorIdx;
+                    }
                 }
                 // 强制锚定邻居占 0° 槽（baseDirs[0] = axis/start 方向）。
                 // 2026-10 修复：此前该逻辑被 AB 测试禁用（空 if），当 H 摆得
@@ -3917,13 +4025,36 @@
         }
 
         // --- 全局同步优化所有可杂化原子（支持环状分子）---
-        function optimizeAllAtoms() {
+        function optimizeAllAtoms(opts) {
             try {
+            const optOpts = opts || {};
             const atoms = atomsGroup.children.filter(child => child.userData?.isAtom && atomTypes[child.userData.atomType]?.hybridizable);
             if (atoms.length === 0) {
                 showToast('没有可优化的原子', 1500);
                 return;
             }
+
+            // 卟啉刚性核心（2026-10-30）：__porphCore 原子来自解析模板，几何已是
+            // 理想值（环键 1.40、meso 1.421、Fe–N 2.05、全共面）。优化器只把它当
+            // 锚点——不参与环排列 / 角度切向位移 / 键长位移，收尾时按快照原位恢复。
+            // 否则稠合大环的逐原子模板互相冲突，会把核拉散（实测 77 原子跑 36s，
+            // Fe 被甩到 14-23Å）。取代基（甲基/乙烯基/丙酸）仍正常优化。
+            const rigidCore = atomsGroup.children.filter(c => c.userData?.isAtom && c.userData.__porphCore === true);
+            const rigidSet = new Set(rigidCore);
+            // 快照 = 模板理想几何（__rigidHome）按当前核心质心平移，而不是当前坐标：
+            // 扰动/拖动把核弄歪后，一次优化即可恢复理想形状（纯平移偏移被保留，
+            // 不会让分子整体跳回原点）。没有 home 时退回当前坐标。
+            const rigidSnapshot = (() => {
+                if (!rigidCore.length) return [];
+                const withHome = rigidCore.filter(a => a.userData.__rigidHome);
+                if (!withHome.length) return rigidCore.map(a => ({ a, p: a.position.clone() }));
+                const homeC = new THREE.Vector3(), curC = new THREE.Vector3();
+                for (const a of withHome) { homeC.add(a.userData.__rigidHome); curC.add(a.position); }
+                homeC.divideScalar(withHome.length); curC.divideScalar(withHome.length);
+                const off = curC.sub(homeC);
+                return withHome.map(a => ({ a, p: a.userData.__rigidHome.clone().add(off) }));
+            })();
+            const isRigidAtom = (a) => rigidSet.has(a);
 
             // 两次优化之间结构可能已被修改（增删原子/键、改键类型，如把 CO2 改成
             // 甲醛类），自动推断写入的杂化值可能已过时（CO2 的 C=sp 改为单键连
@@ -3937,7 +4068,9 @@
             // 注意：排列后不能直接 return——带取代基的芳香分子（phenol 的 O、
             // benzoicAcid 的 COOH、aniline 的 N 等）仍需后续键角/键长优化，
             // 否则取代基键长停留在扰动值（1.1-2.2）且 C-X 角度失真。
-            const benzeneRing = detectBenzeneRing(atoms);
+            const benzeneRingRaw = detectBenzeneRing(atoms);
+            // 卟啉核内的芳香五元环不能走通用排列（会把环搬离 meso 桥）
+            const benzeneRing = (benzeneRingRaw && benzeneRingRaw.some(isRigidAtom)) ? null : benzeneRingRaw;
             if (benzeneRing) {
                 arrangeBenzeneRing(benzeneRing);
                 showToast('检测到芳香环，已排列为正多边形', 2000);
@@ -3963,6 +4096,7 @@
                 for (const ring of allRings) {
                     if (ring.length < 3 || ring.length > 8) continue;
                     if (ring.some(a => arranged.has(a))) continue;
+                    if (ring.some(isRigidAtom)) continue;   // 卟啉核五元环已由模板定死
                     // 独立环判定：每个环原子在环内恰好 2 个邻居（排除稠合环）
                     let independent = true;
                     for (const a of ring) {
@@ -4010,6 +4144,23 @@
             // 上限 160：320 轮实测出现整体漂移（均值 1.25、bbox 拉到 -10），多轮
             // 累加位移的均值漂移在长链分子上不可忽略。
             let effIterations = Math.min(160, Math.max(ITERATIONS, ITERATIONS + atoms.length));
+            if (typeof optOpts.maxIterations === 'number' && optOpts.maxIterations > 0) {
+                effIterations = Math.min(effIterations, optOpts.maxIterations);
+            }
+            // 时间预算（2026-10-30 大分子）：>250 原子的分子按完整轮数跑是分钟级
+            // 卡死（旧版 250 原子直接拒绝生成，根因就在这里）。默认对大分子启用
+            // 硬预算，保证一次「全局同步优化」在可接受时间内返回近似几何；调用方可
+            // 用 opts.timeBudgetMs / window.OPT_PARAMS.OPT_TIME_BUDGET_MS 覆盖。
+            let optTimeBudgetMs = 0;
+            if (typeof optOpts.timeBudgetMs === 'number' && optOpts.timeBudgetMs > 0) optTimeBudgetMs = optOpts.timeBudgetMs;
+            else if (window.OPT_PARAMS && window.OPT_PARAMS.OPT_TIME_BUDGET_MS > 0) optTimeBudgetMs = window.OPT_PARAMS.OPT_TIME_BUDGET_MS;
+            else if (atoms.length > 250) optTimeBudgetMs = 8000;
+            const optDeadline = optTimeBudgetMs > 0 ? (performance.now() + optTimeBudgetMs) : 0;
+            let optTruncatedAt = -1;
+            let optRanIterations = 0;
+            const optStartedAt = Date.now();
+            let optMaxIterCap = (typeof optOpts.maxIterations === 'number' && optOpts.maxIterations > 0) ? optOpts.maxIterations : Infinity;
+            try { window.__OPT_LAST_TRUNCATED = null; } catch (e) {}
             // 收敛保证阈值（2026-10）：一键优化后键角必须收敛到杂化理想值
             const CONVERGENCE_STD = (window.OPT_PARAMS && window.OPT_PARAMS.CONVERGENCE_STD) || 3.0;
             const CONVERGENCE_MAX_ITER = (window.OPT_PARAMS && window.OPT_PARAMS.CONVERGENCE_MAX_ITER) || 280;
@@ -4097,6 +4248,12 @@
             } catch (e) {}
 
             for (let iter = 0; iter < effIterations; iter++) {
+                optRanIterations = iter + 1;
+                // 时间预算检查（大分子）：每轮开头判一次，超时保留当前几何直接收尾。
+                if (optDeadline > 0 && iter > 0 && performance.now() > optDeadline) {
+                    optTruncatedAt = iter;
+                    break;
+                }
                 const displacementMap = new Map(); // 存储每个原子累积位移
 
                 // 每次迭代重新推断并写回自动杂化（如果用户未手动覆盖）
@@ -4176,6 +4333,7 @@
                     }
                 } catch (e) {}
                 for (const atom of atoms) {
+                    if (isRigidAtom(atom)) continue;   // 刚性核：几何已理想，不重算角度目标
                     const atomBonds = getBondsForAtom(atom);
                     if (atomBonds.length === 0) continue;
 
@@ -4312,6 +4470,7 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
                     for (let i = 0; i < neighbors.length; i++) {
                         if (!targetPositions[i]) continue;
                         const neighbor = neighbors[i];
+                        if (isRigidAtom(neighbor)) continue;   // 不把卟啉核拽向局部模板
                         const delta = targetPositions[i].clone().sub(neighbor.position);
                         if (delta.length() < 0.004) continue;
 
@@ -4384,6 +4543,7 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
                 {
                     const bondLengthMap = new Map();
                     for (const bond of bonds) {
+                        if (bond.coordination) continue;   // 配位键长度由模板固定（Fe–N 2.05Å，非共价键长）
                         const { atomA, atomB } = bond;
                         const targetLen = getTargetBondLength(atomA, atomB);
                         const currentLen = atomA.position.distanceTo(atomB.position);
@@ -4400,7 +4560,16 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
                         const newPosA = atomB.position.clone().sub(dir.clone().multiplyScalar(targetLen));
                         const deltaB = newPosB.clone().sub(atomB.position);
                         const deltaA = newPosA.clone().sub(atomA.position);
-                        if (!aInRing && bInRing) {
+                        const aRigid = isRigidAtom(atomA), bRigid = isRigidAtom(atomB);
+                        if (aRigid && bRigid) continue;
+                        if (aRigid || bRigid) {
+                            // 核-取代基键：核端固定，只移动取代基端
+                            const mover = aRigid ? atomB : atomA;
+                            const mv = aRigid ? deltaB : deltaA;
+                            if (!bondLengthMap.has(mover)) bondLengthMap.set(mover, { dx: 0, dy: 0, dz: 0, count: 0 });
+                            const accR = bondLengthMap.get(mover);
+                            accR.dx += mv.x; accR.dy += mv.y; accR.dz += mv.z; accR.count += 1;
+                        } else if (!aInRing && bInRing) {
                             // 移动环外端 atomA，环内原子保持不动
                             if (!bondLengthMap.has(atomA)) bondLengthMap.set(atomA, { dx: 0, dy: 0, dz: 0, count: 0 });
                             const acc = bondLengthMap.get(atomA);
@@ -4491,13 +4660,14 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
                         let worst = 0;
                         const allA = atomsGroup.children.filter(c => c.userData?.isAtom && c.userData.atomType !== 'H');
                         for (const a of allA) {
+                            if (isRigidAtom(a)) continue;   // 刚性卟啉核的 std 不适用通用理想角
                             if (getBondsForAtom(a).length < 2) continue;
                             const s = computeBondAngleStd(a);
                             if (s > worst) worst = s;
                         }
-                        if (worst > CONVERGENCE_STD && effIterations < CONVERGENCE_MAX_ITER) {
+                        if (worst > CONVERGENCE_STD && effIterations < CONVERGENCE_MAX_ITER && effIterations < optMaxIterCap) {
                             if (optLastWorst === null || worst < optLastWorst - 0.05) {
-                                effIterations = Math.min(CONVERGENCE_MAX_ITER, effIterations + 20);
+                                effIterations = Math.min(CONVERGENCE_MAX_ITER, optMaxIterCap, effIterations + 20);
                             }
                             optLastWorst = worst;
                         }
@@ -4510,6 +4680,10 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
             // 共轭桥共面（苯乙烯型）：芳香环×外接双键（乙烯基/C=O）整体平面化
             // （离域π键专属，合并开关关闭时跳过 → 旧逻辑无此约束）
             if (DELOCAL_PI_ENABLED) { try { enforceConjugatedBridgeCoplanarity(); } catch (e) {} }
+            // 卟啉刚性核按快照原位恢复（排列/平面化等收尾步骤可能微调过核原子）
+            if (rigidSnapshot.length) {
+                for (const s of rigidSnapshot) s.a.position.copy(s.p);
+            }
             // 优化收尾：整体质心回正（长链分子多轮迭代会产生均值漂移，实测鞘磷脂
             // 160 轮后质心被推到 z≈-9.4、bbox -20.3~+12）。纯平移不影响键长/角度/
             // 环检测/共面约束，只保证分子落在坐标系中心。
@@ -4528,7 +4702,13 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
             // 刷新所有标签以显示推断/用户设置的杂化
             atomsGroup.children.filter(c => c.userData?.isAtom).forEach(a => updateAtomLabel(a));
             scheduleStatusUpdate();   // 优化后键角读数变化
-            showToast(`全局优化完成`, 1800);
+            try { window.__OPT_LAST_INFO = { iterations: optRanIterations, atoms: atoms.length, ms: Date.now() - optStartedAt, truncated: optTruncatedAt >= 0 }; } catch (e) {}
+            if (optTruncatedAt >= 0) {
+                try { window.__OPT_LAST_TRUNCATED = { iter: optTruncatedAt, budgetMs: optTimeBudgetMs, atoms: atoms.length }; } catch (e) {}
+                showToast(`已按时间预算优化 ${optTruncatedAt} 轮（大分子近似几何）`, 3200);
+            } else {
+                showToast(`全局优化完成`, 1800);
+            }
             } finally {
                 // 任何异常/提前退出都不能让 isOptimizing 卡住：卡住会使后续所有
                 // updateBonds() 只更新几何不重建键列表（残留键/无法新建键）
@@ -5156,6 +5336,7 @@ isOptimizing = false;
                     const old = cyl.material;
                     cyl.material = makeBondMaterial();
                     try { old.dispose(); } catch (e) {}
+                    styleCoordinationBond(bd, cyl);   // 配位键保持青蓝色（makeBondMaterial 会重置颜色）
                 }
             }
             updateStyleUI();
@@ -5173,6 +5354,7 @@ isOptimizing = false;
             const info = atomTypes[type];
             const div = document.createElement('div');
             div.textContent = info ? info.symbol : type;
+            div.dataset.role = 'atom-label';   // 稳定钩子：测试/样式按角色定位，不依赖字号
             div.style.cssText = 'color:#f2f4f8;font-size:11px;font-weight:600;line-height:14px;'
                 + 'background:rgba(8,9,11,.72);padding:1px 5px;border-radius:4px;'
                 + 'letter-spacing:.01em;pointer-events:none;user-select:none;';
@@ -5206,6 +5388,7 @@ isOptimizing = false;
         function setAtomType(atom, newType) {
             if (!atom || !atom.userData) return;
             atom.userData.atomType = newType;
+            markBondsChanged();   // 元素类型变化会改变环枚举的重原子集合/半径
             // 更新材质颜色
             try { if (atom.material && atomTypes[newType]) atom.material.color.set(atomTypes[newType].color); } catch (e) {}
             // 更新标签位置与文本
@@ -5223,7 +5406,7 @@ isOptimizing = false;
             // 连接保证（2026-10）：扰动只许动位置、不许改拓扑。先快照键表，扰动后把
             // 误删的键按原键序补回、误增的键移除——畸变幅度再大也不会在优化开始前
             // 就把连接顺序搞乱（大畸变测试 + 手摆大扰动的前提）。
-            const connSnap = bonds.map(b => ({ a: b.atomA, c: b.atomB, t: b.type }));
+            const connSnap = bonds.map(b => ({ a: b.atomA, c: b.atomB, t: b.type, co: !!b.coordination }));
             for (const a of atoms) {
                 const scale = (a.userData.atomType === 'H') ? 0.5 : 1.0;
                 const rx = (Math.random() - 0.5) * 2 * mag * scale;
@@ -5244,6 +5427,7 @@ isOptimizing = false;
                 const snapSet = new Set(connSnap.map(b => key(b.a, b.c) + ':' + b.t));
                 for (let i = bonds.length - 1; i >= 0; i--) {
                     const b = bonds[i];
+                    if (b.coordination) continue;   // 配位键不在共价快照的键级语义里，原样保留
                     if (!snapSet.has(key(b.atomA, b.atomB) + ':' + b.type)) {
                         try { b.cylinders.forEach(cyl => scene.remove(cyl)); } catch (e) {}
                         bonds.splice(i, 1);
@@ -5252,9 +5436,11 @@ isOptimizing = false;
                 for (const s of connSnap) {
                     const still = bonds.some(b => (b.atomA === s.a && b.atomB === s.c) || (b.atomA === s.c && b.atomB === s.a));
                     if (!still && atomsGroup.children.includes(s.a) && atomsGroup.children.includes(s.c)) {
-                        addBondBetween(s.a, s.c, s.t);
+                        const rb = addBondBetween(s.a, s.c, s.t);
+                        if (rb && s.co) rb.coordination = true;
                     }
                 }
+                markBondsChanged();
             } catch (e) {}
         }
 
@@ -5531,6 +5717,7 @@ isOptimizing = false;
                 bonds.push(bond);
                 updateBondGeometry(bond);
             }
+            markBondsChanged();
             const anchor = meshes[spec.anchor];
             const offset = anchorPos.clone().sub(anchor.position);
             meshes.forEach(m => m.position.add(offset));
@@ -5701,6 +5888,22 @@ isOptimizing = false;
             return cylinder;
         }
 
+        // 配位键外观（2026-10-30 卟啉 Fe–N）：细杆 + 青蓝色 + 半透明，与共价键明显区分。
+        // 注意 applyAtomStyle() 会用 makeBondMaterial() 重建材质（颜色被重置），
+        // 因此重建后必须再调一次本函数上色。
+        const COORD_BOND_RADIUS_FACTOR = 0.55;
+        const COORD_BOND_COLOR = 0x6fd2ff;
+        const COORD_BOND_OPACITY = 0.55;
+        function styleCoordinationBond(bond, cyl) {
+            if (!bond || !bond.coordination || !cyl || !cyl.material) return;
+            try {
+                cyl.material.color.setHex(COORD_BOND_COLOR);
+                cyl.material.transparent = true;
+                cyl.material.opacity = COORD_BOND_OPACITY;
+                cyl.material.needsUpdate = true;
+            } catch (e) {}
+        }
+
         function updateBondGeometry(bond) {
             const { atomA, atomB, cylinders, type } = bond;
             const posA = atomA.position;
@@ -5713,7 +5916,8 @@ isOptimizing = false;
 
             let offsets = [];
             let radius = BOND_RADIUS;
-            if (type === 1) offsets = [0];
+            if (bond.coordination) { offsets = [0]; radius = BOND_RADIUS * COORD_BOND_RADIUS_FACTOR; }
+            else if (type === 1) offsets = [0];
             else if (type === 1.5) { offsets = [0]; radius = BOND_RADIUS * 1.5; } // 芳香键更粗
             else if (type === 2) offsets = [-BOND_OFFSET, BOND_OFFSET];
             else offsets = [-BOND_OFFSET, 0, BOND_OFFSET];
@@ -5737,28 +5941,57 @@ isOptimizing = false;
                 cyl.position.copy(mid);
                 cyl.scale.set(radius / BOND_RADIUS, length, radius / BOND_RADIUS);
                 cyl.quaternion.copy(quaternion);
+                styleCoordinationBond(bond, cyl);
             }
         }
 
         function updateBonds(noAdd) {
-            // 键表可能变化：环枚举缓存失效（generateSpec 早期调用 findAllRings
-            // 时键尚未建立会缓存空环，之后环检测全部误判为空）
-            delete window.__RINGS_CACHE;
+            // 键表可能变化：环枚举缓存失效由 markBondsChanged() 在真正变化时处理
+            //（2026-10-30：旧实现在这里无条件 delete __RINGS_CACHE，而 updateBonds(true)
+            // 每帧都会调用 → 环枚举缓存形同虚设，大分子上 analyzeRings 反复全量枚举）。
             const atoms = atomsGroup.children.filter(child => child.userData?.isAtom);
             const newBonds = [];
             const now = Date.now();
             const framesThreshold = (OPT_PARAMS && OPT_PARAMS.BOND_BREAK_FRAMES) || 3;
             const cooldownMs = (OPT_PARAMS && OPT_PARAMS.BOND_BREAK_COOLDOWN_MS) || 600;
             const maxStretchFactor = (OPT_PARAMS && OPT_PARAMS.MAX_BOND_STRETCH_FACTOR) || 1.6;
-            for (let i = 0; i < atoms.length; i++) {
+            // 键索引（2026-10-30 大分子性能）：旧实现每个原子对都跑一次 bonds.find(...)，
+            // 复杂度 O(n²·m)——800 原子 / ~900 键时每帧数亿次比较，是大分子生成与
+            // 优化卡死的主因之一。改成一次建 pair → bond 的 Map（O(m)），内层降为 O(1)。
+            // 语义保持不变：同一 pair 若有多条重复键仍取 bonds 数组中第一条（同旧 bonds.find），
+            // 键顺序仍按 atoms 的 i<j 对顺序重建（newBonds 的先后顺序未变）。
+            const nAtom = atoms.length;
+            const atomIdx = new Map();
+            for (let i = 0; i < nAtom; i++) atomIdx.set(atoms[i], i);
+            const existingByPair = new Map();
+            for (const bond of bonds) {
+                const ia = atomIdx.get(bond.atomA), ib = atomIdx.get(bond.atomB);
+                if (ia === undefined || ib === undefined) continue;
+                const key = ia < ib ? ia * nAtom + ib : ib * nAtom + ia;
+                if (!existingByPair.has(key)) existingByPair.set(key, bond);
+            }
+            // 距离剪枝：无既有键且间距超过「任何成键阈值上限」的原子对直接跳过，
+            // 省掉 getTargetBondLength 的半径表查询（最大 C-I 单键 2.10Å × 1.24 ≈ 2.60Å，
+            // 取 3.6Å 留足余量；既有键无论拉多长都必须处理，用于断键判定）。
+            const PAIR_SKIP_SQ = 3.6 * 3.6;
+            for (let i = 0; i < nAtom; i++) {
                 const a = atoms[i];
-                for (let j = i + 1; j < atoms.length; j++) {
+                for (let j = i + 1; j < nAtom; j++) {
                     const b = atoms[j];
-                    const dist = a.position.distanceTo(b.position);
+                    const existing = existingByPair.get(i * nAtom + j);
+                    // 配位键（卟啉 Fe–N）不受共价键的距离阈值约束：只刷新几何并保活。
+                    // 否则 2.05Å 的 Fe–N 会被 removeThreshold / canAddBond 的价态检查误删。
+                    if (existing && existing.coordination) {
+                        updateBondGeometry(existing);
+                        newBonds.push(existing);
+                        continue;
+                    }
+                    const distSq = a.position.distanceToSquared(b.position);
+                    if (!existing && distSq > PAIR_SKIP_SQ) continue;
+                    const dist = Math.sqrt(distSq);
                     const targetLen = getTargetBondLength(a, b);
                     const addThreshold = targetLen * BOND_FACTOR;
                     const removeThreshold = targetLen * BOND_REMOVE_FACTOR;
-                    const existing = bonds.find(bond => (bond.atomA === a && bond.atomB === b) || (bond.atomA === b && bond.atomB === a));
                     if (existing) {
                         // 初始化计数字段
                         if (existing._overStretchCount === undefined) existing._overStretchCount = 0;
@@ -5824,6 +6057,7 @@ isOptimizing = false;
                 bonds.forEach(oldBond => { if (!newBonds.includes(oldBond)) try { oldBond.cylinders.forEach(cyl => scene.remove(cyl)); try { logBondEvent(oldBond, 'removed', 'listRebuild'); } catch(e){} } catch (e) {} });
                 bonds.length = 0;
                 bonds.push(...newBonds);
+                markBondsChanged();
             } else {
                 // 优化中只更新几何，不改变键列表
                 bonds.forEach(bond => updateBondGeometry(bond));
@@ -6031,14 +6265,14 @@ isOptimizing = false;
 
         // Shift+O 快捷键与"全局同步优化"按钮共用的入口：开启自动补氢时先补氢再优化，
         // 避免键盘路径（只调 optimizeAllAtoms）与按钮路径（先补氢）行为不一致
-        function optimizeAllWithAutoHydrogen() {
+        function optimizeAllWithAutoHydrogen(opts) {
             if (HYDROGENATE_AUTO) {
                 try {
                     const n = addMissingHydrogens();
                     if (n > 0) showToast(`自动补氢：${n} 个`, 1400);
                 } catch (e) { showToast('补氢失败: ' + e, 2500); }
             }
-            optimizeAllAtoms();
+            optimizeAllAtoms(opts);
             commitHistory();   // 撤销/恢复：优化完成记一条（复合操作内部由 historySuppress 抑制）
         }
 
@@ -6287,6 +6521,7 @@ isOptimizing = false;
             }
             // 清空 bonds 数组并在最后统一更新几何
             bonds.length = 0;
+            markBondsChanged();
             // 清除孤对电子云几何与方向缓存（云是独立挂在 scene 上的，不随 atomsGroup 移除）
             for (const a of list) {
                 if (a.userData) {
@@ -6322,6 +6557,7 @@ isOptimizing = false;
             }
             // 过滤掉这些键
             bonds = bonds.filter(b => b.atomA !== atom && b.atomB !== atom);
+            markBondsChanged();
 
             // 移除标签对象与其 DOM（CSS2DObject）以防残留
             try {
@@ -6404,6 +6640,7 @@ isOptimizing = false;
             const existing = bonds.find(b => (b.atomA === atomA && b.atomB === atomB) || (b.atomA === atomB && b.atomB === atomA));
             if (existing) {
                 existing.type = type;
+                markBondsChanged();   // 键级变化影响环芳香性判定
                 existing.cylinders.forEach(c => scene.remove(c));
                 existing.cylinders = [];
                 // 重置断键保护计数
@@ -6417,6 +6654,7 @@ isOptimizing = false;
             try { nb._overStretchCount = 0; nb._lastStableAt = Date.now(); } catch (e) {}
             updateBondGeometry(nb);
             bonds.push(nb);
+            markBondsChanged();
             try { logBondEvent(nb, 'created', 'addBondBetween'); } catch (e) {}
             return nb;
         }
@@ -6431,33 +6669,115 @@ isOptimizing = false;
             Ti: 0, V: 0, Cr: 0, Mn: 0, Fe: 0, Co: 0, Ni: 0, Cu: 0, Zn: 0,
             Ag: 0, Cd: 0, Ba: 0, Pt: 0, Au: 0, Hg: 0 };
         function bondsOfAtom(atom) {
-            return bonds.filter(b => b.atomA === atom || b.atomB === atom);
+            return getBondsForAtom(atom);
         }
+        // 为一个中心原子生成 k 个补氢方向。
+        // 原则：优先按 VSEPR 电子域模板（sp3 109.47° / sp2 120° / sp 180°）摆放，
+        // 模板不适用时才退回"与已有方向最小夹角最大化"的球面贪心。
+        // 历史 bug（2026-10-30 修复）：旧贪心把判据写反——它取 min(dot) 的最大值，
+        // 等价于选"与所有已有键最对齐"的方向 → 三个 H 全部叠在 C-C 键方向上
+        //（实测 CCCC 补氢后 H5/H6/H7 坐标完全相同，键角 0°），SMILES 烷烃因此
+        // 永远优化不回来。
         function hydrogenPlacementDirs(center, neighbors, k) {
             const dirs = [];
             if (k <= 0) return dirs;
-            if (k === 1 && neighbors.length >= 1) {
-                // 反方向：所有重原子邻居单位向量求和后取反
-                const sum = new THREE.Vector3();
-                for (const n of neighbors) sum.add(n.position.clone().sub(center.position).normalize());
-                if (sum.lengthSq() > 1e-6) { dirs.push(sum.clone().normalize().negate()); return dirs; }
+            const n0 = neighbors.length;
+            const unit = neighbors.map(n => n.position.clone().sub(center.position).normalize());
+            // 隐式 H 计入后的电子域数（域数决定理想键角；孤对按价电子数估算）
+            const type = center.userData?.atomType;
+            const veMap = { C: 4, N: 5, O: 6, S: 6, P: 5, B: 3, Si: 4, F: 7, Cl: 7, Br: 7, I: 7 };
+            const ve = veMap[type] || 0;
+            let boSum = k;
+            for (const b of bondsOfAtom(center)) boSum += (b.type || 1);
+            const lp = ve ? Math.max(0, Math.round((ve - boSum) / 2)) : 0;
+            const domains = n0 + k + lp;
+            const idealDeg = domains >= 4 ? 109.47 : (domains === 3 ? 120 : 180);
+            const theta = idealDeg * Math.PI / 180;
+            const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+            if (n0 === 0) {
+                // 无重原子邻居（孤立的 CH4/NH3 等）：直接用规则模板
+                if (k === 1) return [new THREE.Vector3(1, 0, 0)];
+                if (k === 2) return [new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0)];
+                if (k === 3) {
+                    for (let j = 0; j < 3; j++) dirs.push(new THREE.Vector3(Math.cos(j * 2 * Math.PI / 3), Math.sin(j * 2 * Math.PI / 3), 0));
+                    return dirs;
+                }
+                if (k >= 4) {
+                    const s = 1 / Math.sqrt(3);
+                    dirs.push(new THREE.Vector3(s, s, s), new THREE.Vector3(s, -s, -s), new THREE.Vector3(-s, s, -s), new THREE.Vector3(-s, -s, s));
+                    if (k === 4) return dirs;
+                }
             }
-            if (neighbors.length === 0 && k === 1) { dirs.push(new THREE.Vector3(1, 0, 0)); return dirs; }
-            // 球面贪心：与所有已用方向（邻居 + 已选）最小夹角最大化的候选方向
+
+            if (n0 === 1) {
+                // 单邻居：绕邻居轴做 θ 锥面。k=1 一个方向；k=2 时方位角 ±φ 使两个 H
+                // 之间也成 θ（sp3 时 φ=60°、sp2 时 φ=90°）；k=3 时每 120° 一个。
+                const axis = unit[0];
+                const ref = Math.abs(axis.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+                const u = ref.clone().cross(axis).normalize();
+                const v = axis.clone().cross(u).normalize();
+                let phis;
+                if (k === 1) phis = [0];
+                else if (k === 2) {
+                    // cosθ 相同角度的两方向：h1·h2 = cosθ → sin²θ cos2φ + cos²θ = cosθ
+                    const denom = 1 + cosT;
+                    const c2 = Math.abs(denom) > 1e-6 ? Math.max(-1, Math.min(1, cosT / denom)) : -1;
+                    const phi = 0.5 * Math.acos(c2);
+                    phis = [phi, -phi];
+                } else {
+                    phis = [];
+                    for (let j = 0; j < k; j++) phis.push(j * 2 * Math.PI / k);
+                }
+                for (const phi of phis) {
+                    dirs.push(axis.clone().multiplyScalar(cosT)
+                        .add(u.clone().multiplyScalar(sinT * Math.cos(phi)))
+                        .add(v.clone().multiplyScalar(sinT * Math.sin(phi))).normalize());
+                }
+                return dirs;
+            }
+
+            if (k === 1) {
+                // 已有 ≥2 个邻居、只补 1 个 H：沿邻居方向的反向平均（外角平分线）。
+                // 对芳香/烯烃 CH 等价于环外 120°；对 sp3 的 CH 也是合理的四面体缺口。
+                const sum = new THREE.Vector3();
+                for (const d of unit) sum.add(d);
+                if (sum.lengthSq() > 1e-6) { dirs.push(sum.clone().normalize().negate()); return dirs; }
+            } else if (k === 2 && n0 === 2) {
+                // 四面体补全：已知 d1、d2（理想时夹角 109.47°），另两个方向 = 绕
+                // 角平分线反向、在 d1×d2 法向两侧对称展开。
+                const d1 = unit[0], d2 = unit[1];
+                const bis = d1.clone().add(d2);
+                const nrm = d1.clone().cross(d2);
+                if (bis.lengthSq() > 1e-6 && nrm.lengthSq() > 1e-6) {
+                    bis.normalize(); nrm.normalize();
+                    const half = bis.dot(d1);   // cos(d1 与角平分线夹角)
+                    const cb = (-cosT) / Math.max(1e-6, half);
+                    if (cb >= -1 && cb <= 1) {
+                        const beta = Math.acos(cb);
+                        for (const sgn of [1, -1]) {
+                            dirs.push(bis.clone().multiplyScalar(-Math.cos(beta))
+                                .add(nrm.clone().multiplyScalar(Math.sin(beta) * sgn)).normalize());
+                        }
+                        return dirs;
+                    }
+                }
+            }
+
+            // 通用兜底：球面贪心——**最小化与已有方向的最大 dot**（= 最大化最小夹角）
             const candidates = [];
             for (let i = 0; i < 160; i++) {
                 const phi = Math.acos(1 - 2 * (i + 0.5) / 160);
-                const theta = Math.PI * (1 + Math.sqrt(5)) * i;
-                candidates.push(new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.sin(phi) * Math.sin(theta), Math.cos(phi)));
+                const thetaG = Math.PI * (1 + Math.sqrt(5)) * i;
+                candidates.push(new THREE.Vector3(Math.sin(phi) * Math.cos(thetaG), Math.sin(phi) * Math.sin(thetaG), Math.cos(phi)));
             }
-            const taken = neighbors.map(n => n.position.clone().sub(center.position).normalize());
             for (let j = 0; j < k; j++) {
-                let best = null, bestMin = -Infinity;
+                let best = null, bestMaxDot = Infinity;
                 for (const c of candidates) {
-                    let m = Infinity;
-                    for (const t of taken) { const d = c.dot(t); if (d < m) m = d; }
-                    for (const p of dirs) { const d = c.dot(p); if (d < m) m = d; }
-                    if (m > bestMin) { bestMin = m; best = c; }
+                    let m = -Infinity;
+                    for (const t of unit) { const d = c.dot(t); if (d > m) m = d; }
+                    for (const p of dirs) { const d = c.dot(p); if (d > m) m = d; }
+                    if (m < bestMaxDot) { bestMaxDot = m; best = c; }
                 }
                 if (!best) break;
                 dirs.push(best);
@@ -6477,6 +6797,12 @@ isOptimizing = false;
                     orderSum += b.type || 1;
                     const o = b.atomA === a ? b.atomB : b.atomA;
                     if (o.userData && o.userData.atomType !== 'H') nbHeavy.push(o);
+                }
+                // 配位键（卟啉 Fe–N）有意不进 getBondsForAtom 的化学邻接表（不参与
+                // 杂化/键角/环枚举），但它确实占用配体价域：不计入会让吡咯氮
+                // （2 条单键）被判缺 1 个 H → 金属卟啉多出两个 N-H。
+                for (const b of bonds) {
+                    if (b.coordination && (b.atomA === a || b.atomB === a)) orderSum += 1;
                 }
                 const k = Math.round(val - orderSum);
                 if (k <= 0 || k > 4) continue;
@@ -7402,6 +7728,7 @@ isOptimizing = false;
             const n = atoms.length;
             const adj = Array.from({ length: n }, () => new Set());
             for (const bd of bonds) {
+                if (bd.coordination) continue;   // 配位键不构成环（卟啉 Fe–N 否则会枚举出 3 元假环）
                 const a = bd.atomA, b = bd.atomB;
                 if (!a.userData || !b.userData) continue;
                 if (a.userData.atomType === 'H' || b.userData.atomType === 'H') continue; // 忽略含氢键
@@ -7718,12 +8045,16 @@ isOptimizing = false;
 
         function analyzeRings() {
             // 优先枚举全部规则环（多环分子如联苯需返回全部独立环）；苯环捷径仅作枚举失败的兜底
-            const allCarbons = atomsGroup.children.filter(a => a.userData?.atomType === 'C');
-            const benz = detectBenzeneRing(allCarbons);
             const results = [];
             let rings = findAllRings();
-            if ((!rings || rings.length === 0) && benz && benz.length === 6) {
-                rings = [benz];
+            if (!rings || rings.length === 0) {
+                // 仅枚举失败时才跑苯环捷径：detectBenzeneRing 是全量碳扫描（含 Hückel
+                // 判定），旧实现在每次 analyzeRings() 都无条件调用，而 optimizeAllAtoms
+                // 每轮都会经 enforceAromaticRingPlanarity 调一次 → 大环分子（血红素
+                // 34 个碳、182 轮）纯重复扫描就吃掉大部分优化时间。
+                const allCarbons = atomsGroup.children.filter(a => a.userData?.atomType === 'C');
+                const benz = detectBenzeneRing(allCarbons);
+                if (benz && benz.length === 6) rings = [benz];
             }
             // 回退策略：若常规枚举未找到环，尝试基于度为 2 的重原子链检测五元环（兼容 generateFiveMemberRing 构造）
             // 回退策略：若常规枚举未找到环，尝试基于度为 2 的重原子链检测五元环（兼容 generateFiveMemberRing 构造）
@@ -7776,8 +8107,9 @@ isOptimizing = false;
                 const aromaticity = classifyAromaticity(pi);
                 results.push({ atoms: ring, pi, planar, rmsd, aromaticity });
             }
-            // 输出到控制台便于调试
-            if (results.length > 0) console.log('analyzeRings:', results.map(r=>({len:r.atoms.length, pi:r.pi, planar:r.planar, aromaticity:r.aromaticity}))); 
+            // 输出到控制台便于调试（默认关闭：该函数在优化循环内每轮被调用多次，
+            // 无条件 console.log 会把大分子优化拖慢到秒级）
+            if (results.length > 0 && window.__RING_LOG) console.log('analyzeRings:', results.map(r=>({len:r.atoms.length, pi:r.pi, planar:r.planar, aromaticity:r.aromaticity}))); 
             return results;
         }
 
@@ -7976,6 +8308,9 @@ isOptimizing = false;
                 if (!u.userData || !v.userData) continue;
                 if (u.userData.atomType === 'H' || v.userData.atomType === 'H') continue;
                 if (!hasPlane(u) || !hasPlane(v)) continue;
+                // 卟啉核内部单键（meso 桥 / 吡咯环边）：核已由模板定死且整体共面，
+                // 旋转任一侧等于把整个吡咯环转出平面，交回刚性核快照恢复。
+                if (u.userData.__porphCore && v.userData.__porphCore) continue;
                 candidateBonds.push(bd);
             }
             // 桥轴压平（2026-08）：共面含两个自由度——绕桥轴二面角 + 桥轴本身在环平面内。
@@ -8238,11 +8573,20 @@ const fSide = new Set();
             for (const b of spec.bonds) { adj[b[0]].push(b[1]); adj[b[1]].push(b[0]); }
             const cycles = [];
             const seen = new Set();
+            // 枚举预算（2026-10-30 大分子）：从每个起点做无剪枝 DFS 的复杂度随稠合
+            // 体系指数增长（血红素 43 重原子已达数万步，大型天然产物可到亿级 → 页面
+            // 卡死数分钟）。预算按原子数线性放大；超预算提前返回已找到的环（函数末尾
+            // 按长度排序，短环优先，环放置仍按最小环优先，缺失的长环回落到普通放置）。
+            let steps = 0;
+            const stepBudget = Math.max(20000, n * 1200);
             for (let start = 0; start < n; start++) {
+                if (steps > stepBudget) break;
                 const path = [start];
                 const pathSet = new Set([start]);
                 (function dfs(u, parent) {
+                    if (steps > stepBudget) return;
                     for (const v of adj[u]) {
+                        if (++steps > stepBudget) return;
                         if (v === parent) continue;
                         if (pathSet.has(v)) {
                             const si = path.indexOf(v);
@@ -8251,7 +8595,12 @@ const fSide = new Set();
                             let mi = 0;
                             for (let k = 1; k < cyc.length - 1; k++) if (cyc[k] < cyc[mi]) mi = k;
                             const fwd = cyc.slice(mi, -1).concat(cyc.slice(0, mi));
-                            const rev = fwd.slice(1).reverse().concat([fwd[0]]);
+                            // 反向规范化必须保持「最小下标在首位」——旧写法
+                            // fwd.slice(1).reverse() 把最小下标挪到了末尾，正/反两个
+                            // 方向永远不相等 → 每个环被记录两次（血红素 4 个吡咯
+                            // 实测出 8 条 5 元环）。重复环在放置阶段无害（原子已放置）
+                            // 但会让按环判定的逻辑（卟啉核心检测）误判。
+                            const rev = [fwd[0]].concat(fwd.slice(1).reverse());
                             const key = fwd.join(',');
                             const keyR = rev.join(',');
                             if (!seen.has(key) && !seen.has(keyR)) {
@@ -8269,6 +8618,133 @@ const fSide = new Set();
             cycles.sort((a, b) => a.length - b.length);
             return cycles;
         }
+
+        // ============ 卟啉 / 金属卟啉核心解析模板（2026-10-30）============
+        // 为什么需要专用模板：通用环放置把每个「全新环」都以原点为中心摆到 Z=0 平面，
+        // 稠合卟啉的 4 个吡咯环会完全重叠（血红素本地管线实测最近原子对 0.149Å、
+        // 4 个 N 被 BFS 串成 1.42Å 假键、Fe 游离在 N4 质心 9.4Å 外、环检测出 3/4 元假环）。
+        // 卟啉是刚性的共轭大环，可以解析求解：4 个吡咯（含 N 的五元环）落在半径 rP 的
+        // 圆上、各自朝向角 k·90°，相邻吡咯的两个 Cα 由 meso 碳桥连（Cα-meso-Cα = 120°），
+        // 金属放在大环中心（金属–N ≈ 2.05Å，与血红素晶体结构一致）。
+        // 返回 { ok, pos:Map<原子下标, Vector3>, nIdx, mesoIdx, metalIdx, order, pyr }
+        const PORPH_SIDE = 1.40;                                     // 吡咯环键长（Å）
+        const PORPH_R5 = PORPH_SIDE / (2 * Math.sin(Math.PI / 5));    // 正五边形外接圆半径 ≈1.191
+        const PORPH_R_N = 2.05;                                      // 金属–N 配位距离（Fe–N 实测 2.0）
+        const PORPH_METAL_RE = /^(Fe|Mg|Zn|Co|Ni|Cu|Mn)$/;
+        function porphyrinTemplateOf(spec, cycles) {
+            const fail = why => ({ ok: false, why });
+            const n = spec.types.length;
+            const adj = Array.from({ length: n }, () => []);
+            for (const b of spec.bonds) { adj[b[0]].push(b[1]); adj[b[1]].push(b[0]); }
+            const allCycles = cycles || specCyclesOf(spec);
+
+            // 1) 4 个「只含 C/N 且恰有 1 个 N」的五元环 = 吡咯
+            const pyr = [];
+            for (const cyc of allCycles) {
+                if (cyc.length !== 5) continue;
+                const nIdx = cyc.find(i => spec.types[i] === 'N');
+                if (nIdx === undefined) continue;
+                if (cyc.some(i => spec.types[i] !== 'N' && spec.types[i] !== 'C')) continue;
+                const iN = cyc.indexOf(nIdx);
+                // 环顺序 [N, Cα1, Cβ1, Cβ2, Cα2]（沿 SMILES 环方向）
+                pyr.push({ cyc, nIdx, ca1: cyc[(iN + 1) % 5], cb1: cyc[(iN + 2) % 5], cb2: cyc[(iN + 3) % 5], ca2: cyc[(iN + 4) % 5] });
+            }
+            if (pyr.length !== 4) return fail('pyrrole=' + pyr.length);
+
+            // 2) meso 碳：同时连接两个「不同吡咯」的 Cα
+            const caOwner = new Map();
+            pyr.forEach((p, k) => { caOwner.set(p.ca1, k); caOwner.set(p.ca2, k); });
+            const mesoLinks = new Map();
+            for (const [ca, own] of caOwner) {
+                for (const x of adj[ca]) {
+                    if (caOwner.has(x) || spec.types[x] !== 'C') continue;
+                    const linked = adj[x].filter(y => caOwner.has(y));
+                    if (linked.length !== 2) continue;
+                    const other = linked.find(y => caOwner.get(y) !== own);
+                    if (other === undefined) continue;
+                    mesoLinks.set(x, [{ ring: own, ca }, { ring: caOwner.get(other), ca: other }]);
+                }
+            }
+            if (mesoLinks.size !== 4) return fail('meso=' + mesoLinks.size);
+
+            // 3) 沿 meso 桥定出 4 个吡咯的环序（0→…→3→0）与各自的 prev/next Cα
+            const ringLinks = Array.from({ length: 4 }, () => []);
+            for (const [m, links] of mesoLinks) {
+                ringLinks[links[0].ring].push({ meso: m, ca: links[0].ca, other: links[1].ring });
+                ringLinks[links[1].ring].push({ meso: m, ca: links[1].ca, other: links[0].ring });
+            }
+            if (ringLinks.some(l => l.length !== 2)) return fail('ringLinks');
+            const caToPrev = new Array(4).fill(-1), caToNext = new Array(4).fill(-1);
+            const l0 = ringLinks[0][0], l1 = ringLinks[0][1];
+            caToNext[0] = l0.ca; caToPrev[0] = l1.ca;
+            const order = [0];
+            let cur = l0, guard = 0;
+            while (guard++ < 8) {
+                const nxt = cur.other;
+                if (nxt === 0) break;
+                if (order.includes(nxt)) return fail('orderDup');
+                const linkIn = ringLinks[nxt].find(l => l.meso === cur.meso);
+                const linkOut = ringLinks[nxt].find(l => l.meso !== cur.meso);
+                if (!linkIn || !linkOut) return fail('linkMiss');
+                caToPrev[nxt] = linkIn.ca; caToNext[nxt] = linkOut.ca;
+                order.push(nxt); cur = linkOut;
+            }
+            if (order.length !== 4) return fail('orderLen=' + order.length);
+            if (cur.other !== 0) return fail('notClosed');
+            if (cur.meso !== l1.meso) return fail('mesoMismatch');
+
+            // 4) 摆位：吡咯 k 朝 φ=k·90°，N 在 180°、Cβ 在 ±36°、Cα 在 ±108°
+            const pos = new Map();
+            const rP = PORPH_R_N + PORPH_R5;
+            const RAD = Math.PI / 180;
+            const U = new THREE.Vector3(), Vv = new THREE.Vector3();
+            for (let k = 0; k < 4; k++) {
+                const ringIdx = order[k], p = pyr[ringIdx];
+                const phi = k * Math.PI / 2;
+                U.set(Math.cos(phi), Math.sin(phi), 0);
+                Vv.set(-Math.sin(phi), Math.cos(phi), 0);
+                const cx = U.x * rP, cy = U.y * rP;
+                const at = deg => new THREE.Vector3(
+                    cx + PORPH_R5 * (Math.cos(deg * RAD) * U.x + Math.sin(deg * RAD) * Vv.x),
+                    cy + PORPH_R5 * (Math.cos(deg * RAD) * U.y + Math.sin(deg * RAD) * Vv.y),
+                    0);
+                // +108° 的 Cα 必须朝向「下一个」环（CCW），-108° 朝向上一个环——
+                // 取反会让相邻环的成桥 Cα 落到对角（5.67Å），meso 键被拉成 3.27Å。
+                const nextIsCa1 = (caToNext[ringIdx] === p.ca1);
+                const c1 = nextIsCa1 ? p.ca1 : p.ca2;
+                const b1 = nextIsCa1 ? p.cb1 : p.cb2;
+                const b2 = nextIsCa1 ? p.cb2 : p.cb1;
+                const c2 = nextIsCa1 ? p.ca2 : p.ca1;
+                pos.set(p.nIdx, at(180));
+                pos.set(c1, at(108));
+                pos.set(b1, at(36));
+                pos.set(b2, at(-36));
+                pos.set(c2, at(-108));
+            }
+            // 5) meso：相邻 Cα 中点沿径向外推 d/(2√3) → Cα-meso-Cα 恰为 120°
+            for (const [m, links] of mesoLinks) {
+                const A = pos.get(links[0].ca), B = pos.get(links[1].ca);
+                if (!A || !B) return fail('mesoPos');
+                const mid = A.clone().add(B).multiplyScalar(0.5);
+                const d = A.distanceTo(B);
+                const out = mid.clone();
+                if (out.lengthSq() < 1e-9) return fail('mesoDir');
+                pos.set(m, mid.add(out.normalize().multiplyScalar(d / (2 * Math.sqrt(3)))));
+            }
+            // 6) 中心金属：无键或只与 4 个吡咯 N 相连的 Fe/Mg/Zn/…（如血红素 "…[N-]2….[Fe+2]"）
+            let metalIdx = -1;
+            for (let i = 0; i < n; i++) {
+                if (!PORPH_METAL_RE.test(spec.types[i])) continue;
+                const onlyN = adj[i].every(x => pyr.some(p => p.nIdx === x));
+                if (adj[i].length === 0 || onlyN) { metalIdx = i; break; }
+            }
+            return {
+                ok: true, pos, nIdx: pyr.map(p => p.nIdx), mesoIdx: [...mesoLinks.keys()],
+                metalIdx, order,
+                pyr: pyr.map(p => ({ cyc: p.cyc, n: p.nIdx, ca1: p.ca1, ca2: p.ca2, cb1: p.cb1, cb2: p.cb2 }))
+            };
+        }
+        window.__porphyrinTemplateOf = porphyrinTemplateOf;
 
         // ============ 手写轻量 SMILES 解析器（语法子集 → CONNECTIVITY_SPECS 同构 spec）============
         // 支持：元素 C/N/O/S/P/F/Cl/Br/I/H 与小写芳香 c/n/o/s；方括号原子（元素+显式H计数+电荷，电荷忽略）；
@@ -8456,12 +8932,16 @@ const fSide = new Set();
         async function generateFromSmiles(smiles, opts) {
             const spec = smilesToSpec(smiles);
             if (spec.error) return { ok: false, error: spec.error };
-            // 大分子保护（2026-08）：本地粗坐标+迭代优化对大分子是分钟级卡死
-            //（实测胰岛素 ~800 原子直接挂起）。PubChem 3D 无数据的大分子
-            //（蛋白/多肽类）在此拦截，给出明确提示而非卡死页面。
-            if (spec.types.length > 250) {
-                return { ok: false, error: { pos: 0, msg: '分子过大（约 ' + spec.types.length + ' 原子），本地生成不支持；该分子可能无 PubChem 3D 数据' } };
+            // 大分子路线（2026-10-30 放宽）：旧版 >250 重原子直接拒绝，导致蛋白/
+            // 大型天然产物在 PubChem 3D 缺失时完全无法生成。现在 >250 走「粗坐标 +
+            // 补氢 + 限时优化」降级路线（优化器带时间预算，不会卡死），只在真正
+            // 超出渲染/内存能力的规模才拒绝。返回里带 large:true 供 UI 提示。
+            const heavyCount = spec.types.length;
+            const LARGE_MOL_THRESHOLD = 250;
+            if (heavyCount > 2000) {
+                return { ok: false, error: { pos: 0, msg: '分子过大（约 ' + heavyCount + ' 个重原子），超出本地生成上限；请改用蛋白质序列输入' } };
             }
+            const isLarge = heavyCount > LARGE_MOL_THRESHOLD;
             const keepExisting = !!(opts && opts.keepExisting);
             // 多分子共存（异构体并排）：keepExisting 时不清场，下一个分子向右平移
             // 避开已存在分子的包围盒。生成新分子前记录旧原子数，生成后平移新原子。
@@ -8472,7 +8952,20 @@ const fSide = new Set();
             // SMILES 生成语义总是补氢（不依赖用户 UI 开关）：临时置位后调用公共入口，随后恢复
             const prevHydro = HYDROGENATE_AUTO;
             HYDROGENATE_AUTO = true;
-            try { optimizeAllWithAutoHydrogen(); } finally { HYDROGENATE_AUTO = prevHydro; }
+            try {
+                if (isLarge) {
+                    // 大分子：补氢后只跑很短的时间预算优化（3s / 12 轮），保证可交互，
+                    // 同时给用户明确提示几何为近似值（完全跳过优化会留下大量 2Å+ 键）。
+                    try {
+                        const added = addMissingHydrogens();
+                        if (added > 0) showToast(`自动补氢：${added} 个`, 1200);
+                    } catch (e) {}
+                    optimizeAllAtoms({ timeBudgetMs: 3000, maxIterations: 12 });
+                    showToast(`分子较大（${heavyCount} 个重原子）：已用粗坐标快速生成，几何为近似值`, 5200);
+                } else {
+                    optimizeAllWithAutoHydrogen();
+                }
+            } finally { HYDROGENATE_AUTO = prevHydro; }
             const atoms = atomsGroup.children.filter(c => c.userData && c.userData.isAtom);
             const atomCount = atoms.length;
             if (keepExisting && prevCount > 0 && atomCount > prevCount) {
@@ -8489,7 +8982,7 @@ const fSide = new Set();
                 }
             }
             fitViewToMolecule();
-            return { ok: true, spec, atomCount, prevCount };
+            return { ok: true, spec, atomCount, prevCount, large: isLarge };
             } finally {
                 historySuppress--;
                 commitHistory();
@@ -11687,17 +12180,30 @@ if (smilesInput) smilesInput.value = smilesToUse;
         const candClose = document.getElementById('candidate-panel-close');
         if (candClose) candClose.addEventListener('click', hideCandidatePanel);
 
+        // spec 杂化判定（粗坐标放置阶段用）。**关键**：SMILES 解析出的 spec 通常只含
+        // 重原子，H 由后续 addMissingHydrogens 补齐——缺失的价必须先当作"隐式 H"
+        // 计入电子域，剩余部分才是孤对。旧实现直接把缺失价当孤对（C 缺 2 价 →
+        // lp=1 → 3 域 → sp2），导致 SMILES 链烷烃整条链被判成 sp2、按「sp2 单取代
+        // 基沿外角平分线」摆成 180° 直线，补氢/优化都无法恢复（verify_name2mol 己烷
+        // 用例失败、C=C 同样被误判为 sp）。含显式 H 的预置 spec 不受影响（它们的
+        // sumBO 已包含 C-H 键）。
         function specHybridOf(spec, i) {
             let sumBO = 0, sigma = 0;
             for (const b of spec.bonds) {
                 if (b[0] === i || b[1] === i) { sumBO += b.length >= 3 ? b[2] : 1; sigma += 1; }
             }
-            let lp = 0;
             const t = spec.types[i];
-            if (t === 'C') lp = (4 - sumBO) / 2;
-            else if (t === 'O' || t === 'S') lp = (6 - sumBO) / 2;
-            else if (t === 'N') lp = (5 - sumBO) / 2;
-            const domains = sigma + lp;
+            // 中性原子的成键价（决定隐式 H 数）与价电子数（决定孤对数）
+            const bondValence = { C: 4, N: 3, O: 2, S: 2, P: 3, B: 3, Si: 4, F: 1, Cl: 1, Br: 1, I: 1 };
+            const valenceElectrons = { C: 4, N: 5, O: 6, S: 6, P: 5, B: 3, Si: 4, F: 7, Cl: 7, Br: 7, I: 7 };
+            const bv = bondValence[t];
+            let implicitH = 0, lp = 0;
+            if (bv != null) {
+                implicitH = Math.max(0, Math.round(bv - sumBO));
+                const ve = valenceElectrons[t] || 0;
+                lp = Math.max(0, (ve - (sumBO + implicitH)) / 2);
+            }
+            const domains = sigma + implicitH + lp;
             if (domains <= 2) return 'sp';
             if (domains <= 3) return 'sp2';
             return 'sp3';
@@ -11732,8 +12238,38 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
             // 1) 环：最小环优先。全新环 → 规则多边形；含共享边 → 沿共享边拟合多边形
             const cycles = specCyclesOf(spec);
+            // 0) 卟啉核心优先：解析模板直接给出 4 吡咯 + 4 meso + 中心金属的坐标，
+            //    否则通用环放置会让 4 个吡咯环重叠（血红素实测最近原子对 0.149Å）。
+            const porph = porphyrinTemplateOf(spec, cycles);
+            if (porph.ok) {
+                for (const [idx, p] of porph.pos) { pos[idx].copy(p); placed[idx] = true; }
+                // 标记刚性核心：解析模板给出的 4 吡咯 + 4 meso（+中心金属）已是理想
+                // 几何，优化器的逐原子角度模板对稠合大环会给出互相冲突的目标（实测把
+                // 卟啉核拉散、Fe 被甩到 14-23Å、77 原子跑 36s 不收敛）。核心原子只
+                // 作锚点，优化时不参与环排列/角度/键长位移（取代基仍自由优化）。
+                for (const idx of porph.pos.keys()) {
+                    if (atoms[idx] && atoms[idx].userData) {
+                        atoms[idx].userData.__porphCore = true;
+                        atoms[idx].userData.__rigidHome = porph.pos.get(idx).clone();
+                    }
+                }
+                if (porph.metalIdx >= 0) {
+                    pos[porph.metalIdx].set(0, 0, 0);
+                    placed[porph.metalIdx] = true;
+                    atoms[porph.metalIdx].userData.__metalCenter = true;
+                    atoms[porph.metalIdx].userData.__porphCore = true;
+                    atoms[porph.metalIdx].userData.__rigidHome = new THREE.Vector3(0, 0, 0);
+                }
+            }
             for (const cyc of cycles) {
                 const m = cyc.length;
+                // 大环（≥12 元，如卟啉 16/17/18 元共轭环、大环内酯）跨越多个已放置片段时
+                // 无法「沿一条共享边拟合多边形」——旧逻辑会用第一条共享边定圆心，把零星
+                // 未放置的侧链原子丢到巨大的多边形顶点上。这类环直接跳过，交给 BFS 按键长
+                // 从已放置的母原子向外生长（小环 ≤11 元维持原逻辑，避免回归）。
+                let placedCnt = 0;
+                for (let k = 0; k < m; k++) if (placed[cyc[k]]) placedCnt++;
+                if (m >= 12 && placedCnt > 2) continue;
                 let shared = null;
                 for (let k = 0; k < m; k++) {
                     if (placed[cyc[k]] && placed[cyc[(k + 1) % m]]) { shared = [cyc[k], cyc[(k + 1) % m], k]; break; }
@@ -11940,6 +12476,17 @@ if (smilesInput) smilesInput.value = smilesToUse;
             // 4) 按 spec 成键
             for (const b of spec.bonds) {
                 addBondBetween(atoms[b[0]], atoms[b[1]], b.length >= 3 ? b[2] : 1);
+            }
+            // 4b) 卟啉金属–N 配位键。配位键不是共价键：不计入键级和/杂化/环枚举
+            //（getBondsForAtom 过滤）、不参与优化器的键长阶段、updateBonds 只刷新几何，
+            // 渲染为细半透明杆（updateBondGeometry 的 bond.coordination 分支）。
+            if (porph.ok && porph.metalIdx >= 0) {
+                for (const ni of porph.nIdx) {
+                    const cb = addBondBetween(atoms[porph.metalIdx], atoms[ni], 1);
+                    if (cb) { cb.coordination = true; updateBondGeometry(cb); }   // 打标记后重算几何以套用细杆/配色
+                }
+                markBondsChanged();   // 配位键不进邻接表 → 缓存需重建
+                atoms[porph.metalIdx].userData.coordinationCount = porph.nIdx.length;
             }
             // 5) 整体居中：链式 BFS 沿 +Z 逐步延伸（长链分子尾部可达 26Å 外），
             // 优化器的 CENTER_MOVE 只是防整体平移的小幅补偿，不会把分子拉回原点。
@@ -12290,6 +12837,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             const key = (i, j) => (i < j ? i + '-' + j : j + '-' + i);
             const actual = new Map();
             for (const bd of bonds) {
+                if (bd.coordination) continue;   // 配位键不属于 spec 共价骨架（卟啉 Fe–N），不参与连通性审计
                 const ia = atoms.indexOf(bd.atomA), ib = atoms.indexOf(bd.atomB);
                 if (ia < 0 || ib < 0) continue;
                 const k = key(ia, ib);
@@ -12353,6 +12901,39 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 window.__diag = {
                 generate(name) { clearMolecule(); const g = GEN_MAP[name]; if (g) g(); },
                 generateSpec(name) { if (CONNECTIVITY_SPECS[name]) generateFromSpec(CONNECTIVITY_SPECS[name]); },
+                // 卟啉核心模板（解析式 4 吡咯 + 4 meso + 中心金属）
+                porphyrinTemplateOf(spec) { return porphyrinTemplateOf(spec); },
+                // 卟啉核心几何自检：金属–N 距离、N4 共面度、核心键长区间、配位键数
+                porphyrinCheck() {
+                    const list = atomsGroup.children.filter(a => a.userData?.isAtom);
+                    const metal = list.find(a => PORPH_METAL_RE.test(a.userData.atomType));
+                    const ns = list.filter(a => a.userData.atomType === 'N');
+                    const d = (a, b) => +a.position.distanceTo(b.position).toFixed(3);
+                    const feN = metal ? ns.map(a => d(metal, a)).sort((x, y) => x - y) : [];
+                    // N4 共面：以 4 个 N 的质心为原点，任取三点叉积为法线，报最大面外距离
+                    let n4PlanarMax = null;
+                    if (ns.length === 4) {
+                        const c = new THREE.Vector3();
+                        ns.forEach(a => c.add(a.position)); c.divideScalar(4);
+                        const nrm = ns[1].position.clone().sub(ns[0].position)
+                            .cross(ns[2].position.clone().sub(ns[0].position));
+                        if (nrm.lengthSq() > 1e-9) {
+                            nrm.normalize();
+                            n4PlanarMax = +Math.max(...ns.map(a => a.position.clone().sub(c).dot(nrm))).toFixed(3);
+                        }
+                    }
+                    const coreBonds = bonds.filter(b => b.atomA.userData?.__porphCore && b.atomB.userData?.__porphCore);
+                    const lens = coreBonds.map(b => +b.atomA.position.distanceTo(b.atomB.position).toFixed(3));
+                    return {
+                        coreAtoms: list.filter(a => a.userData.__porphCore === true).length,
+                        metal: metal ? metal.userData.atomType : null,
+                        feN, n4PlanarMax,
+                        coordination: bonds.filter(b => b.coordination).length,
+                        coreBondCount: lens.length,
+                        coreBondMin: lens.length ? Math.min(...lens) : null,
+                        coreBondMax: lens.length ? Math.max(...lens) : null
+                    };
+                },
                 // 键价探针：对每个芳香环碳报告"带 H 时还能否再接受 H/基团"（修复后必须全 false）
                 sigmaProbe() {
                     const res = {};
@@ -12415,6 +12996,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                         pair: [b.atomA.userData._id, b.atomB.userData._id],
                         types: [b.atomA.userData.atomType, b.atomB.userData.atomType],
                         type: b.type,
+                        coordination: !!b.coordination,
                         len: +b.atomA.position.distanceTo(b.atomB.position).toFixed(3),
                         target: +getTargetBondLength(b.atomA, b.atomB).toFixed(3)
                     }));
@@ -13043,6 +13625,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
         const PI_ORDER_THR = { 'C-C': [1.24, 1.30, 1.46], 'C-O': [1.30, 1.42, 1.46], 'C-N': [1.30, 1.42, 1.46], 'C-S': [1.30, 1.42, 1.46], 'N-N': [1.30, 1.34, 1.46], 'N-O': [1.30, 1.34, 1.46], 'N-S': [1.30, 1.34, 1.46] };
         function bondOrderOf(a, b) {
             for (const bd of bonds) {
+                if (bd.coordination) continue;   // 配位键不参与离域 π 体系判定
                 if ((bd.atomA === a && bd.atomB === b) || (bd.atomA === b && bd.atomB === a)) {
                     return (typeof bd.type === 'number' && bd.type >= 1) ? bd.type : 1;
                 }

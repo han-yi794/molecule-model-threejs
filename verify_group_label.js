@@ -37,7 +37,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         // 等一帧让 labelRenderer 渲染,再从 DOM 统计全部标签文本
         await page.waitForTimeout(800);
         out.S2 = await page.evaluate(() => {
-            const divs = [...document.querySelectorAll('div')].filter(d => d.style.pointerEvents === 'none' && d.style.fontSize === '20px');
+            const divs = [...document.querySelectorAll('[data-role="atom-label"]')];
             return { allTexts: divs.map(d => d.textContent), count: divs.length };
         });
         // 甲烷 C+4H + 甲基 C+3H = 9 标签;全部为纯元素符号(无 (spX) 杂化后缀)
@@ -49,7 +49,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         // S3:优化后标签仍在且保持纯元素符号
         out.S3 = await page.evaluate(() => {
             window.__diag.runOpt();
-            const divs = [...document.querySelectorAll('div')].filter(d => d.style.pointerEvents === 'none' && d.style.fontSize === '20px');
+            const divs = [...document.querySelectorAll('[data-role="atom-label"]')];
             return { afterOpt: divs.map(d => d.textContent).sort() };
         });
         step('S3 优化后标签保留且仍无杂化后缀', out.S3.afterOpt.length === 9 && out.S3.afterOpt.every(t => !t.includes('(')), out.S3);

@@ -71,9 +71,9 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         });
         step('帮助框内部滚动(内容>可视)', h2.display === 'block' && h2.scrollH > h2.clientH, h2);
 
-        // 4. 长 SMILES 示例折行无横向溢出
+        // 4. 长 SMILES 示例折行无横向溢出（以帮助框自身右缘为界；重设计后已不在 #sidebar 内）
         const codeGeom = await page.evaluate(() => {
-            const sb = document.getElementById('sidebar');
+            const sb = document.getElementById('smiles-help');
             const box = document.getElementById('smiles-help');
             let worst = 0;
             box.querySelectorAll('code').forEach(c => {
