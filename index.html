@@ -2752,11 +2752,15 @@
         window.__molecularFormula = molecularFormulaFromGraph;
 
         // 全分子键角偏差（取最差原子，与自测指标同源；H 与单键原子不计）
+        // 金属中心（Fe/Mg/Zn…）不参与：配位几何由晶体场决定（八面体 90/180°、
+        // 卟啉平面 4N 等），拿 sp3 109.47° 去量必然报几十度偏差，是噪声而非缺陷。
+        const ANGLE_METRIC_SKIP_RE = /^(Fe|Mg|Zn|Co|Ni|Cu|Mn)$/;
         function worstBondAngleStd() {
             let worst = 0;
             for (const a of atomsGroup.children) {
                 if (!a.userData?.isAtom) continue;
                 if (a.userData.atomType === 'H') continue;
+                if (ANGLE_METRIC_SKIP_RE.test(a.userData.atomType)) continue;
                 if (getBondsForAtom(a).length < 2) continue;
                 const s = computeBondAngleStd(a);
                 if (s > worst) worst = s;
@@ -3320,17 +3324,43 @@
             if (bs.some(b => b.type === 1.5)) return true;
             const cache = window.__AROM_ATOM_CACHE || (window.__AROM_ATOM_CACHE = new Map());
             if (cache.has(atom)) return cache.get(atom);
+            // 2026-10-30 性能修复：旧实现每原子都调 analyzeRings() 并逐个环
+            // r.atoms.includes(atom) 扫描。对 PDB 蛋白这类「全单/双键、无 1.5 键」
+            // 的大结构，每个原子都要付一次全量环枚举（2HHB 4556 原子实测 73 秒）。
+            // 改为一次性把芳香环原子摊平成 Set（键变化时 __RINGS_CACHE 换新 → 键失效）。
             let found = false;
-            // 回退：检查所有环并判断是否存在芳香环包含该原子（稍微昂贵但健壮）
             try {
-                const rings = analyzeRings();
-                for (const r of rings) {
-                    if (r.aromaticity === 'aromatic' && r.atoms && r.atoms.includes(atom)) { found = true; break; }
-                }
+                const set = aromaticAtomSet();
+                if (set) found = set.has(atom);
             } catch (e) {}
             cache.set(atom, found);
             return found;
         }
+
+        // 芳香环原子合集（与 __RINGS_CACHE 同生命周期）
+        let _aromaticAtomSet = null;
+        let _aromaticAtomSetKey = null;
+        let _aromaticSetBuilding = false;
+        function aromaticAtomSet() {
+            const key = window.__RINGS_CACHE || null;
+            if (_aromaticAtomSet && _aromaticAtomSetKey === key) return _aromaticAtomSet;
+            if (_aromaticSetBuilding) return null;   // 防御性：避免潜在递归
+            _aromaticSetBuilding = true;
+            try {
+                const set = new Set();
+                const rings = analyzeRings() || [];
+                for (const r of rings) {
+                    if (r.aromaticity !== 'aromatic' || !r.atoms) continue;
+                    for (const a of r.atoms) set.add(a);
+                }
+                _aromaticAtomSet = set;
+                _aromaticAtomSetKey = window.__RINGS_CACHE || null;
+                return set;
+            } finally {
+                _aromaticSetBuilding = false;
+            }
+        }
+        window.__aromaticAtomSet = aromaticAtomSet;
 
         // 根据原子连接关系推断杂化类型（可被用户覆盖）
         // 规则：优先处理芳香/多键，再基于键级与孤对的电子域数（VSEPR）映射到 sp/sp2/sp3
@@ -3386,6 +3416,16 @@
             } catch (e) {}
 
             const electronDomainCount = Math.max(1, sigmaDomains + estLonePairs);
+
+            // 羰基/亚胺碳（2026-10-30 修复）：只有重原子的模型（PDB 蛋白、手工骨架）
+            // 里 C(=O) 碳常常只有 2 个 σ 邻居（Cα、O），按「σ 域 + 孤对」算出的
+            // 电子域数 = 2 → 被判成 sp（理想 180°），实测让状态条角度 RMS 从 26°
+            // 窜到 81.8°。真实几何是 sp2（~120°）。判据只收紧到「恰一个双键 +
+            // 其余单键」：CO₂ / 丙二烯（两个双键）仍是合法 sp，炔碳走上面的三键分支。
+            if (type === 'C' && sigmaDomains === 2 && estLonePairs === 0
+                && bondsFor.filter(b => b.type >= 1.9 && b.type < 2.9).length === 1) {
+                return 'sp2';
+            }
 
             // 类型特化处理（保留对 O 的羰基处理）
             // 供体型杂原子（X-H / X-C 与芳香环或 C=C 共轭）：孤对进入 π 系，
@@ -5356,7 +5396,13 @@ isOptimizing = false;
 
         // 原子标签（2026-10-27 重设计）：11/600 + 72% 暗底 + 4px 圆角，无描边阴影、无边框。
         // 白色 H 原子上靠这层暗底读得清，而不是靠 text-shadow。
+        // 大结构（PDB 蛋白等 > 1500 原子）跳过标签与光晕：每个标签都是一次
+        // CSS2DRenderer 逐帧 DOM transform 更新，4556 个标签会让帧率跌到个位数；
+        // 光晕球同样按原子数线性膨胀，而选中时会自动补建（setSelectedAtom 有兜底）。
+        const SPARSE_VISUAL_ATOMS = 1500;
+        let _sparseAtomVisuals = false;
         function createLabel(type) {
+            if (_sparseAtomVisuals) return null;
             const info = atomTypes[type];
             const div = document.createElement('div');
             div.textContent = info ? info.symbol : type;
@@ -5378,14 +5424,18 @@ isOptimizing = false;
         function createCompleteAtom(type, position) {
             const mesh = createAtomMesh(type, position);
             const label = createLabel(type);
-            label.position.set(0, getVisualRadiusForType(type, null) + 0.3, 0);
-            mesh.add(label);
-            mesh.userData.label = label;
-            // 立即设置标签文本（包含杂化信息）
-            updateAtomLabel(mesh);
-            const glow = createGlowSphere(getVisualRadiusForType(type, null));
-            glow.visible = false;
-            mesh.add(glow);
+            if (label) {
+                label.position.set(0, getVisualRadiusForType(type, null) + 0.3, 0);
+                mesh.add(label);
+                mesh.userData.label = label;
+                // 立即设置标签文本（包含杂化信息）
+                updateAtomLabel(mesh);
+            }
+            if (!_sparseAtomVisuals) {
+                const glow = createGlowSphere(getVisualRadiusForType(type, null));
+                glow.visible = false;
+                mesh.add(glow);
+            }
             atomsGroup.add(mesh);
             return mesh;
         }
@@ -7819,14 +7869,26 @@ isOptimizing = false;
         }
 
         // 返回原子所在的最短环（供环感知理想角使用），不在任何环中返回 null
+        // 2026-10-30：改为原子→最短环的映射表（与 __RINGS_CACHE 同生命周期）。
+        // 旧实现每个原子都遍历全部环并 ring.includes(atom)，蛋白级结构（4556 原子 ×
+        // 168 环 × 每环 12 原子）在状态条与检查器中累计成秒级开销。
+        let _ringOfAtomMap = null;
+        let _ringOfAtomKey = null;
         function findRingOfAtom(atom) {
             const rings = findAllRings();
-            let best = null;
-            for (const ring of rings) {
-                if (!ring.includes(atom)) continue;
-                if (!best || ring.length < best.length) best = ring;
+            const key = window.__RINGS_CACHE || null;
+            if (!_ringOfAtomMap || _ringOfAtomKey !== key) {
+                const m = new Map();
+                for (const ring of rings) {
+                    for (const a of ring) {
+                        const cur = m.get(a);
+                        if (!cur || ring.length < cur.length) m.set(a, ring);
+                    }
+                }
+                _ringOfAtomMap = m;
+                _ringOfAtomKey = key;
             }
-            return best;
+            return _ringOfAtomMap.get(atom) || null;
         }
 
         function computeRingPiElectrons(ringAtoms) {
@@ -7962,7 +8024,7 @@ isOptimizing = false;
                 }
             }
 
-                try { console.log('computeRingPiElectrons pre:', { ringLen: n, bondOrders: bondInfos.map(b=>b.order), donors: Array.from(donors).map(a=>({id: a.userData?._id||null, type: a.userData?.atomType})) }); } catch(e) {}
+                if (window.__PI_DIAG_LOG) { try { console.log('computeRingPiElectrons pre:', { ringLen: n, bondOrders: bondInfos.map(b=>b.order), donors: Array.from(donors).map(a=>({id: a.userData?._id||null, type: a.userData?.atomType})) }); } catch(e) {} }
 
             // 计算平均键序，用于后续判断
             const avgOrder = bondInfos.reduce((s, b) => s + (typeof b.order === 'number' ? b.order : 1), 0) / bondInfos.length;
@@ -7999,7 +8061,7 @@ isOptimizing = false;
                 }
                 let pi = Math.round(piAtomic || 0);
                 if (n <= 6) pi = Math.min(pi, 6);
-                try { const diag = { method: 'atomic', bondOrders: bondInfos.map(b=>b.order), avgOrder, donors: Array.from(donors || []).map(a=>({id: a.userData?._id||null, type: a.userData?.atomType})), piAtomic, pi }; window._lastComputeRingDiagnostic = diag; console.log('computeRingPiElectrons diag:', JSON.stringify(diag)); } catch(e) {}
+                try { const diag = { method: 'atomic', bondOrders: bondInfos.map(b=>b.order), avgOrder, donors: Array.from(donors || []).map(a=>({id: a.userData?._id||null, type: a.userData?.atomType})), piAtomic, pi }; window._lastComputeRingDiagnostic = diag; if (window.__PI_DIAG_LOG) console.log('computeRingPiElectrons diag:', JSON.stringify(diag)); } catch(e) {}
                 return pi;
             }
 
@@ -8044,7 +8106,7 @@ isOptimizing = false;
                     donorSum, lpSuppressFactor: globalLpSuppressFactor, pi
                 };
                 window._lastComputeRingDiagnostic = diag;
-                console.log('computeRingPiElectrons diag:', JSON.stringify(diag));
+                if (window.__PI_DIAG_LOG) console.log('computeRingPiElectrons diag:', JSON.stringify(diag));
             } catch (e) {}
             return pi;
         }
@@ -8958,6 +9020,89 @@ const fSide = new Set();
         }
         window.__countPeptideBonds = countPeptideBonds;
 
+        // ============ 输出质量闸门（2026-10-30 新增）============
+        // 本地「粗坐标 + 迭代优化」管线对复杂大分子会输出物理上不可能的几何
+        // （实测：环糊精 4 个碎片 / 22 处重叠；维生素B12 3 个碎片 / 45 处重叠）。
+        // 这里只做「物理不可能」级别的三项体检，避免误杀有张力的合法分子：
+        //   ① 连通分量数 > SMILES 片段数（骨架断裂）
+        //   ② 非键合原子对距离 < 0.8Å（原子重叠）
+        //   ③ 键长偏离目标 > 35%（键长崩坏）
+        // 不使用键角 RMS 作硬判据——合法小环/金属配合物的理想角本就不是 109.5/120。
+        // 只在本地 SMILES 管线（generateFromSmiles）成功后调用；生成器/示例/PDB/3D 路线不走闸门。
+        const QUALITY_CLASH_DIST = 0.8;
+        const QUALITY_BOND_DEV = 0.35;
+        function assessMoleculeQuality(opts) {
+            const o = opts || {};
+            const atoms = [];
+            for (const c of atomsGroup.children) if (c.userData && c.userData.isAtom) atoms.push(c);
+            const n = atoms.length;
+            const idx = new Map();
+            atoms.forEach((a, i) => idx.set(a, i));
+            const adj = atoms.map(() => new Set());
+            const badBonds = [];
+            for (const b of bonds) {
+                if (b.coordination) continue;
+                const i = idx.get(b.atomA), j = idx.get(b.atomB);
+                if (i === undefined || j === undefined) continue;
+                adj[i].add(j); adj[j].add(i);
+                let target = 0;
+                try { target = getTargetBondLength(b.atomA, b.atomB); } catch (e) { target = 0; }
+                if (target > 0.4) {
+                    const L = b.atomA.position.distanceTo(b.atomB.position);
+                    const dev = Math.abs(L - target) / target;
+                    if (dev > QUALITY_BOND_DEV) {
+                        badBonds.push({ a: i, b: j, len: +L.toFixed(2), target: +target.toFixed(2), dev: +dev.toFixed(2) });
+                    }
+                }
+            }
+            // 连通分量
+            const seen = new Uint8Array(n);
+            let components = 0;
+            for (let s = 0; s < n; s++) {
+                if (seen[s]) continue;
+                components++;
+                const stack = [s]; seen[s] = 1;
+                while (stack.length) {
+                    const k = stack.pop();
+                    for (const nb of adj[k]) if (!seen[nb]) { seen[nb] = 1; stack.push(nb); }
+                }
+            }
+            // 非键重叠（O(n²)，仅本地管线的小分子规模；>1500 原子直接跳过）
+            let clashes = 0;
+            let worstPair = null;
+            const lim = Math.min(n, 1500);
+            for (let i = 0; i < lim; i++) {
+                const A = atoms[i].position;
+                for (let j = i + 1; j < lim; j++) {
+                    if (adj[i].has(j)) continue;
+                    const d2 = A.distanceToSquared(atoms[j].position);
+                    if (d2 < QUALITY_CLASH_DIST * QUALITY_CLASH_DIST) {
+                        clashes++;
+                        if (!worstPair || d2 < worstPair.d2) {
+                            worstPair = { d2, i, j, d: +Math.sqrt(d2).toFixed(2), types: [atoms[i].userData.atomType, atoms[j].userData.atomType] };
+                        }
+                    }
+                }
+            }
+            const expectedFragments = Math.max(1, o.fragments || 1);
+            const ok = n > 0 && components <= expectedFragments && clashes === 0 && badBonds.length === 0;
+            return {
+                ok, atoms: n, bonds: bonds.length, components, expectedFragments,
+                clashes, worstPair: worstPair ? { d: worstPair.d, types: worstPair.types } : null,
+                badBonds: badBonds.length, badBondSample: badBonds.slice(0, 5)
+            };
+        }
+        window.__assessMoleculeQuality = assessMoleculeQuality;
+        function describeQualityFailure(q) {
+            const parts = [];
+            if (q.components > q.expectedFragments) parts.push(`骨架断裂（${q.components} 个碎片，预期 ${q.expectedFragments}）`);
+            if (q.clashes > 0) parts.push(`${q.clashes} 处原子重叠${q.worstPair ? '（最近 ' + q.worstPair.d + 'Å）' : ''}`);
+            if (q.badBonds > 0) parts.push(`${q.badBonds} 条键长异常`);
+            return '本地几何引擎无法正确排布该分子：' + (parts.join('、') || '几何不合格')
+                + '。已放弃显示以免给出错误结构；可尝试改用 SMILES 从 PubChem 获取 3D 坐标，或使用蛋白质序列路线。';
+        }
+        window.__describeQualityFailure = describeQualityFailure;
+
         async function generateFromSmiles(smiles, opts) {
             const spec = smilesToSpec(smiles);
             if (spec.error) return { ok: false, error: spec.error };
@@ -8979,6 +9124,8 @@ const fSide = new Set();
             // 多分子共存（异构体并排）：keepExisting 时不清场，下一个分子向右平移
             // 避开已存在分子的包围盒。生成新分子前记录旧原子数，生成后平移新原子。
             const prevCount = atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length;
+            // 质量闸门回滚基线：生成前先拍快照（keepExisting 只记录不拦截，无需快照）
+            const preSnap = keepExisting ? null : snapshotMoleculeState();
             historySuppress++;   // 撤销/恢复：整段生成（清场 + 放置 + 补氢优化）合并为一条记录
             try {
             generateFromSpec(spec, { keepExisting });
@@ -9015,7 +9162,20 @@ const fSide = new Set();
                 }
             }
             fitViewToMolecule();
-            return { ok: true, spec, atomCount, prevCount, large: isLarge };
+            // 质量闸门（2026-10-30）：只拦「物理不可能」的三类输出。
+            // 命中时恢复生成前的分子（不清空用户原有内容）并返回带 quality 的错误，
+            // 由 generateFromInput 用长提示说明原因。
+            let quality = null;
+            try { quality = assessMoleculeQuality({ fragments: String(smiles).split('.').length }); } catch (e) { quality = null; }
+            if (quality) window.__LAST_MOL_QUALITY = quality;
+            if (quality && !quality.ok && !keepExisting) {
+                const msg = describeQualityFailure(quality);
+                try { restoreHistorySnapshot(preSnap); } catch (e) { console.warn('[质量闸门] 回滚失败', e); }
+                try { fitViewToMolecule(); } catch (e) {}
+                console.warn('[质量闸门] 已拒绝不合法几何：', JSON.stringify(quality));
+                return { ok: false, error: { pos: 0, msg, quality }, quality, rolledBack: true };
+            }
+            return { ok: true, spec, atomCount, prevCount, large: isLarge, quality };
             } finally {
                 historySuppress--;
                 commitHistory();
@@ -9150,13 +9310,17 @@ const fSide = new Set();
         // （蛋白相邻残基 Cα-Cα≈3.8Å 远大于键长，不会误建跨残基键）。
         // opts.proteinOnly：只保留 ATOM 记录，跳过 HETATM（晶体结构里的水/金属/配体）。
         //   蛋白名称路线必须过滤——3I40 原始文件含 35 个 HOH 氧原子，不过滤会散落一地。
+        // opts.hetKeep：proteinOnly 下仍要保留的 HETATM 残基名白名单（默认空）。
+        //   细胞色素 c 的血红素辅基是 HETATM HEM，一刀切会把 Fe 连同卟啉环整块滤掉
+        //   （1HRC 实测 823 原子、元素表里没有 Fe）——蛋白失去辅基在化学上是错的。
         // opts.altLocFirst：交替构象只保留 altLoc 为空或 A 的原子（3I40 有 16 个 B 构象原子，
         //   两条都留会在同一位置出现双份原子、距离阈值建键混乱）。
-        // 默认两项都关闭 → ESMFold 序列路线行为完全不变。
+        // 默认三项都关闭 → ESMFold 序列路线行为完全不变。
         function parsePDB(text, opts) {
             const o = opts || {};
             const proteinOnly = !!o.proteinOnly;
             const altLocFirst = !!o.altLocFirst;
+            const hetKeep = Array.isArray(o.hetKeep) ? new Set(o.hetKeep.map(s => String(s).trim().toUpperCase())) : null;
             const lines = String(text).split(/\r?\n/);
             const atoms = [];
             const atomIndex = new Map();
@@ -9164,7 +9328,11 @@ const fSide = new Set();
                 const ln = lines[i];
                 const isAtomRecord = ln.startsWith('ATOM  ');
                 if (!(isAtomRecord || ln.startsWith('HETATM'))) continue;
-                if (proteinOnly && !isAtomRecord) continue;
+                if (proteinOnly && !isAtomRecord) {
+                    // 白名单里的辅基（HEM 等）保留，其余水/离子/配体丢弃
+                    const resName = ln.slice(17, 20).trim().toUpperCase();
+                    if (!hetKeep || !hetKeep.has(resName)) continue;
+                }
                 if (altLocFirst) {
                     const alt = ln.charAt(16);
                     if (alt !== ' ' && alt !== 'A') continue;
@@ -9270,6 +9438,8 @@ const fSide = new Set();
 
         function generateFromPDB(struct) {
             historySuppress++;   // 撤销/恢复：整段生成合并为一条记录
+            const prevSparse = _sparseAtomVisuals;
+            _sparseAtomVisuals = struct.atoms.length > SPARSE_VISUAL_ATOMS;
             try {
                 clearMolecule();
                 const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
@@ -9279,6 +9449,7 @@ const fSide = new Set();
                 fitViewToMolecule();
                 return meshes.length;
             } finally {
+                _sparseAtomVisuals = prevSparse;
                 historySuppress--;
                 commitHistory();
             }
@@ -9305,6 +9476,12 @@ const fSide = new Set();
             '溶菌酶': '2LYZ', 'lysozyme': '2LYZ',
             '核糖核酸酶a': '7RSA', 'rnase a': '7RSA', 'ribonuclease a': '7RSA',
             '细胞色素c': '1HRC', 'cytochrome c': '1HRC',
+            // 2026-10-30 扩充（实测质量：全部 0 碰撞，最长键 ≤2.32Å）：
+            // 1MBO 肌红蛋白 1260 原子 / 单连通 / 含 Fe；2HHB 血红蛋白 4556 原子 /
+            // 4 条链（α₂β₂，天然四聚体，4 个连通分量符合化学事实）/ 含 4 个 Fe。
+            // 名称入库同时修掉「肌红蛋白」被 MyMemory 误译成苦味酸衍生物的问题。
+            '肌红蛋白': '1MBO', 'myoglobin': '1MBO',
+            '血红蛋白': '2HHB', 'hemoglobin': '2HHB', 'haemoglobin': '2HHB',
         };
         function normalizeProteinKey(s) {
             return String(s || '').trim().toLowerCase().replace(/[，,、\s\-_]+/g, '');
@@ -9367,7 +9544,9 @@ const fSide = new Set();
                 if (!res.ok) return { error: 'RCSB PDB 返回 HTTP ' + res.status };
                 const text = await res.text();
                 // proteinOnly/altLocFirst：跳过水分子与 B 构象，保证单连通（3I40 → 403 原子）
-                const struct = parsePDB(text, { proteinOnly: true, altLocFirst: true });
+                // hetKeep：保留血红素辅基（细胞色素 c 1HRC / 肌红蛋白 1MBO / 血红蛋白 2HHB
+                //   的 HEM 是 HETATM，一刀切会把 Fe 和卟啉环整块滤掉 → 蛋白失去辅基）
+                const struct = parsePDB(text, { proteinOnly: true, altLocFirst: true, hetKeep: ['HEM', 'HEC', 'HEA', 'HEB'] });
                 if (!struct) return { error: 'PDB ' + id + ' 无可用原子坐标' };
                 const carbonyls = inferPdbCarbonylBonds(struct);
                 return { ok: true, struct, pdbId: id, pdbLen: text.length, carbonyls };
@@ -9388,6 +9567,62 @@ const fSide = new Set();
             return { ok: true, count, pdbId: r.pdbId, carbonyls: r.carbonyls };
         }
         window.__generateFromProteinPDB = generateFromProteinPDB;
+
+        // ============ 天然产物 → RCSB 化学组分理想坐标（2026-10-30 新增）============
+        // 背景：叶绿素 / 维生素B12 / 环糊精等天然产物在 PubChem 只有 2D 拓扑（3D 记录 404），
+        // 旧流程回退本地「粗坐标 + 迭代优化」→ 实测 4 个碎片 / 45 处重叠 / ∠RMS 166°。
+        // RCSB 的化学组分库（ligands/download/<ID>_ideal.sdf）提供带全部氢的理想几何，
+        // V2000 格式可直接复用 parseSDF3D（芳香键 4 → 1.5）。
+        // 注意：血红素（HEM）不在此列——本地卟啉模板已能把 Fe 放在 N4 中心并保持共面，
+        // 走库反而会丢掉我们已验证的配位键语义。
+        const RCSB_LIGAND_LIB = {
+            '叶绿素': 'CLA', '叶绿素a': 'CLA', 'chlorophyll': 'CLA', 'chlorophyll a': 'CLA',
+            '维生素b12': 'CNC', '维生素B12': 'CNC', 'vitamin b12': 'CNC',
+            '氰钴胺': 'CNC', 'cyanocobalamin': 'CNC',
+            '环糊精': 'BCD', 'β-环糊精': 'BCD', 'β环糊精': 'BCD',
+            'beta-cyclodextrin': 'BCD', 'betacyclodextrin': 'BCD', 'cyclodextrin': 'BCD',
+            'α-环糊精': 'ACX', 'α环糊精': 'ACX', 'alpha-cyclodextrin': 'ACX',
+            // 注意：α-环糊精的组分 ID 是 ACX（C36H60O30, 126 原子），ACD 是另一个
+            // 组分（C20H32O2, 54 原子）——映射错了会生成完全无关的小分子。
+        };
+        const _LIGAND_INDEX = {};
+        for (const k in RCSB_LIGAND_LIB) _LIGAND_INDEX[normalizeProteinKey(k)] = RCSB_LIGAND_LIB[k];
+        function resolveRcsbLigand(input) {
+            const key = normalizeProteinKey(input);
+            if (!key) return null;
+            const id = _LIGAND_INDEX[key];
+            return id ? { ligandId: id, label: String(input).trim() } : null;
+        }
+        window.__resolveRcsbLigand = resolveRcsbLigand;
+        window.__RCSB_LIGAND_LIB = RCSB_LIGAND_LIB;
+
+        async function fetchRcsbLigandSdf(ligandId) {
+            const id = String(ligandId || '').trim().toUpperCase();
+            if (!/^[A-Z0-9]{1,3}$/.test(id)) return { error: '无效的化学组分 ID: ' + ligandId };
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(30000) : undefined;
+                const url = 'https://files.rcsb.org/ligands/download/' + id + '_ideal.sdf';
+                const res = await fetch(url, { signal: ctrl });
+                if (!res.ok) return { error: 'RCSB 化学组分库返回 HTTP ' + res.status };
+                const text = await res.text();
+                const struct = parseSDF3D(text);
+                if (!struct || !struct.atoms.length) return { error: 'RCSB 组分 ' + id + ' 无可用坐标' };
+                return { ok: true, struct, ligandId: id };
+            } catch (e) {
+                return { error: 'RCSB 化学组分请求失败: ' + (e && e.message ? e.message : String(e)) };
+            }
+        }
+        window.__fetchRcsbLigandSdf = fetchRcsbLigandSdf;
+
+        async function generateFromRcsbLigand(ligandId, label) {
+            const r = await fetchRcsbLigandSdf(ligandId);
+            if (!r.ok) return { ok: false, error: r.error, ligandId: String(ligandId || '').toUpperCase() };
+            const count = generateFrom3D(r.struct);
+            console.log(`[分子来源] RCSB 化学组分 ${r.ligandId} · ${label || r.ligandId} · ${count} 原子`);
+            return { ok: true, count, ligandId: r.ligandId };
+        }
+        window.__generateFromRcsbLigand = generateFromRcsbLigand;
+
 
         // ============ 名称解析：内置库 NAME_LIBRARY + PubChem/Cactus 在线兜底 ============
         const NAME_LIBRARY = {
@@ -11333,6 +11568,25 @@ function smilesToCondensed(smiles) {
                         return true;
                     }
                     usedName = true;
+                    // 天然产物优先（叶绿素/维生素B12/环糊精）：PubChem 无 3D 记录，
+                    // 直接取 RCSB 化学组分理想坐标（带全部氢），避免回退本地粗坐标塌缩。
+                    const ligEntry = resolveRcsbLigand(name);
+                    if (ligEntry) {
+                        showToast('正在从 RCSB 化学组分库获取 ' + (ligEntry.label || name) + ' 坐标…', 2400);
+                        const lr = await generateFromRcsbLigand(ligEntry.ligandId, ligEntry.label || name);
+                        if (lr.ok) {
+                            if (smilesInput) smilesInput.value = '';
+                            const _lf = document.getElementById('formula-input');
+                            if (_lf) _lf.value = '';
+                            syncInputClearButtons();
+                            setInputPanelOpen(false);
+                            setMoleculeName(name);
+                            showToast(`已从名称生成: ${name} (${lr.count} 原子 · RCSB 组分 ${lr.ligandId})`, 3400);
+                            return true;
+                        }
+                        // 取库失败不中断：继续走 PubChem/本地管线（最终由质量闸门兜底）
+                        console.warn('[RCSB 组分] 获取失败，回退通用流程:', lr.error);
+                    }
                     const pre = precheckNameInput(name);
                     if (pre && pre.kind === 'looks_smiles') { showToast('输入看起来像 SMILES，请填入 SMILES 输入框', 2800); return false; }
                     if (pre && pre.kind === 'not_found') { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
@@ -11388,9 +11642,10 @@ setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                                 console.log(`[分子来源] 本地管线 · SMILES=${stripped} · ${finalCount} 原子（剥除立体标记重试）${largeMol ? ' · 大分子近似' : ''}`);
                                 return true;
                             }
-                            if (r2 && !r2.ok && r2.error && /酰胺键/.test(r2.error.msg || '')) {
-                                showToast(r2.error.msg, 5200);
-                                return false;
+                            if (r2 && !r2.ok && r2.error) {
+                                const _m2 = r2.error.msg || '';
+                                if (/酰胺键/.test(_m2)) { showToast(_m2, 5200); return false; }
+                                if (/几何引擎/.test(_m2)) { showToast(_m2, 7600); return false; }
                             }
                         }
                     }
@@ -11400,6 +11655,7 @@ setInputPanelOpen(false); // 生成成功后自动折叠输入面板
                         const pos = err.pos !== undefined ? err.pos : '?';
                         const msg = err.msg || '未知错误';
                         if (/酰胺键/.test(msg)) showToast(msg, 5200);
+                        else if (/几何引擎/.test(msg)) showToast(msg, 7600);
                         else showToast('SMILES 语法错误：位置 ' + pos + '，原因 ' + msg, 3200);
                         return false;
                     }
@@ -13220,6 +13476,23 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 atomPositions() {
                     return atomsGroup.children.filter(a => a.userData?.isAtom).map(a => ({ id: a.userData._id, type: a.userData.atomType, x: +a.position.x.toFixed(3), y: +a.position.y.toFixed(3), z: +a.position.z.toFixed(3) }));
                 },
+                // 大结构视觉降噪自检（2026-10-30）：>1500 原子不建标签/光晕，
+                // 选中原子时才懒建一个光晕。返回实际渲染的标签/光晕数量。
+                visualStats() {
+                    let atoms = 0, labels = 0, glows = 0, visibleGlows = 0, lpMeshes = 0;
+                    for (const a of atomsGroup.children) {
+                        if (!a.userData?.isAtom) continue;
+                        atoms++;
+                        if (a.userData.label) labels++;
+                        for (const c of a.children) {
+                            if (!c.isGlowSphere) continue;
+                            glows++;
+                            if (c.visible) visibleGlows++;
+                        }
+                        if (a.userData.__lpMeshes) lpMeshes += a.userData.__lpMeshes.length;
+                    }
+                    return { atoms, labels, glows, visibleGlows, lpMeshes, sparse: atoms > SPARSE_VISUAL_ATOMS, lpDisabled: _lpVisualsDisabled };
+                },
                 hybOfAll() {
                     return atomsGroup.children.filter(a => a.userData?.isAtom).map(a => ({ id: a.userData._id, hyb: a.userData.hybridization || null }));
                 },
@@ -14160,6 +14433,11 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // 参考 hx.nobook.com H₂O 页面：云呈水滴状，两个电子点在云体中段并排）
         // + 云内两个黑铬金属点（代表一对电子）。
         let showLonePairs = (() => { try { return localStorage.getItem('LONE_PAIRS_VIS') !== '0'; } catch (e) { return true; } })();
+        // 大结构（蛋白 PDB 等）不渲染孤对：每个 O/N 的 2 对孤对 = 1 云 + 2 金属点
+        // （各自独立 geometry），4556 原子会产生上千个透明网格，生成与逐帧都明显变慢；
+        // 且在这种密度下孤对云已完全糊成一团，没有辨识价值。小分子行为不变。
+        const LONE_PAIR_MAX_ATOMS = 600;
+        let _lpVisualsDisabled = false;
         const LP_COLOR = 0x5fa6e4;          // 电子云基色：中蓝（2026-10-23 用户要求"蓝色再深一点"，原 0x9fd0ff 浅蓝）
         const LP_EMISSIVE = 0x0a1c2e;       // 自发光：托底阴影侧，避免背光面发黑（配合 Lambert 受光）
         const LP_OPACITY = 0.72;            // 半透明：仍透出下层原子（2026-10-20 用户要求半透明）
@@ -14225,6 +14503,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return g;
         }
         function updateLonePairVisuals() {
+            if (_lpVisualsDisabled) return;
             for (const child of atomsGroup.children) {
                 if (!child.userData || !child.userData.isAtom) continue;
                 let dirs = child.userData.__lpDirs;
@@ -14301,6 +14580,20 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // 分子重建后刷新孤对方向与可视化（比 toggle 时兜底计算更可靠）。
         // force=true 时强制全部重算（化学环境变化，如补氢/生成器重建后 lp 数会变）
         function refreshLonePairVisuals(force) {
+            let nAtoms = 0;
+            for (const child of atomsGroup.children) {
+                if (child.userData && child.userData.isAtom) nAtoms++;
+            }
+            _lpVisualsDisabled = nAtoms > LONE_PAIR_MAX_ATOMS;
+            if (_lpVisualsDisabled) {
+                // 隐藏既有云（切换分子时可能残留），并清空方向缓存避免旧数据复活
+                for (const child of atomsGroup.children) {
+                    if (!child.userData || !child.userData.isAtom) continue;
+                    child.userData.__lpDirs = [];
+                    if (child.userData.__lpMeshes) child.userData.__lpMeshes.forEach(m => { m.visible = false; });
+                }
+                return;
+            }
             for (const child of atomsGroup.children) {
                 if (!child.userData || !child.userData.isAtom) continue;
                 if (force || !child.userData.__lpDirs) {
