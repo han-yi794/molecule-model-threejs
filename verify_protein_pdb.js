@@ -164,14 +164,22 @@ const t = (name, cond, detail) => {
     const before = window.__diag.atomPositions().length;
     const bad = await window.__generateFromSmiles(pep);
     const afterBad = window.__diag.atomPositions().length;
-    const small = await window.__generateFromSmiles('NCC(=O)NCC(=O)O');
+    // 小酰胺（N-甲基乙酰胺）：不含肽键链，走本地管线应正常生成
+    const small = await window.__generateFromSmiles('CC(=O)NC');
+    // 二肽：肽键数不足 10 不会被多肽守卫拦，但本地粗坐标排不出肽链 →
+    // 由质量闸门（2026-10-30）拒绝并回滚，绝不能显示重叠结构
+    const dipep = await window.__generateFromSmiles('NCC(=O)NCC(=O)O');
     return {
       before, badOk: bad && bad.ok, badMsg: bad && bad.error ? bad.error.msg : '', afterBad,
-      smallOk: small && small.ok, smallAtoms: small && small.atomCount
+      smallOk: small && small.ok, smallAtoms: small && small.atomCount,
+      dipepOk: dipep && dipep.ok, dipepRolledBack: !!(dipep && dipep.rolledBack),
+      dipepMsg: dipep && dipep.error ? String(dipep.error.msg || '') : ''
     };
   });
   t('P8 11 肽 SMILES 被守卫拒绝且不清空现有分子', p8.badOk === false && /酰胺键/.test(p8.badMsg) && p8.afterBad === p8.before, JSON.stringify(p8));
-  t('P8b 小肽（2 个酰胺键）不被误拦', p8.smallOk === true && p8.smallAtoms > 0, JSON.stringify(p8));
+  t('P8b 小酰胺（N-甲基乙酰胺）不被误拦', p8.smallOk === true && p8.smallAtoms === 12, JSON.stringify(p8));
+  t('P8c 二肽（肽键 <10）由质量闸门拦下并回滚（本地引擎排不出肽链）',
+    p8.dipepOk === false && p8.dipepRolledBack === true && /本地几何引擎/.test(p8.dipepMsg), JSON.stringify({ ok: p8.dipepOk, rolledBack: p8.dipepRolledBack, msg: p8.dipepMsg.slice(0, 80) }));
 
   // ---------- P9 非法 PDB ID ----------
   const p9 = await page.evaluate(async () => {
