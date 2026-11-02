@@ -88,11 +88,11 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         await page.evaluate(() => window.__setInputPanelOpen(false));
         await page.waitForTimeout(250);
 
-        // P1 桌面默认：两侧 224px、默认「基团」页签单列 9 卡、元素库隐藏、caret 指向收起侧
+        // P1 桌面默认：构建台 184px、检查器 224px、默认「基团」页签单列 9 卡、元素库隐藏、caret 指向收起侧
         let st = await readPanels();
-        step('P1 桌面默认展开：构建台/检查器各 224px、默认基团单列 9 卡、元素库隐藏、caret 指向收起侧',
+        step('P1 桌面默认展开：构建台 184px/检查器 224px、默认基团单列 9 卡、元素库隐藏、caret 指向收起侧',
             st.build.found && st.inspect.found && !st.build.collapsed && !st.inspect.collapsed
-            && st.build.width === 224 && st.inspect.width === 224
+            && st.build.width === 184 && st.inspect.width === 224
             && st.groups.hidden === false && st.groups.visibleCards === 9 && st.groups.totalCards === 9
             && st.atoms.hidden === true && st.atoms.totalCards === 8 && st.atoms.visibleCards === 0
             && st.groups.titleText === '9 个基团' && st.atoms.titleText === '8 种元素'
@@ -133,12 +133,12 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             { build: st.build, groups: st.groups, atoms: st.atoms, mem: st.mem });
         await page.screenshot({ path: SHOT + 'panels_build_collapsed.png' });
 
-        // P3 再点展开：恢复 224 / 卡片 / caret← / 记忆 1
+        // P3 再点展开：恢复 184 / 卡片 / caret← / 记忆 1
         await page.click('#group-sidebar-toggle');
         await page.waitForTimeout(400);
         st = await readPanels();
-        step('P3 再点展开构建台：宽 224、卡片恢复、caret←、记忆 1',
-            !st.build.collapsed && st.build.width === 224 && st.groups.visibleCards === 9 && st.atoms.hidden === true
+        step('P3 再点展开构建台：宽 184、卡片恢复、caret←、记忆 1',
+            !st.build.collapsed && st.build.width === 184 && st.groups.visibleCards === 9 && st.atoms.hidden === true
             && st.groups.caret === 'chevron-left' && st.groups.ariaExpanded === 'true' && st.mem.build === '1',
             { build: st.build, mem: st.mem });
 
@@ -147,7 +147,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         await page.waitForTimeout(400);
         st = await readPanels();
         const iCollapsed = st.inspect.collapsed && st.inspect.width === 44 && st.inspect.caret === 'chevron-left'
-            && st.inspect.titleVertical && st.mem.inspect === '0' && !st.build.collapsed && st.build.width === 224;
+            && st.inspect.titleVertical && st.mem.inspect === '0' && !st.build.collapsed && st.build.width === 184;
         await page.click('#inspect-toggle');
         await page.waitForTimeout(400);
         st = await readPanels();
@@ -166,7 +166,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             kb1.collapsed && kb1.width === 44 && !kb2.collapsed && kb2.width === 224,
             { afterEnter: kb1, afterSpace: kb2 });
 
-        // P6 刷新保持：两栏记忆为收起 → reload 后仍 44px；清记忆后回默认 224px
+        // P6 刷新保持：两栏记忆为收起 → reload 后仍 44px；清记忆后回默认 184/224px
         await page.evaluate(() => { localStorage.setItem('PANEL_BUILD_OPEN', '0'); localStorage.setItem('PANEL_INSPECT_OPEN', '0'); });
         await page.reload({ waitUntil: 'networkidle', timeout: 60000 });
         await waitReady();
@@ -178,7 +178,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         await waitReady();
         await page.evaluate(() => window.__setInputPanelOpen(false));
         st = await readPanels();
-        const restored = !st.build.collapsed && !st.inspect.collapsed && st.build.width === 224 && st.inspect.width === 224;
+        const restored = !st.build.collapsed && !st.inspect.collapsed && st.build.width === 184 && st.inspect.width === 224;
         step('P6 刷新后保持收起（记忆 0）；清记忆后恢复默认展开', persisted && restored,
             { persisted, restored, build: st.build, inspect: st.inspect });
 
@@ -193,7 +193,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         await page.click('#group-sidebar-toggle');
         await page.waitForTimeout(450);
         st = await readPanels();
-        const tabExpand = !st.build.collapsed && st.build.width === 224 && st.inspect.collapsed && st.inspect.width === 44 && st.overflowX === 0;
+        const tabExpand = !st.build.collapsed && st.build.width === 184 && st.inspect.collapsed && st.inspect.width === 44 && st.overflowX === 0;
         await page.screenshot({ path: SHOT + 'panels_tablet_build_open.png' });
         step('P7 平板 768：默认双 44px 轨道；展开构建台自动收起检查器', tabDefault && tabExpand,
             { tabDefault, tabExpand, build: st.build, inspect: st.inspect });

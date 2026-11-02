@@ -57,7 +57,7 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             && s1.ids.includes('btn-clear-molecule') && s1.ids.includes('btn-open-input') && s1.ids.includes('btn-help'),
             { bar: s1.bar, brand: s1.brandText, h1: s1.h1Text + '/' + s1.h1Size, btns: s1.btns, overlap });
 
-        // S2 三栏网格：224 / 自适应 / 224，8px 外边距、12px 间距；状态条 30px 在画布井底部
+        // S2 三栏网格：184 / 自适应 / 224，8px 外边距、12px 间距；状态条 30px 在画布井底部
         const s2 = await page.evaluate(() => {
             const r = (id) => { const el = document.getElementById(id); if (!el) return null; const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
             const shell = document.getElementById('shell');
@@ -70,8 +70,8 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
                 viewport: { w: innerWidth, h: innerHeight }
             };
         });
-        step('S2 三栏网格：224 / 自适应 / 224、8px 边距、12px 间距、状态条 30px 贴井底',
-            s2.build.w === 224 && s2.inspect.w === 224 && s2.build.x === 8 && s2.inspect.r === s2.viewport.w - 8
+        step('S2 三栏网格：184 / 自适应 / 224、8px 边距、12px 间距、状态条 30px 贴井底',
+            s2.build.w === 184 && s2.inspect.w === 224 && s2.build.x === 8 && s2.inspect.r === s2.viewport.w - 8
             && s2.well.x === s2.build.r + 12 && s2.inspect.x === s2.well.r + 12
             && s2.gap === '12px' && s2.pad === '12px 8px 8px 8px'
             && s2.bar.h === 30 && s2.bar.b === s2.well.b - 1 && s2.canvasHost.h === s2.well.h - 32,

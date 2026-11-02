@@ -121,8 +121,8 @@ class AssertionCollector {
             ac.ok(b.w === 44, `收起后构建台 44px 轨道（${b.w}）`);
             ac.ok(a.bodyDisplay === 'none', `收起后内容区隐藏（${a.bodyDisplay}）`);
             ac.ok(caret === 'chevron-right', `收起后 caret 指向展开方向（${caret}）`);
-            ac.ok(c.w === 224 && c.w === before.w, `再展开回到 224px（${c.w}）`);
-            step('A3 面板折叠 180ms 列宽过渡（224 ↔ 44）', ac, `before=${before.w} collapsed=${b.w} after=${c.w}`);
+            ac.ok(c.w === 184 && c.w === before.w, `再展开回到 184px（${c.w}）`);
+            step('A3 面板折叠 180ms 列宽过渡（184 ↔ 44）', ac, `before=${before.w} collapsed=${b.w} after=${c.w}`);
         }
 
         // ---------- A4 分子式小键盘：弹出有动画，关闭瞬时 ----------
@@ -265,7 +265,7 @@ class AssertionCollector {
             await page.waitForTimeout(420);
             const b = await snap('build-panel');
             const br = await rectOf('build-panel');
-            ac.ok(b.collapsed === false && br.w === 224, `面板连点后仍展开（collapsed=${b.collapsed} w=${br.w}）`);
+            ac.ok(b.collapsed === false && br.w === 184, `面板连点后仍展开（collapsed=${b.collapsed} w=${br.w}）`);
             step('A9 过渡未播完又打开的竞态', ac, `drawer=${i.transform} build=${br.w}`);
         }
 
