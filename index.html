@@ -197,7 +197,7 @@
             flex: 1 1 auto;
             min-height: 0;
             display: grid;
-            grid-template-columns: var(--bw, 224px) minmax(0, 1fr) var(--iw, 224px);
+            grid-template-columns: var(--bw, 184px) minmax(0, 1fr) var(--iw, 224px);
             gap: var(--gap);
             padding: var(--gap) var(--edge) var(--edge);
             transition: grid-template-columns 180ms ease;
@@ -443,6 +443,19 @@
         #canvas-host { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
         #canvas-host > canvas { display: block; }
         #canvas-host > div { position: absolute; top: 0; left: 0; pointer-events: none; }
+        /* 画布纵深（2026-10-30，用户反馈「画布空间感不强」）：中心极淡提亮 + 四周暗角。
+           canvas 不透明，伪元素必须叠在它上面（z-index 1）才可见；低于空状态提示（2）
+           与 HUD/徽章（20+），pointer-events:none 不影响拾取。 */
+        #canvas-host::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 72% 68% at 50% 44%, rgba(140, 170, 210, 0.07) 0%, rgba(140, 170, 210, 0.02) 42%, rgba(0, 0, 0, 0) 62%),
+                radial-gradient(ellipse 100% 100% at 50% 50%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.42) 100%);
+        }
 
         #status-bar {
             flex: 0 0 30px;
@@ -482,7 +495,7 @@
         #canvas-empty {
             position: absolute;
             left: 0; right: 0; top: 0; bottom: 30px;
-            z-index: 1;
+            z-index: 2;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -2417,6 +2430,59 @@
         gridFine.material.opacity = 0.55;
         gridRoot.add(gridHelper);
         gridRoot.add(gridFine);
+        // 深度地面（2026-10-30，用户反馈「画布空间感不强」）：分子平面下方约 3Å 的淡网格，
+        // 只作视觉地面参照，不参与吸附（吸附网格是 gridRoot，受 GRID_SNAP 开关控制）。
+        // 用「贴图平面」而非 GridHelper：径向 alpha 淡出没有硬边，近处线条也不会拉成巨线。
+        function makeDepthGroundTexture() {
+            const S = 1024, units = 64;          // 贴图覆盖 64Å
+            const cv = document.createElement('canvas');
+            cv.width = cv.height = S;
+            const g = cv.getContext('2d');
+            const px = S / units;
+            g.clearRect(0, 0, S, S);
+            // 细线 1Å
+            g.strokeStyle = 'rgba(118, 132, 154, 0.20)';
+            g.lineWidth = 1;
+            for (let i = 0; i <= units; i++) {
+                const p = i * px + 0.5;
+                g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke();
+                g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke();
+            }
+            // 主线 4Å
+            g.strokeStyle = 'rgba(138, 154, 180, 0.34)';
+            g.lineWidth = 1.5;
+            for (let i = 0; i <= units; i += 4) {
+                const p = i * px + 0.5;
+                g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke();
+                g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke();
+            }
+            // 径向淡出：中心实、边缘透明，避免出现「地面边缘」硬线
+            const grad = g.createRadialGradient(S / 2, S / 2, S * 0.08, S / 2, S / 2, S * 0.5);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.55, 'rgba(255,255,255,0.8)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            g.globalCompositeOperation = 'destination-in';
+            g.fillStyle = grad;
+            g.fillRect(0, 0, S, S);
+            g.globalCompositeOperation = 'source-over';
+            const tex = new THREE.CanvasTexture(cv);
+            try { tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); } catch (e) {}
+            return tex;
+        }
+        const depthGround = new THREE.Mesh(
+            new THREE.PlaneGeometry(64, 64),
+            new THREE.MeshBasicMaterial({
+                map: makeDepthGroundTexture(),
+                transparent: true,
+                opacity: 0.62,
+                depthWrite: false,
+                side: THREE.DoubleSide
+            })
+        );
+        depthGround.rotation.x = -Math.PI / 2;
+        depthGround.position.y = -3.2;
+        depthGround.renderOrder = -1;   // 先于分子绘制，透明物体里也保持在地面层
+        scene.add(depthGround);
         scene.fog = new THREE.Fog(SCENE_BG_COLOR, 15, 40);
 
         const atomsGroup = new THREE.Group();
@@ -2433,10 +2499,13 @@
                 camera.position.set(8, 6, 12);
                 camera.updateProjectionMatrix();
                 controls.update();
+                depthGround.position.y = -3.2;
                 return;
             }
             const box = new THREE.Box3();
             for (const a of list) box.expandByPoint(a.position);
+            // 地面随分子最低点下移：大分子/蛋白不会被地面平面穿过
+            depthGround.position.y = Math.min(-2.6, box.min.y - 1.2);
             const center = box.getCenter(new THREE.Vector3());
             const sphere = box.getBoundingSphere(new THREE.Sphere());
             const radius = Math.max(sphere.radius, 0.9) + 0.6;   // 含原子球视觉半径余量
@@ -12338,7 +12407,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // 手机（≤699）：面板改为底部抽屉，由 #mobilebar 的 .sheet-open 控制。
         // caret 指向语义：展开时朝收起的侧边（左栏 ←、右栏 →），收起时朝展开方向。
         const PANEL_SPECS = {
-            build:   { id: 'build-panel',   key: 'PANEL_BUILD_OPEN',   label: '构建台', colVar: '--bw', openCaret: 'chevron-left',  collapsedCaret: 'chevron-right', legacyKey: 'SIDEBAR_GROUPS_OPEN' },
+            build:   { id: 'build-panel',   key: 'PANEL_BUILD_OPEN',   label: '构建台', colVar: '--bw', openW: 184, openCaret: 'chevron-left',  collapsedCaret: 'chevron-right', legacyKey: 'SIDEBAR_GROUPS_OPEN' },
             inspect: { id: 'inspect-panel', key: 'PANEL_INSPECT_OPEN', label: '检查器', colVar: '--iw', openCaret: 'chevron-right', collapsedCaret: 'chevron-left',  legacyKey: 'SIDEBAR_ATOMS_OPEN' }
         };
         const PANEL_OPEN_W = 224;
@@ -12374,7 +12443,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!spec || !el) return;
             el.classList.toggle('collapsed', !!collapsed);
             const shell = document.getElementById('shell');
-            if (shell) shell.style.setProperty(spec.colVar, (collapsed ? PANEL_COLLAPSED_W : PANEL_OPEN_W) + 'px');
+            if (shell) shell.style.setProperty(spec.colVar, (collapsed ? PANEL_COLLAPSED_W : (spec.openW || PANEL_OPEN_W)) + 'px');
             _syncPanelHead(name, collapsed);
         }
         // 700-899：画布只剩 ~500px，展开一侧时自动收起另一侧（同一时刻只有一侧展开）
@@ -13344,6 +13413,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
                 window.__diag = {
                 generate(name) { clearMolecule(); const g = GEN_MAP[name]; if (g) g(); },
+                depthGridVisible() { return depthGround.visible; },
+                camInfo() { return { pos: camera.position.toArray().map(v => +v.toFixed(2)), target: controls.target.toArray().map(v => +v.toFixed(2)), fov: camera.fov, aspect: +camera.aspect.toFixed(3) }; },
                 generateSpec(name) { if (CONNECTIVITY_SPECS[name]) generateFromSpec(CONNECTIVITY_SPECS[name]); },
                 // 卟啉核心模板（解析式 4 吡咯 + 4 meso + 中心金属）
                 porphyrinTemplateOf(spec) { return porphyrinTemplateOf(spec); },
