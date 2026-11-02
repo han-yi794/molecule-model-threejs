@@ -7,13 +7,13 @@
 ## 目录
 
 - [功能特性](#功能特性)
+- [程序功能详解](#程序功能详解)
 - [文件说明](#文件说明)
 - [环境要求](#环境要求)
 - [运行](#运行)
 - [验证](#验证)
 - [复现与分析](#复现与分析)
 - [核心几何优化](#核心几何优化)
-- [球棍模型4.html - 交互功能](#球棍模型4html---交互功能)
 - [调试接口(浏览器 Console)](#调试接口浏览器-console)
 - [隐私与凭据](#隐私与凭据)
 - [技术说明](#技术说明)
@@ -29,7 +29,7 @@
 - **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构;蛋白质名称(胰岛素/溶菌酶/核糖核酸酶A/细胞色素c/肌红蛋白/血红蛋白)直接取 **RCSB PDB 实验结构**(真实主链构象与二硫键,如胰岛素 3I40 403 原子单连通、血红蛋白 2HHB 4556 原子含 4 个血红素 Fe),不再走粗坐标管线生成长链碎片。
 - **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 184px / 中间画布 / 右侧检查器 224px,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
 - **可视化**:分子状态条(分子式 / 原子 / 键 / 环 / 芳香 / ∠RMS 实时读数)、检查器(选中原子或键的详情、环清单、视图开关)、蓝色半透明水滴形孤对电子云(NEBOOK 风格、受光立体)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮;大结构(>1500 原子)自动省掉原子标签与光晕(选中时按需补建)、>600 原子不画孤对云,保证蛋白质四聚体仍可流畅交互。
-- **自测体系**:页面内自动测试 + Playwright 回归脚本(33 几何 + 23 π + 36 基团方位,全绿)。
+- **自测体系**:控制台自测(`window.runAllExamplesAndTests()`,33 几何)+ 离域π自测(`window.__runPiSystemTests()`,23 项)+ Playwright 回归脚本(36 基团方位等,全绿)。
 
 ## 程序功能详解
 
@@ -48,15 +48,15 @@
     - *大分子式：检索前筛选*:候选超过 400 个的分子式(如 C₁₂H₁₃N₃O₂,PubChem 上有一万多条记录)不再一次性全量拉取(旧版会因请求超时报"请求失败"),而是先弹出**检索前筛选**面板——同样按官能团 / ¹H NMR 条件收窄,并可选每次上限(30/60/120 个);检索从前往后扫描、命中达到上限即停,顶部实时显示"已扫描 / 总数 · 命中数";结果面板可点**继续检索更多**往后取下一批,预筛选条件会自动带入结果面板的筛选条(可再收窄)。小分子式(≤400 候选)仍直接出结果。
   - *蛋白质序列*:输入氨基酸序列(中文名/三字母/单字母混合均可,≤400 残基),经 **ESMFold** 在线预测 3D 结构(必须联网)。
   - *蛋白质名称*:胰岛素 / 溶菌酶 / 核糖核酸酶A / 细胞色素c / 肌红蛋白 / 血红蛋白(中英文、大小写、空格均可)直接下载 **RCSB PDB 实验结构**——自动过滤水分子与 B 构象、保留血红素辅基、推断羰基双键,得到真实折叠的多肽链(胰岛素 3I40:403 原子 / 414 键 / 3 条二硫键,单连通无碎片;细胞色素c 1HRC:866 原子含 Fe;肌红蛋白 1MBO:1260 原子;血红蛋白 2HHB:4556 原子 / 4 个血红素 Fe / 四聚体);名称框或序列框填均可。失败时不会回退粗坐标管线,而是提示改用氨基酸序列由 ESMFold 预测。含 ≥10 个酰胺键的 SMILES 会被拒绝并给出同样的引导(本地管线无法排布大分子骨架)。
-  - 在线 API(PubChem/CACTUS/ESMFold)均免费免 key,失败静默回退本地管线,控制台标注分子来源。
+  - 在线 API(PubChem / CACTUS / ESMFold / RCSB PDB / RCSB 化学组分)均免费免 key,失败静默回退本地管线,控制台标注分子来源。
 - **自由搭骨架**:左侧构建台顶部切到「元素」页签,单列拖出 **8 种原子**(C/H/O/N/F/Cl/Br/I,CPK 彩色圆球)到画布,靠近已有原子松开即自动成键。
 - **基团拖拽**:左侧构建台顶部切到「基团」页签,单列 **9 个球形预设基团按钮** —— 甲基 CH₃ / 乙基 C₂H₅ / 苯基 Ph / 氨基 NH₂ / 羧基 COOH / 羰基 C=O / 醛基 CHO / 酯基 COOR / 羟基 OH,拖到分子上自动吸附到最近可键合原子,绕连接轴 6 角度选无碰撞朝向(未饱和中心直接成键、保留原有 H;饱和中心沿某 H 方向放置并替换该 H)。
-- **一键补氢**(`btn-toggle-hydro`):开启后每次「全局同步优化」自动按价态补齐缺失 H(如乙烷+8、乙烯+4、乙炔+2),再经优化器校正到理想角。
+- **一键补氢**(`btn-toggle-hydro`):开启后每次「优化」自动按价态补齐缺失 H(如乙烷+8、乙烯+4、乙炔+2),再经优化器校正到理想角。
 - **删除**:按 Delete/Backspace 键,或点选中原子旁出现的红底删除图标(垃圾桶);「清空」重置画布。
 
 ### 2. 几何优化
 
-- **✨ 全局同步优化**(或 Shift+O):对当前分子做多轮迭代——键角阶段(sp3 四面体 / sp2 平面 / sp 线性 / 环感知键角)与键长阶段交替收敛,芳香环排布、饱和环规则排列、共轭桥共面收尾。开启自动补氢时该按钮即补氢+优化一体入口。
+- **优化**(顶栏按钮,`title` 为「全局同步优化 (Shift+O)」,或 Shift+O):对当前分子做多轮迭代——键角阶段(sp3 四面体 / sp2 平面 / sp 线性 / 环感知键角)与键长阶段交替收敛,芳香环排布、饱和环规则排列、共轭桥共面收尾。开启自动补氢时该按钮即补氢+优化一体入口。
 - **手动杂化**:选中原子后按 0/1/2/3 强制 自动 / sp³ / sp² / sp(或 Ctrl/⌘+点击原子弹出杂化菜单),观察 VSEPR 自动推断与手工指定的差异。
 
 ### 3. 交互编辑
@@ -116,7 +116,7 @@
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
 | `analyze_angle.js` / `analyze_ring.js` / `analyze_trace.js` | 收敛过程分析脚本 |
 | `download_three.js` / `build_inline.js` / `download_smilesdrawer.js` / `build_inline_smilesdrawer.js` / `download_lucide.js` | 内联库(Three.js / SmilesDrawer / Lucide)下载与幂等重建脚本;下载产物 `vendor_tmp/` 不入库 |
-| `docs/` | 功能验证记录(`cistrans-verify.md`)与 Agent 工作技能文档 |
+| `docs/` | 设计/交接与验证记录:`REDESIGN.md`(三栏工作台重设计方案)、`HANDOFF.md`(交接文档)、`cistrans-verify.md`(顺反翻转验证记录)、`agents/`(Issue tracker / triage / domain 等 Agent 技能规范) |
 | `AGENTS.md` | 项目深坑/几何优化关键函数速查(开发者/Agent 向) |
 
 ## 环境要求
@@ -172,7 +172,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 
 ## 调试接口(浏览器 Console)
 
-- `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`/**`porphyrinCheck()`/`porphyrinTemplateOf(spec)`**)、`window.lastRunResults`、`window._INIT_ERRORS`、`window.__OPT_LAST_TRUNCATED`(限时优化是否被截断)
+- `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`/**`porphyrinCheck()`/`porphyrinTemplateOf(spec)`**/`visualStats()`/`depthGridVisible()`/`camInfo()`)、`window.lastRunResults`、`window._INIT_ERRORS`、`window.__OPT_LAST_TRUNCATED`(限时优化是否被截断)
 - `window.__panels`{set(name,collapsed)/toggle/state}(三栏面板折叠,`name` = `build` / `inspect`)、`window.__sidebars`(旧接口别名,`group-sidebar`/`sidebar` 映射到 `build`)、`window.__buildLib`{get/set/state}(构建台「基团 / 元素」页签,记忆键 `BUILD_LIB`)、`window.__setInputPanelOpen(open)`(生成抽屉开关)
 - `window.__statusBar()`(分子状态条读数:分子式/原子/键/环/芳香/∠RMS)、`window.__fitView()`(取景到当前分子)
 - `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)
