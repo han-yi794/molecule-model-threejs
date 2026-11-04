@@ -319,63 +319,104 @@
         #build-panel.collapsed .build-tabs { display: none; }
         #build-panel .panel[hidden] { display: none !important; }
 
-        /* 构建库列表：与三栏界面同一套中性控件语言（--raised 底 + 1px 边 + 6px 圆角，
-           无渐变/阴影/位移）。元素色只保留为 8px CPK 圆点——那是数据身份，不是界面装饰。 */
-        .group-list,
-        .element-grid {
+        /* 基团按钮：重设计前的球形（径向高光胶囊）外观——公式在上、名称在下，单列居中 */
+        .group-list {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            align-items: center;
+            gap: 6px;
             padding: 8px 0 4px;
         }
-        .group-card,
-        .atom-card {
+        .group-card {
+            width: 100px;
+            height: 46px;
+            border-radius: 23px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 8px;
-            width: 100%;
-            height: 34px;
-            padding: 0 10px;
-            border: 1px solid var(--border);
-            border-radius: var(--r-control);
-            background: var(--raised);
-            color: var(--text);
-            font: inherit;
-            text-align: left;
+            justify-content: center;
+            border: 2px solid rgba(255, 255, 255, 0.55);
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+            line-height: 1.15;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+            background: radial-gradient(circle at 30% 28%, #3a5a8a, #1a2a4a);
+            box-shadow: 0 5px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
             cursor: grab;
             user-select: none;
             touch-action: none;
-            transition: background 120ms ease, border-color 120ms ease;
+            transition: transform 160ms ease, box-shadow 160ms ease;
         }
-        .group-card:hover,
-        .atom-card:hover { background: var(--active); border-color: #2e3138; }
-        .group-card:active,
-        .atom-card:active { cursor: grabbing; background: var(--sunken); }
-        .group-card .g-form { font-size: var(--fs-md); font-weight: 600; letter-spacing: 0.01em; }
-        .group-card .g-name { margin-left: auto; font-size: var(--fs-xs); color: var(--faint); }
-        /* 元素行：CPK 色点 + 符号 + 中文名 */
-        .atom-card::before {
-            content: '';
-            flex: 0 0 auto;
-            width: 8px;
-            height: 8px;
+        .group-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+        }
+        .group-card:active {
+            cursor: grabbing;
+            transform: scale(0.96);
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .group-card .g-form { font-size: 15px; letter-spacing: 0.01em; }
+        .group-card .g-name { font-size: 11px; font-weight: 400; opacity: 0.85; }
+
+        /* 元素卡片：恢复重设计前的 CPK 圆球（整颗球按元素着色）——单列居中 */
+        .element-grid {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 0 4px;
+        }
+        .atom-card {
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
-            background: var(--cpk, var(--faint));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            background: radial-gradient(circle at 30% 30%, var(--cpk, #505050), var(--cpk-lo, #222));
+            color: #fff;
+            font-weight: 700;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+            transition: transform 160ms ease, box-shadow 160ms ease;
         }
-        .atom-card .a-sym { font-size: var(--fs-md); font-weight: 600; }
-        .atom-card .a-name { margin-left: auto; font-size: var(--fs-xs); color: var(--faint); }
-        /* CPK 身份色（深色底上略提亮，保证 8px 点可辨） */
-        .atom-card[data-atom="C"]  { --cpk: #8a8f98; }
-        .atom-card[data-atom="H"]  { --cpk: #f0f0f0; }
-        .atom-card[data-atom="O"]  { --cpk: #ff5a5a; }
-        .atom-card[data-atom="N"]  { --cpk: #5b8cff; }
-        .atom-card[data-atom="F"]  { --cpk: #9bcd6c; }
-        .atom-card[data-atom="Cl"] { --cpk: #35a866; }
-        .atom-card[data-atom="Br"] { --cpk: #c96a58; }
-        .atom-card[data-atom="I"]  { --cpk: #a974a6; }
-        /* 当前待拖出的元素：1px 琥珀边（强调色只用于选中态） */
-        .atom-card.current { border-color: var(--accent); }
-        .atom-card.current .a-name { color: var(--text); }
+        .atom-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+        }
+        .atom-card:active {
+            cursor: grabbing;
+            transform: scale(0.96);
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .atom-card .a-sym { font-size: 24px; font-weight: 700; line-height: 1; }
+        .atom-card .a-name {
+            display: block;
+            font-size: 12px;
+            font-weight: 400;
+            line-height: 1.1;
+            color: inherit;
+            opacity: 0.92;
+        }
+        /* CPK 配色（浅色高光 → 深色底），与 3D 场景原子一致 */
+        .atom-card[data-atom="C"]  { --cpk: #505050; --cpk-lo: #222222; }
+        .atom-card[data-atom="H"]  { --cpk: #f0f0f0; --cpk-lo: #aaaaaa; color: #262626; text-shadow: none; }
+        .atom-card[data-atom="O"]  { --cpk: #ff4d4d; --cpk-lo: #aa0000; }
+        .atom-card[data-atom="N"]  { --cpk: #4d88ff; --cpk-lo: #111188; }
+        .atom-card[data-atom="F"]  { --cpk: #9bcd6c; --cpk-lo: #3d7a2e; color: #1b2a12; text-shadow: none; }
+        .atom-card[data-atom="Cl"] { --cpk: #1f8a4c; --cpk-lo: #0a4a28; }
+        .atom-card[data-atom="Br"] { --cpk: #b54c3c; --cpk-lo: #6e2a1f; }
+        .atom-card[data-atom="I"]  { --cpk: #8b5a8c; --cpk-lo: #4a2c4a; }
+        /* 当前待拖出的元素：名字下方 1px 琥珀线（与全局选中 move 一致） */
+        .atom-card.current .a-name { color: var(--text); box-shadow: 0 1px 0 var(--accent); }
 
         .hint {
             font-size: var(--fs-xs);
@@ -1479,9 +1520,9 @@
             #sidebar { flex: 0 0 auto; }
             #build-panel .panel-body { overflow: visible; }
             #inspect-panel { overflow-y: auto; }
-            /* 手机抽屉：单列列表行，行高抬到 44px 满足触摸目标；限宽避免宽抽屉里行被拉太长 */
-            .group-list, .element-grid { max-width: 360px; margin: 0 auto; }
-            .group-card, .atom-card { height: 44px; }
+            /* 手机抽屉：单列球形卡片（整抽屉滚动，尺寸略收） */
+            .atom-card { width: 72px; height: 72px; }
+            .atom-card .a-sym { font-size: 21px; }
             /* 手机上「收起」是桌面态，底部抽屉里一律完整展示 */
             #build-panel.collapsed, #inspect-panel.collapsed { width: auto; }
             #build-panel.collapsed > .panel { flex: 0 0 auto; }
