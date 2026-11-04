@@ -55,14 +55,14 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
     });
 
     try {
-        // ---------- L1 1440：三栏 184 / 自适应 / 224 ----------
+        // ---------- L1 1440：三栏 152 / 自适应 / 224 ----------
         {
             const { page, ctx } = await measure(1440, 900);
             const g = await geom(page);
-            step('L1 1440×900：三栏 184 / 自适应 / 224，8px 边距 + 12px 间距，画布井 992',
-                g.topbar.h === 44 && g.build.w === 184 && g.inspect.w === 224
+            step('L1 1440×900：三栏 152 / 自适应 / 224，8px 边距 + 12px 间距，画布井 1024',
+                g.topbar.h === 44 && g.build.w === 152 && g.inspect.w === 224
                 && g.build.x === 8 && g.inspect.r === 1432
-                && g.well.x === g.build.r + 12 && g.inspect.x === g.well.r + 12 && g.well.w === 992
+                && g.well.x === g.build.r + 12 && g.inspect.x === g.well.r + 12 && g.well.w === 1024
                 && g.gap === '12px' && g.pad === '12px 8px 8px 8px'
                 && g.bar.b === g.well.b - 1 && g.canvasHost.h === g.well.h - 32
                 && g.mobilebarDisplay === 'none' && g.overflowX === 0,
@@ -75,8 +75,8 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         {
             const { page, ctx } = await measure(1100, 800);
             const g = await geom(page);
-            step('L2 1100×800：仍为三栏（184/224），画布井 ≥600、无横向溢出',
-                g.build.w === 184 && g.inspect.w === 224 && g.well.w === 652 && g.well.w >= 600
+            step('L2 1100×800：仍为三栏（152/224），画布井 ≥600、无横向溢出',
+                g.build.w === 152 && g.inspect.w === 224 && g.well.w === 684 && g.well.w >= 600
                 && g.inspect.r === 1092 && g.overflowX === 0 && g.mobilebarDisplay === 'none',
                 { build: g.build, well: g.well, inspect: g.inspect, cols: g.cols });
             await ctx.close();
@@ -86,8 +86,8 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         {
             const { page, ctx } = await measure(1024, 768);
             const g = await geom(page);
-            step('L3 1024×768：三栏 + 10px 间距（画布井 580）、无横向溢出',
-                g.build.w === 184 && g.inspect.w === 224 && g.gap === '10px' && g.well.w === 580
+            step('L3 1024×768：三栏 + 10px 间距（画布井 612）、无横向溢出',
+                g.build.w === 152 && g.inspect.w === 224 && g.gap === '10px' && g.well.w === 612
                 && g.well.x === g.build.r + 10 && g.overflowX === 0,
                 { build: g.build, well: g.well, inspect: g.inspect, gap: g.gap });
             await ctx.close();
@@ -113,10 +113,10 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             await page.click('#group-sidebar-toggle');
             await page.waitForTimeout(450);
             const g1 = await geom(page);
-            step('L5 700×900：默认双轨；展开构建台（184）自动收起检查器（44），画布不被挤破',
+            step('L5 700×900：默认双轨；展开构建台（152）自动收起检查器（44），画布不被挤破',
                 g0.build.w === 44 && g0.inspect.w === 44
-                && g1.build.w === 184 && !g1.buildCollapsed && g1.inspect.w === 44 && g1.inspectCollapsed
-                && g1.well.w === 436 && g1.overflowX === 0,
+                && g1.build.w === 152 && !g1.buildCollapsed && g1.inspect.w === 44 && g1.inspectCollapsed
+                && g1.well.w === 468 && g1.overflowX === 0,
                 { before: { build: g0.build, inspect: g0.inspect, well: g0.well }, after: { build: g1.build, inspect: g1.inspect, well: g1.well } });
             await ctx.close();
         }
