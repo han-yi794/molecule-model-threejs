@@ -192,6 +192,13 @@
         .tb-outline:hover { background: var(--active); border-color: #6d7179; }
         .tb-danger:hover { color: var(--negative); background: var(--active); }
         #btn-undo.hist-empty, #btn-redo.hist-empty { color: var(--faint); }
+        /* 分子结构锁：开启时锁图标点亮为琥珀色（唯一的 chrome 强调色用法） */
+        #btn-lock-molecule.tb-locked {
+            color: var(--accent);
+            background: var(--active);
+            border-color: rgba(240, 180, 90, 0.45);
+        }
+        #btn-lock-molecule.tb-locked:hover { background: #26282e; }
 
         #shell {
             flex: 1 1 auto;
@@ -417,6 +424,17 @@
         .atom-card[data-atom="I"]  { --cpk: #8b5a8c; --cpk-lo: #4a2c4a; }
         /* 当前待拖出的元素：名字下方 1px 琥珀线（与全局选中 move 一致） */
         .atom-card.current .a-name { color: var(--text); box-shadow: 0 1px 0 var(--accent); }
+        /* 分子锁定：构建库卡片变灰、光标提示不可拖出（2026-11） */
+        body.mol-locked .group-card,
+        body.mol-locked .atom-card {
+            opacity: 0.42;
+            cursor: not-allowed;
+            filter: saturate(0.35);
+        }
+        body.mol-locked .group-card:hover,
+        body.mol-locked .atom-card:hover { transform: none; }
+        body.mol-locked .group-card:active,
+        body.mol-locked .atom-card:active { transform: none; cursor: not-allowed; }
 
         .hint {
             font-size: var(--fs-xs);
@@ -489,6 +507,8 @@
         .stat-unit { color: var(--faint); }
         .stat-empty { color: var(--faint); padding-left: 4px; }
         .stat.is-muted .stat-val { color: var(--muted); }
+        #stat-lock { align-items: center; color: var(--accent); }
+        #stat-lock .stat-val { color: var(--accent); font-size: var(--fs-xs); }
         #status-bar .spacer { flex: 1 1 auto; }
 
         /* 空画布提示：只在 0 原子时出现，给黑井一个焦点（JS 在 updateStatusBar 切换 hidden） */
@@ -1652,6 +1672,7 @@
         <nav id="topbar-actions" aria-label="主操作">
             <button class="tb-btn tb-icon" id="btn-undo" title="撤销 (Ctrl+Z)" aria-label="撤销"><span class="ui-ic" data-icon="undo-2" data-size="15"></span></button>
             <button class="tb-btn tb-icon" id="btn-redo" title="恢复 (Ctrl+Y)" aria-label="恢复"><span class="ui-ic" data-icon="redo-2" data-size="15"></span></button>
+            <button class="tb-btn tb-icon" id="btn-lock-molecule" title="锁定分子结构（禁止拖动/编辑）(L)" aria-label="锁定分子结构" aria-pressed="false"><span class="ui-ic" data-icon="lock-open" data-size="15"></span></button>
             <span class="tb-sep" aria-hidden="true"></span>
             <button class="tb-btn tb-primary" id="btn-optimize-all" title="全局同步优化 (Shift+O)"><span class="ui-ic" data-icon="sparkles" data-size="14"></span><span class="tb-label">优化</span></button>
             <button class="tb-btn tb-danger" id="btn-clear-molecule" title="清空画布"><span class="ui-ic" data-icon="trash-2" data-size="14"></span><span class="tb-label">清空</span></button>
@@ -1733,6 +1754,7 @@
                 <span class="stat" id="stat-rings" hidden><span class="stat-val">0</span><span class="stat-unit">环</span></span>
                 <span class="stat is-muted" id="stat-aromatic" hidden><span class="stat-val">芳香</span></span>
                 <span class="stat optional" id="stat-angle" hidden><span class="stat-unit">∠RMS</span><span class="stat-val">0.0°</span></span>
+                <span class="stat optional" id="stat-lock" hidden><span class="ui-ic" data-icon="lock" data-size="11"></span><span class="stat-val">已锁定</span></span>
             </div>
         </main>
 
@@ -2006,6 +2028,7 @@
                 <tr><td>左键拖空白处</td><td>旋转视角</td></tr>
                 <tr><td>滚轮</td><td>缩放</td></tr>
                 <tr><td>右键拖</td><td>平移视角</td></tr>
+                <tr><td>Shift + 左键拖</td><td>平移视角（触控板 / 无右键时）</td></tr>
                 <tr><td>左键点原子</td><td>选中，出现三轴手柄</td></tr>
                 <tr><td>左键拖原子</td><td>按当前拖动方式移动</td></tr>
                 <tr><td>左键点键</td><td>修改键序（单 / 芳香 / 双 / 三）</td></tr>
@@ -2021,6 +2044,7 @@
                 <tr><td>0 / 1 / 2 / 3</td><td>杂化：自动 / sp³ / sp² / sp</td></tr>
                 <tr><td>O / Shift+O</td><td>优化单个原子 / 全局同步优化</td></tr>
                 <tr><td>Ctrl+Z / Ctrl+Y</td><td>撤销 / 恢复（Ctrl+Shift+Z 也可恢复）</td></tr>
+                <tr><td>L</td><td>锁定 / 解锁分子结构（锁定后不可拖动 / 编辑）</td></tr>
                 <tr><td>Delete</td><td>删除选中原子</td></tr>
                 <tr><td>Esc</td><td>逐层关闭浮层：键线式大图 → 弹窗 → 小键盘 → 本面板 → 生成抽屉</td></tr>
             </table>
@@ -2105,6 +2129,8 @@
             'wand-sparkles': '<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" /> <path d="m14 7 3 3" /> <path d="M5 6v4" /> <path d="M19 14v4" /> <path d="M10 2v2" /> <path d="M7 8H3" /> <path d="M21 16h-4" /> <path d="M11 3H9" />',
             'palette': '<path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /> <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /> <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /> <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /> <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />',
             'grip-vertical': '<circle cx="9" cy="12" r="1" /> <circle cx="9" cy="5" r="1" /> <circle cx="9" cy="19" r="1" /> <circle cx="15" cy="12" r="1" /> <circle cx="15" cy="5" r="1" /> <circle cx="15" cy="19" r="1" />',
+            'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2" /> <path d="M7 11V7a5 5 0 0 1 10 0v4" />',
+            'lock-open': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2" /> <path d="M7 11V7a5 5 0 0 1 9.9-1" />',
         };
         function iconSvg(name, size = 14) {
             const inner = LUCIDE_ICONS[name];
@@ -2302,6 +2328,14 @@
         // 状态持久化到 localStorage.HYDROGENATE_AUTO，默认关闭
         let HYDROGENATE_AUTO = false;
         try { HYDROGENATE_AUTO = localStorage.getItem('HYDROGENATE_AUTO') === '1'; } catch (e) {}
+        // ===== 分子结构锁（2026-11 新增）=====
+        // 开启后禁止一切结构修改（拖动原子/基团、改键级、顺反翻转、单键旋转、
+        // 删除原子、优化、撤销/恢复、清空、生成新分子）；视角旋转/平移/缩放不受影响。
+        // 状态持久化到 localStorage.MOLECULE_LOCKED，默认关闭。
+        let MOLECULE_LOCKED = (() => {
+            try { return localStorage.getItem('MOLECULE_LOCKED') === '1'; } catch (e) { return false; }
+        })();
+        let _lockHintShown = false;   // 拖动尝试的提示只弹一次，避免每次点原子都刷屏
         // 离域π体系显示开关：必须在 try{} 主块之外声明（主块 954 起，块内 8736 有同名 let，
         // 而 updateDelocPiUI 在 try 外引用它——块内 let 对 try 外函数不可见会抛
         // "showPiSystems is not defined"。此处提前声明 + 删除块内声明，保证单一绑定）。
@@ -2348,8 +2382,8 @@
         // 捕获模块初始化错误，方便自动化诊断
         try {
         // --- 初始化场景 ---
-        // 全局背景色常量（2026-08 用户要求集中管理）：body / scene.background /
-        // scene.fog 三处共用，改这一处即可整体换色。CSS 里 body 的 #000 只是
+        // 全局背景色常量（2026-08 用户要求集中管理）：body / scene.background
+        // 两处共用，改这一处即可整体换色。CSS 里 body 的 #000 只是
         // 加载瞬间的兜底色（模块脚本执行后被下面一行覆盖）。当前 #080a0d =
         // 极深近黑（用户提供的色块目测近似值）。
         const SCENE_BG_COLOR = 0x080a0d;
@@ -2410,8 +2444,26 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.screenSpacePanning = true;
+        controls.enablePan = true;
+        // 平移视角（2026-11 用户要求「使场景可平移」）：右键拖 / 中键拖 / Shift+左键拖。
+        // OrbitControls 默认右键=平移；这里显式写死，避免后续改 mouseButtons 时丢功能。
+        controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
         controls.target.set(0, 0, 0);
         controls.maxPolarAngle = Math.PI;
+
+        // Shift + 左键拖 = 平移（触控板/无右键场景的备用手势）。
+        // 必须在捕获阶段先于 OrbitControls 读取 mouseButtons.LEFT；松开后恢复旋转。
+        let _shiftPanActive = false;
+        function setShiftPan(on) {
+            if (on === _shiftPanActive) return;
+            _shiftPanActive = on;
+            controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+        }
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            if (e.button === 0 && e.shiftKey) setShiftPan(true);
+        }, true);
+        window.addEventListener('pointerup', () => setShiftPan(false), true);
+        window.addEventListener('pointercancel', () => setShiftPan(false), true);
 
         // 解决 OrbitControls 在某些触控/触摸轨迹板输入时抛出 dollyStart undefined 的问题
         // 仅保留一个手指旋转，禁用两指缩放/平移池化出错路径。
@@ -2483,7 +2535,8 @@
         depthGround.position.y = -3.2;
         depthGround.renderOrder = -1;   // 先于分子绘制，透明物体里也保持在地面层
         scene.add(depthGround);
-        scene.fog = new THREE.Fog(SCENE_BG_COLOR, 15, 40);
+        // 2026-11 用户要求：移除场景雾气（远处原子/网格不再淡入背景）。
+        // 不要恢复 scene.fog —— 需要纵深时由 depthGround 的径向淡出承担。
 
         const atomsGroup = new THREE.Group();
         scene.add(atomsGroup);
@@ -2779,6 +2832,17 @@
             toast.textContent = message;
             toast.style.opacity = '1';
             setTimeout(() => { toast.style.opacity = '0'; }, duration);
+        }
+
+        // 分子锁守卫：返回 true 表示当前已锁定、调用方应直接 return。
+        // opts.once = 同一次锁定期间只提示一次（拖动原子这类高频入口用）。
+        function blockWhenLocked(action, opts) {
+            if (!MOLECULE_LOCKED) return false;
+            if (!(opts && opts.once) || !_lockHintShown) {
+                showToast(`分子结构已锁定${action ? '：无法' + action : ''}（点击顶栏锁图标解锁）`, 2000);
+                _lockHintShown = true;
+            }
+            return true;
         }
 
         // ==================================================================
@@ -5045,7 +5109,7 @@ isOptimizing = false;
             return c.offsetHSL(0, 0, amt).getHex();
         }
         function updateGizmo() {
-            const alive = dragMode !== 'plane' && !torsionActive && !!selectedAtom &&
+            const alive = !MOLECULE_LOCKED && dragMode !== 'plane' && !torsionActive && !!selectedAtom &&
                 atomsGroup.children.includes(selectedAtom);
             gizmoGroup.visible = alive;
             if (alive) gizmoGroup.position.copy(selectedAtom.position);
@@ -5093,6 +5157,7 @@ isOptimizing = false;
         // gizmo 轴拖开始
         function startGizmoAxisDrag(axisChar, clientX, clientY) {
             if (isDragging || !selectedAtom) return;
+            if (blockWhenLocked('拖动原子', { once: true })) return;
             controls.enabled = false;
             gizmoAxisDrag = axisChar;
             dragAxisDir.set(axisChar === 'x' ? 1 : 0, axisChar === 'y' ? 1 : 0, axisChar === 'z' ? 1 : 0);
@@ -5216,6 +5281,7 @@ isOptimizing = false;
             return side;
         }
         function setTorsionPivot(atom) {
+            if (blockWhenLocked('旋转单键')) return;
             if (!selectedBond) return;
             const a = selectedBond.atomA, b = selectedBond.atomB;
             if (atom !== a && atom !== b) return;
@@ -5278,7 +5344,7 @@ isOptimizing = false;
         }
         function hideTorsionHUD() { torsionHudEl.style.opacity = '0'; }
         function rotateTorsion(dAngle) {
-            if (!torsionActive || torsionSide.length === 0) return;
+            if (MOLECULE_LOCKED || !torsionActive || torsionSide.length === 0) return;
             const axis = torsionPivot.position.clone().sub(torsionFixed.position).normalize();
             const q = new THREE.Quaternion().setFromAxisAngle(axis, dAngle);
             for (const at of torsionSide) {
@@ -5318,6 +5384,7 @@ isOptimizing = false;
         }
         // 翻转顺反；返回翻转后的构型（'cis'/'trans'）或 null（被拒绝）
         function flipCisTrans(bond) {
+            if (blockWhenLocked('翻转顺反')) return null;
             if (!bond) return null;
             if (!isDoubleBondType(bond.type)) {
                 showToast('仅双键可翻转顺反（芳香键为离域体系，三键无顺反）', 2000);
@@ -6243,7 +6310,7 @@ isOptimizing = false;
         }
         function attachDeleteIcon(atom) {
             detachDeleteIcon();
-            if (!atom || !atom.userData) return;
+            if (MOLECULE_LOCKED || !atom || !atom.userData) return;
             // 双层结构（2026-10）：外层 div 仅定位/命中——CSS2DRenderer 每帧重写它的
             // style.transform（定位矩阵），对外层做缩放动画会被覆盖；内层 span 承载视觉，
             // 悬停缩放内层 transform（renderer 不触碰内层，且以其自身中心缩放无漂移）。
@@ -6266,6 +6333,7 @@ isOptimizing = false;
             div.addEventListener('mousedown', (e) => e.stopPropagation());
             div.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (blockWhenLocked('删除原子')) return;
                 const target = selectedAtom;
                 detachDeleteIcon();
                 if (target) {
@@ -6289,6 +6357,7 @@ isOptimizing = false;
         window.__attachDeleteIcon = attachDeleteIcon;
         window.__detachDeleteIcon = detachDeleteIcon;
         function moveSelectedAtom(dx, dy, dz) {
+            if (MOLECULE_LOCKED) return;
             if (!selectedAtom) return;
             selectedAtom.position.x += dx;
             selectedAtom.position.y += dy;
@@ -6324,6 +6393,10 @@ isOptimizing = false;
                 e.preventDefault();
                 document.getElementById('btn-toggle-grid').click();
                 return;
+            } else if (key === 'l' || key === 'L') {
+                e.preventDefault();
+                setMoleculeLocked(!MOLECULE_LOCKED);
+                return;
             } else if (key === '0') {
                 e.preventDefault();
                 setSelectedAtomHybridization('auto');
@@ -6343,8 +6416,10 @@ isOptimizing = false;
             } else if (key === 'o' || key === 'O') {
                 if (shift) {
                     e.preventDefault();
+                    if (blockWhenLocked('优化结构')) return;
                     optimizeAllWithAutoHydrogen();
                 } else {
+                    if (blockWhenLocked('优化原子', { once: true })) return;
                     if (selectedAtom && atomTypes[selectedAtom.userData.atomType]?.hybridizable) {
                         e.preventDefault();
                         optimizeSingleAtom(selectedAtom);
@@ -6355,6 +6430,7 @@ isOptimizing = false;
                 }
                 return;
             } else return;
+            if (blockWhenLocked('移动原子', { once: true })) return;
             e.preventDefault();
             moveSelectedAtom(dx, dy, dz);
             commitHistoryDebounced();   // 撤销/恢复：键盘微移合并为一条（停顿后落记录）
@@ -6365,6 +6441,7 @@ isOptimizing = false;
             const _tg = e.target;
             if (_tg && (_tg.tagName === 'INPUT' || _tg.tagName === 'TEXTAREA' || _tg.isContentEditable)) return;
             if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (blockWhenLocked('删除原子')) return;
                 if (!selectedAtom) { showToast('请先选中一个原子', 1000); return; }
                 const type = selectedAtom.userData?.atomType || '';
                 removeAtom(selectedAtom);
@@ -6374,6 +6451,7 @@ isOptimizing = false;
         });
 
         function setSelectedAtomHybridization(mode) {
+            if (blockWhenLocked('设置杂化')) return;
             if (!selectedAtom) {
                 showToast('请先选中一个原子', 1200);
                 return;
@@ -6486,6 +6564,7 @@ isOptimizing = false;
         }
 
         function undoAction() {
+            if (blockWhenLocked('撤销')) return false;
             cancelPendingHistoryCommit();
             if (undoStack.length === 0) { showToast('没有可撤销的操作', 1200); return false; }
             const cur = JSON.stringify(snapshotMoleculeState());
@@ -6499,6 +6578,7 @@ isOptimizing = false;
         }
 
         function redoAction() {
+            if (blockWhenLocked('恢复')) return false;
             cancelPendingHistoryCommit();
             if (redoStack.length === 0) { showToast('没有可恢复的操作', 1200); return false; }
             const cur = JSON.stringify(snapshotMoleculeState());
@@ -6534,7 +6614,69 @@ isOptimizing = false;
             snapshot: () => snapshotMoleculeState()
         };
 
+        // ===== 分子结构锁（2026-11）=====
+        // 开关状态：MOLECULE_LOCKED；UI = 顶栏锁图标（锁定态琥珀高亮）+ 状态条「已锁定」。
+        // 结构修改入口在各自函数顶部调用 blockWhenLocked()，视角控制不受影响。
+        function updateLockUI() {
+            const btn = document.getElementById('btn-lock-molecule');
+            if (btn) {
+                btn.classList.toggle('tb-locked', MOLECULE_LOCKED);
+                btn.setAttribute('aria-pressed', MOLECULE_LOCKED ? 'true' : 'false');
+                btn.setAttribute('aria-label', MOLECULE_LOCKED ? '解锁分子结构' : '锁定分子结构');
+                btn.title = MOLECULE_LOCKED ? '分子结构已锁定（点击解锁）(L)' : '锁定分子结构（禁止拖动/编辑）(L)';
+                const ic = btn.querySelector('.ui-ic');
+                const name = MOLECULE_LOCKED ? 'lock' : 'lock-open';
+                if (ic) { ic.dataset.icon = name; ic.innerHTML = iconSvg(name, 15); }
+            }
+            const stat = document.getElementById('stat-lock');
+            if (stat) stat.hidden = !MOLECULE_LOCKED;
+            document.body.classList.toggle('mol-locked', MOLECULE_LOCKED);
+            if (MOLECULE_LOCKED) {
+                detachDeleteIcon();
+                try { clearTorsion(); } catch (e) {}
+                try { if (isDragging) cancelDrag(); } catch (e) {}
+                try { hideBondMenu(); } catch (e) {}
+            } else if (selectedAtom && selectedAtom.userData) {
+                attachDeleteIcon(selectedAtom);
+            }
+            try { updateGizmo(); } catch (e) {}
+        }
+        function setMoleculeLocked(on, opts) {
+            const next = !!on;
+            if (next === MOLECULE_LOCKED) { updateLockUI(); return MOLECULE_LOCKED; }
+            MOLECULE_LOCKED = next;
+            _lockHintShown = false;
+            try { localStorage.setItem('MOLECULE_LOCKED', next ? '1' : '0'); } catch (e) {}
+            updateLockUI();
+            if (!(opts && opts.silent)) {
+                showToast(next ? '分子结构已锁定（视角仍可旋转 / 平移 / 缩放）' : '分子结构已解锁', 2000);
+            }
+            return MOLECULE_LOCKED;
+        }
+        const _lockBtnEl = document.getElementById('btn-lock-molecule');
+        if (_lockBtnEl) _lockBtnEl.addEventListener('click', () => setMoleculeLocked(!MOLECULE_LOCKED));
+        setMoleculeLocked(MOLECULE_LOCKED, { silent: true });
+        window.__moleculeLock = {
+            get: () => MOLECULE_LOCKED,
+            set: (on) => setMoleculeLocked(on, { silent: true }),
+            toggle: () => setMoleculeLocked(!MOLECULE_LOCKED),
+            state: () => {
+                const b = document.getElementById('btn-lock-molecule');
+                const stat = document.getElementById('stat-lock');
+                return {
+                    locked: MOLECULE_LOCKED,
+                    pressed: b ? b.getAttribute('aria-pressed') : null,
+                    icon: b && b.querySelector('.ui-ic') ? (b.querySelector('.ui-ic').dataset.icon || null) : null,
+                    bodyClass: document.body.classList.contains('mol-locked'),
+                    statVisible: !!(stat && !stat.hidden),
+                    gizmoVisible: !!(typeof gizmoGroup !== 'undefined' && gizmoGroup.visible),
+                    deleteIcon: !!deleteIconObj
+                };
+            }
+        };
+
         document.getElementById('btn-optimize-all').addEventListener('click', () => {
+            if (blockWhenLocked('优化结构')) return;
             optimizeAllWithAutoHydrogen();
         });
         document.getElementById('btn-toggle-hydro').addEventListener('click', (e) => {
@@ -6547,6 +6689,7 @@ isOptimizing = false;
         document.getElementById('btn-toggle-lp').addEventListener('click', (e) => { e.preventDefault(); toggleLonePairs(); });
         document.getElementById('btn-toggle-deloc').addEventListener('click', (e) => {
             e.preventDefault();
+            if (blockWhenLocked('切换离域π键模式')) return;
             DELOCAL_PI_ENABLED = !DELOCAL_PI_ENABLED;
             updateDelocPiUI();
             showToast(DELOCAL_PI_ENABLED ? '离域π键: 已开启（杂化+VSEPR+离域π键）' : '离域π键: 已关闭（仅杂化轨道+VSEPR，旧逻辑）', 2200);
@@ -7649,7 +7792,10 @@ isOptimizing = false;
             console.log('bond distance test distances:', distances, 'current bonds:', bonds.map(b=>({len: b.atomA.position.distanceTo(b.atomB.position), type: b.type}))); 
         }
 
-        document.getElementById('btn-clear-molecule').addEventListener('click', clearMolecule);
+        document.getElementById('btn-clear-molecule').addEventListener('click', () => {
+            if (blockWhenLocked('清空画布')) return;
+            clearMolecule();
+        });
         // 2026-10-17 原子库清理：generateSelectedMolecule / btn-generate-molecule / #molecule-select /
         // btn-delete-atom 按钮已移除——删除原子改由选中原子右上角垃圾桶图标或 Delete/Backspace 键触发
         // （removeAtom 逻辑不变），示例分子生成走控制台 window.__diag.generate()。
@@ -11519,6 +11665,7 @@ function smilesToCondensed(smiles) {
             const formulaInput = document.getElementById('formula-input');
             const formulaBox = (formulaInput ? formulaInput.value : '').trim();
             if (!name && !smiles && !seq && !formulaBox) { showToast('请输入分子名称、SMILES、分子式或蛋白质序列', 2200); return false; }
+            if (blockWhenLocked('生成新分子')) return false;
             if (_inputBusy) return false;
             _inputBusy = true;
             const prevText = btn ? btn.textContent : '';
@@ -12114,6 +12261,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 if (_isomerItems[idx]) sel.push(_isomerItems[idx]);
             });
             if (!sel.length) { showToast('请至少选择一种异构体', 1600); return; }
+            if (blockWhenLocked('生成新分子')) return;
             hideIsomerPanel();
             _inputBusy = false;
             const _fIn = document.getElementById('formula-input');
@@ -13414,6 +13562,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 window.__diag = {
                 generate(name) { clearMolecule(); const g = GEN_MAP[name]; if (g) g(); },
                 depthGridVisible() { return depthGround.visible; },
+                fogInfo() { return scene.fog ? { type: scene.fog.type, near: scene.fog.near, far: scene.fog.far } : null; },
+                panConfig() { return { enablePan: !!controls.enablePan, left: controls.mouseButtons.LEFT, middle: controls.mouseButtons.MIDDLE, right: controls.mouseButtons.RIGHT, shiftPan: !!_shiftPanActive }; },
                 camInfo() { return { pos: camera.position.toArray().map(v => +v.toFixed(2)), target: controls.target.toArray().map(v => +v.toFixed(2)), fov: camera.fov, aspect: +camera.aspect.toFixed(3) }; },
                 generateSpec(name) { if (CONNECTIVITY_SPECS[name]) generateFromSpec(CONNECTIVITY_SPECS[name]); },
                 // 卟啉核心模板（解析式 4 吡咯 + 4 meso + 中心金属）
@@ -13649,6 +13799,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         function startNewDrag(type, clientX, clientY) {
             if (isDragging) return;
+            if (blockWhenLocked('添加原子')) return;
             controls.enabled = false;
             currentAtomType = type;
             referencePoint.copy(_dragReferencePoint(clientX, clientY));
@@ -13669,6 +13820,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // 基团拖拽：与原子拖拽同机制，预览为锚球+基团名标签
         function startGroupDrag(groupKey, clientX, clientY) {
             if (isDragging) return;
+            if (blockWhenLocked('添加基团')) return;
             controls.enabled = false;
             currentGroupKey = groupKey;
             referencePoint.copy(_dragReferencePoint(clientX, clientY));
@@ -13687,6 +13839,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         function startExistingDrag(atomMesh, clientX, clientY) {
             if (isDragging) return;
+            if (blockWhenLocked('拖动原子', { once: true })) return;
             controls.enabled = false;
             referencePoint.copy(atomMesh.position);
             const cameraDir = new THREE.Vector3();
@@ -13706,6 +13859,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         function updateDrag(clientX, clientY) {
             if (!isDragging || !draggedObject) return;
+            if (MOLECULE_LOCKED) return;
             if (sidebar.contains(document.elementFromPoint(clientX, clientY))) return;
             if (groupSidebar.contains(document.elementFromPoint(clientX, clientY))) return;
             const ndc = getNormalizedMouse(clientX, clientY);
@@ -13855,6 +14009,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
         canvas.addEventListener('pointermove', (e) => {
             if (isDragging) return;
             hoverGizmoAxis = null;
+            if (e.shiftKey) { canvas.style.cursor = 'move'; return; }   // Shift+左键 = 平移视角
             const ndc = getNormalizedMouse(e.clientX, e.clientY);
             if (!ndc) return;
             raycaster.setFromCamera(ndc, camera);
@@ -13877,6 +14032,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         canvas.addEventListener('mousedown', (e) => {
             if (isDragging) return;
+            if (e.button === 0 && e.shiftKey) return;   // Shift+左键 = 平移视角
             const ndc = getNormalizedMouse(e.clientX, e.clientY);
             if (!ndc) return;
             raycaster.setFromCamera(ndc, camera);
@@ -13905,6 +14061,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (atomIntersects.length > 0) {
                 const atom = atomIntersects[0].object;
                 if (e.ctrlKey || e.metaKey) {
+                    if (blockWhenLocked('设置杂化')) { e.preventDefault(); return; }
                     selectedAtomForHybrid = atom;
                     setSelectedAtom(atom);
                     const menu = document.getElementById('hybridization-menu');
@@ -13915,8 +14072,9 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     return;
                 }
                 // 单键旋转：点中已选中键的端点原子 → 设为旋转侧锚（点另一端可换侧）
-                if (selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
-                else clearTorsion();
+                // 锁定态跳过（setTorsionPivot 内部也有守卫，这里提前跳过避免连续提示）
+                if (!MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
+                else if (!MOLECULE_LOCKED) clearTorsion();
                 startExistingDrag(atom, e.clientX, e.clientY);
                 setSelectedAtom(atom);
                 e.preventDefault();
@@ -13928,6 +14086,15 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 const cyl = bondIntersects[0].object;
                 const bond = bonds.find(b => b.cylinders.includes(cyl));
                 if (bond) {
+                    if (MOLECULE_LOCKED) {
+                        // 锁定：允许选中键查看检查器，但不弹出键级编辑菜单
+                        selectedBond = bond;
+                        clearTorsion();
+                        hideBondMenu();
+                        scheduleStatusUpdate();
+                        e.preventDefault();
+                        return;
+                    }
                     if (selectedBond === bond) {
                         // 再次点击同一键 = 取消选中（连带退出旋转模式）
                         selectedBond = null;
@@ -13971,8 +14138,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 const atomIntersects = raycaster.intersectObjects(atoms);
                 if (atomIntersects.length > 0) {
                     const atom = atomIntersects[0].object;
-                    if (selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
-                    else clearTorsion();
+                    if (!MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
+                    else if (!MOLECULE_LOCKED) clearTorsion();
                     startExistingDrag(atom, touch.clientX, touch.clientY);
                     setSelectedAtom(atom);
                     e.preventDefault();
@@ -13984,6 +14151,15 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     const cyl = bondIntersects[0].object;
                     const bond = bonds.find(b => b.cylinders.includes(cyl));
                     if (bond) {
+                        if (MOLECULE_LOCKED) {
+                            // 锁定：允许选中键查看检查器，但不弹出键级编辑菜单
+                            selectedBond = bond;
+                            clearTorsion();
+                            hideBondMenu();
+                            scheduleStatusUpdate();
+                            e.preventDefault();
+                            return;
+                        }
                         if (selectedBond === bond) {
                             selectedBond = null;
                             clearTorsion();
@@ -14016,6 +14192,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         document.querySelectorAll('.bond-type-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                if (blockWhenLocked(btn.id === 'btn-flip-cistrans' ? '翻转顺反' : '修改键级')) return;
                 if (btn.id === 'btn-flip-cistrans') {
                     // 顺反翻转：绕双键轴旋转一侧 180°（菜单保持打开可连点/换键）
                     if (selectedBond) flipCisTrans(selectedBond);
@@ -14708,6 +14885,32 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 const r = renderer.domElement.getBoundingClientRect();
                 return { x: (v.x * 0.5 + 0.5) * r.width + r.left, y: (-v.y * 0.5 + 0.5) * r.height + r.top };
             },
+            // 调试/验证：屏幕点命中的键（无命中返回 null）
+            bondAt: (x, y) => {
+                const ndc = getNormalizedMouse(x, y);
+                if (!ndc) return null;
+                raycaster.setFromCamera(ndc, camera);
+                const cyls = bonds.flatMap(b => b.cylinders);
+                const hits = raycaster.intersectObjects(cyls);
+                if (!hits.length) return null;
+                const b = bonds.find(bb => bb.cylinders.includes(hits[0].object));
+                return b ? { a: b.atomA.userData._id, b: b.atomB.userData._id, type: b.type } : null;
+            },
+            // 调试/验证：屏幕点最近命中（原子优先按真实深度），用于找未被原子遮挡的键
+            pickAt: (x, y) => {
+                const ndc = getNormalizedMouse(x, y);
+                if (!ndc) return null;
+                raycaster.setFromCamera(ndc, camera);
+                const atoms = atomsGroup.children.filter(c => c.userData?.isAtom);
+                const cyls = bonds.flatMap(b => b.cylinders);
+                const hits = raycaster.intersectObjects(atoms.concat(cyls));
+                if (!hits.length) return null;
+                const obj = hits[0].object;
+                if (obj.userData?.isAtom) return { kind: 'atom', id: obj.userData._id, dist: +hits[0].distance.toFixed(3) };
+                const b = bonds.find(bb => bb.cylinders.includes(obj));
+                return b ? { kind: 'bond', a: b.atomA.userData._id, b: b.atomB.userData._id, type: b.type, dist: +hits[0].distance.toFixed(3) } : null;
+            },
+            selectedBond: () => selectedBond ? { a: selectedBond.atomA.userData._id, b: selectedBond.atomB.userData._id, type: selectedBond.type } : null,
             raycastGizmo: (x, y) => {
                 const ndc = getNormalizedMouse(x, y);
                 if (!ndc) return 'no-ndc';

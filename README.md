@@ -27,7 +27,7 @@
 - **卟啉 / 血红素**:解析式平面卟啉模板(4 吡咯 + 4 meso 桥),金属离子(Fe/Mg/Zn/Co/Ni/Cu/Mn)自动配位到环心(Fe–N 2.05 Å);配位键渲染为青蓝色细杆并排除在化学邻接/环枚举之外,核心作为刚体保持平面。
 - **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
 - **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构;蛋白质名称(胰岛素/溶菌酶/核糖核酸酶A/细胞色素c/肌红蛋白/血红蛋白)直接取 **RCSB PDB 实验结构**(真实主链构象与二硫键,如胰岛素 3I40 403 原子单连通、血红蛋白 2HHB 4556 原子含 4 个血红素 Fe),不再走粗坐标管线生成长链碎片。
-- **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 152px / 中间画布 / 右侧检查器 224px,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
+- **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**分子结构锁**(顶栏锁图标或 L 键,锁定后拖动/编辑/删除/优化/撤销/清空/生成全部禁用,视角仍可旋转/平移/缩放,状态本地记忆)、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 152px / 中间画布 / 右侧检查器 224px,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
 - **可视化**:分子状态条(分子式 / 原子 / 键 / 环 / 芳香 / ∠RMS 实时读数)、检查器(选中原子或键的详情、环清单、视图开关)、蓝色半透明水滴形孤对电子云(NEBOOK 风格、受光立体)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮;大结构(>1500 原子)自动省掉原子标签与光晕(选中时按需补建)、>600 原子不画孤对云,保证蛋白质四聚体仍可流畅交互。
 - **自测体系**:控制台自测(`window.runAllExamplesAndTests()`,33 几何)+ 离域π自测(`window.__runPiSystemTests()`,23 项)+ Playwright 回归脚本(36 基团方位等,全绿)。
 
@@ -70,6 +70,7 @@
 - **顺反异构翻转**:选中双键 → 键菜单「⇄ 顺反」,一侧旋转 180° 交换两个取代基位置(顺式⇄反式),菜单可连点翻回。
 - **共轭桥保护**:离域π开启时,苯甲酸羧基-苯基、苯乙烯、联苯等共轭桥单键禁止旋转(toast 说明),保证共平面共轭;关闭离域π后可旋转。
 - **撤销 / 恢复**(顶栏 `撤销`/`恢复` 图标按钮,或 Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y):快照式历史,覆盖分子生成、原子/基团拖拽、删除、键类型修改与顺反翻转、单键旋转、全局优化、一键补氢、清空、键盘微移(连续微移 400ms 内合并为一步)等操作;栈上限 50 步,新操作自动清空"恢复"链,空栈时提示。
+- **分子结构锁**(顶栏锁图标或 L 键):锁定后所有结构修改入口被禁用——拖动原子/基团、三轴手柄、改键级、顺反翻转、单键旋转、删除原子(Delete/垃圾桶)、优化、撤销/恢复、清空、生成新分子;构建库卡片变灰、选中原子不再出现删除图标与手柄,状态条显示「已锁定」。视角旋转 / 平移 / 缩放不受影响,状态持久化(`localStorage.MOLECULE_LOCKED`)。
 
 ### 4. 可视化与辅助
 
@@ -82,7 +83,7 @@
 - **浮层开合动画**:生成抽屉滑入滑出(190ms transform + visibility)、面板折叠(180ms 列宽过渡)、手机底部抽屉上滑、小键盘弹出、异构体面板 / 检索前筛选 / 键线式大图 / 帮助浮层 / 歧义候选 / 键菜单淡入淡出 + 轻微缩放。淡出过程中浮层不接收点击,不会挡住原子操作;原生 `<select>` 的弹出列表由系统绘制,无动画;`prefers-reduced-motion` 下过渡自动关闭。
 - **分子状态条 / 检查器**:画布底部实时读数(分子式、原子数、键数、环数、芳香标记、键角 RMS),右侧检查器显示选中原子(元素、杂化、键数、坐标)或选中键(类型、两端、键长)、环清单与视图开关。
 - **选中删除**:选中原子右上角挂红底垃圾桶图标,点击删除该原子;点空白取消选中时图标消失。
-- **旋转视角**:空白处拖动旋转视角,滚轮缩放(旋转单键时空白拖动切换为旋转分子侧)。
+- **视角控制**:空白处左键拖动旋转视角,滚轮缩放,**右键拖 / 中键拖 / Shift+左键拖平移视角**(触控板或无右键时用 Shift+左键);平移与锁定状态无关(旋转单键时空白拖动切换为旋转分子侧)。场景不使用雾气,纵深由画布暗角与淡网格地面提供。
 
 ### 5. 自动测试
 
@@ -112,6 +113,7 @@
 | `verify_dropdown_autoclose.js` | 浮层「点击别处收起」:抽屉点画布收起、内部点击保持、开关不被拦截、小键盘联动、手机生成按钮、原生 select 失焦、面板折叠不受影响(11 项) |
 | `verify_keypad_ui.js` | 分子式小键盘:19+10 键结构、点键输入与焦点保持、桌面/手机定位、Escape/✕、375×667 与 375×300 防溢出、视口缩放重定位、面板联动、**标题栏拖动(真实鼠标 + CDP 触摸、位置保持/resetPosition/关闭按钮非把手)**、原子库清理回归(14 项) |
 | `verify_foolproof.js` | 防呆测试:22 项边界/误操作场景(空状态、非法参数注入、状态机、极端几何、真实鼠标误操作) |
+| `verify_lock_pan.js` | 去雾 / 场景平移 / 分子结构锁:无雾气、右键与 Shift+左键平移、锁定开关 UI、锁定后拖动/键菜单/删除/优化/撤销/清空/生成/侧栏拖拽全部被拒、解锁恢复、键菜单与单键旋转自动退出、刷新保持锁定、触摸端点键、零 console(27 项) |
 | `verify_inline_offline.js` | 离线验证:file:// 打开 + 拦截全部网络请求,确认零 http 请求(Three.js/SmilesDrawer 内联、键线式本地渲染) |
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
 | `analyze_angle.js` / `analyze_ring.js` / `analyze_trace.js` | 收敛过程分析脚本 |
@@ -145,7 +147,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ```
 
 - 自测报告读取:轮询 `window.lastRunResults`(33 例全跑完才写入);页面内 `window.runAllExamplesAndTests()` 可手动触发。
-- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
+- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;去雾/平移/结构锁 27、三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
 
 ## 复现与分析
 
@@ -172,12 +174,12 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 
 ## 调试接口(浏览器 Console)
 
-- `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`/**`porphyrinCheck()`/`porphyrinTemplateOf(spec)`**/`visualStats()`/`depthGridVisible()`/`camInfo()`)、`window.lastRunResults`、`window._INIT_ERRORS`、`window.__OPT_LAST_TRUNCATED`(限时优化是否被截断)
+- `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`/**`porphyrinCheck()`/`porphyrinTemplateOf(spec)`**/`visualStats()`/`depthGridVisible()`/`fogInfo()`/`panConfig()`/`camInfo()`)、`window.lastRunResults`、`window._INIT_ERRORS`、`window.__OPT_LAST_TRUNCATED`(限时优化是否被截断)
 - `window.__panels`{set(name,collapsed)/toggle/state}(三栏面板折叠,`name` = `build` / `inspect`)、`window.__sidebars`(旧接口别名,`group-sidebar`/`sidebar` 映射到 `build`)、`window.__buildLib`{get/set/state}(构建台「基团 / 元素」页签,记忆键 `BUILD_LIB`)、`window.__setInputPanelOpen(open)`(生成抽屉开关)
 - `window.__statusBar()`(分子状态条读数:分子式/原子/键/环/芳香/∠RMS)、`window.__fitView()`(取景到当前分子)
-- `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)
+- `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)、`window.__moleculeLock`{get/set/toggle/state}(分子结构锁;`state()` 返回 locked/pressed/icon/bodyClass/statVisible/gizmoVisible/deleteIcon)
 - `window.__ddAnim`{inMs/outMs/idle()/running()/slideShow/slideHide/fadeShow/fadeHide/setCornerBodyOpen/bondMenu{show,hide}}(浮层开合动画;验证脚本用 `idle()` 等待动画收尾)
-- `window.__dragMode`{project/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
+- `window.__dragMode`{project/pickAt/bondAt/selectedBond/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
 - `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
 - 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__probeFormulaCandidates`/`__isomerPresearch`{open/close/start/stop/continue/reset/set/state/matches}/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
 - 蛋白名称 PDB:`window.__PROTEIN_NAME_LIB`/`__resolveProteinName`/`__fetchProteinPDBById`/`__inferPdbCarbonylBonds`/`__generateFromProteinPDB`/`__countPeptideBonds`、`window.__RCSB_LIGAND_LIB`/`__resolveRcsbLigand`/`__generateFromRcsbLigand`
