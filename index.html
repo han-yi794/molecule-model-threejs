@@ -14680,7 +14680,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // 每对孤对电子 = 一朵**水滴形**电子云轮廓（尖端贴原子表面、圆肚朝外，
         // 参考 hx.nobook.com H₂O 页面：云呈水滴状，两个电子点在云体中段并排）
         // + 云内两个黑铬金属点（代表一对电子）。
-        let showLonePairs = (() => { try { return localStorage.getItem('LONE_PAIRS_VIS') !== '0'; } catch (e) { return true; } })();
+        let showLonePairs = (() => { try { return localStorage.getItem('LONE_PAIRS_VIS') === '1'; } catch (e) { return false; } })();
         // 大结构（蛋白 PDB 等）不渲染孤对：每个 O/N 的 2 对孤对 = 1 云 + 2 金属点
         // （各自独立 geometry），4556 原子会产生上千个透明网格，生成与逐帧都明显变慢；
         // 且在这种密度下孤对云已完全糊成一团，没有辨识价值。小分子行为不变。
@@ -14861,7 +14861,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
         }
         window.__toggleLonePairs = toggleLonePairs;
         window.__lpVisualMode = () => showLonePairs;
-        // 初始同步开关状态（默认开启，localStorage.LONE_PAIRS_VIS 持久化）
+        // 初始同步开关状态（默认关闭，仅当 localStorage.LONE_PAIRS_VIS === '1' 时开启）
         try { setToggleOn('lp', showLonePairs); } catch (e) {}
         initDragModeUI();
         // 拖动重构调试接口
