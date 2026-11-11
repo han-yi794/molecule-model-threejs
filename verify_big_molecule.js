@@ -298,6 +298,8 @@ const STATS_FN = `(function(limit){
   const d7 = await page.evaluate(async () => {
     document.getElementById('btn-clear-molecule').click();
     await window.__generateFromSmiles('CO');
+    // 孤对默认关闭（2026-11-11）：显式开启后再验证小分子云可见
+    if (!window.__lpVisualMode()) window.__toggleLonePairs();
     const lp = window.__lpStats();
     const o = lp.find(x => x.t === 'O');
     const vis = window.__diag.visualStats();

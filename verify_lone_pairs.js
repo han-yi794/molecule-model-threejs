@@ -30,10 +30,22 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
         await page.waitForFunction(() => !!(window.__diag && window.__lpStats && window.__toggleLonePairs), null, { timeout: 30000 });
         await page.waitForTimeout(400);
 
-        // 生成示例 + 开关一次（示例生成器不自动刷新孤对，关→开触发 __lpDirs 计算）
+        // L0 默认关闭（2026-11-11 用户要求「孤电子对改成默认不开启」）
+        const def = await page.evaluate(() => ({
+            mode: window.__lpVisualMode(),
+            checked: document.getElementById('chk-lp').checked,
+            ls: (() => { try { return localStorage.getItem('LONE_PAIRS_VIS'); } catch (e) { return null; } })()
+        }));
+        step('L0 默认关闭：未持久化时不显示孤对、开关未勾选', def.mode === false && def.checked === false && def.ls === null, def);
+
+        // 生成示例 + 确保开启（示例生成器不自动刷新孤对，关→开触发 __lpDirs 计算）
         const gen = async (name) => {
             await page.evaluate((n) => window.__diag.generate(n), name);
-            await page.evaluate(() => { window.__toggleLonePairs(); window.__toggleLonePairs(); });
+            await page.evaluate(() => {
+                if (!window.__lpVisualMode()) window.__toggleLonePairs();
+                window.__toggleLonePairs(); // 关
+                window.__toggleLonePairs(); // 开 → refresh
+            });
             await page.waitForTimeout(350);
             return page.evaluate(() => window.__lpStats());
         };
