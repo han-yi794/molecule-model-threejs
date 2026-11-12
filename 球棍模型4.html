@@ -2376,7 +2376,8 @@
                 updateBonds(true);
             } catch (e) {}
             try { atomsGroup.children.filter(c => c.userData?.isAtom).forEach(a => updateAtomLabel(a)); } catch (e) {}
-            try { optimizeAllAtoms(); } catch (e) {}
+            // 大分子保护：切换离域π 会重推杂化并重优化，对蛋白/稠环大分子是灾难
+            try { if (!structureProtectionState().protect) optimizeAllAtoms(); } catch (e) {}
             return DELOCAL_PI_ENABLED;
         };
         // 捕获模块初始化错误，方便自动化诊断
@@ -5537,6 +5538,49 @@ isOptimizing = false;
         // 光晕球同样按原子数线性膨胀，而选中时会自动补建（setSelectedAtom 有兜底）。
         const SPARSE_VISUAL_ATOMS = 1500;
         let _sparseAtomVisuals = false;
+
+        // ===== 大分子结构保护（2026-11）=====
+        // 通用优化器是为「几十个原子的手绘小分子」设计的：它按理想键角/键长逐原子
+        // 位移，遇到实验坐标的蛋白或多稠环天然产物会互相拉扯、把骨架撕开
+        //（实测胰岛素 403 原子点一次「优化」：414→393 键、1→20 个碎片、17 条坏键）。
+        // 密集结构上左键按下又几乎必中原子，随手一拖就会把原子从骨架上拽走
+        //（实测拖动 200px：414→412 键、1→3 个碎片）。
+        // 两条保护：① 超阈值分子跳过全局优化；② 大分子左键拖动默认旋转视角，
+        // 想移动原子必须「先单击选中，再拖动」。
+        const PROTECT_OPT_MAX_ATOMS = 250;        // 原子数超过此值不再跑通用优化器
+        const PROTECT_PRECISE_MIN_ATOMS = 100;    // 真实坐标来源（PDB/3D/RCSB）≥100 原子同样跳过
+        let MOLECULE_PRECISE_GEOMETRY = false;    // 生成路线标记：PDB / PubChem 3D / RCSB 组分
+        let _largeDragHintShown = false;
+
+        function moleculeAtomCount() {
+            return atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length;
+        }
+        // 返回 { protect, atoms, reason }：reason = 'large' | 'precise' | ''
+        function structureProtectionState() {
+            const n = moleculeAtomCount();
+            if (n > PROTECT_OPT_MAX_ATOMS) return { protect: true, atoms: n, reason: 'large' };
+            if (MOLECULE_PRECISE_GEOMETRY && n >= PROTECT_PRECISE_MIN_ATOMS) return { protect: true, atoms: n, reason: 'precise' };
+            return { protect: false, atoms: n, reason: '' };
+        }
+        function showLargeDragHint() {
+            if (_largeDragHintShown) return;
+            _largeDragHintShown = true;
+            showToast('大分子：左键拖动 = 旋转视角；先单击原子选中，再拖动即可移动它', 4600);
+        }
+        let _lastOptSkipInfo = null;   // 最近一次被结构保护跳过的优化（测试断言用）
+        window.__structureGuard = {
+            state: () => structureProtectionState(),
+            atomCount: () => moleculeAtomCount(),
+            precise: () => MOLECULE_PRECISE_GEOMETRY,
+            setPrecise: (v) => { MOLECULE_PRECISE_GEOMETRY = !!v; return MOLECULE_PRECISE_GEOMETRY; },
+            resetDragHint: () => { _largeDragHintShown = false; },
+            lastSkip: () => _lastOptSkipInfo,
+            clearLastSkip: () => { _lastOptSkipInfo = null; },
+            selected: () => (typeof selectedAtom !== 'undefined' && selectedAtom && selectedAtom.userData)
+                ? { id: selectedAtom.userData._id, type: selectedAtom.userData.atomType, p: [+selectedAtom.position.x.toFixed(3), +selectedAtom.position.y.toFixed(3), +selectedAtom.position.z.toFixed(3)] }
+                : null
+        };
+
         function createLabel(type) {
             if (_sparseAtomVisuals) return null;
             const info = atomTypes[type];
@@ -6311,6 +6355,11 @@ isOptimizing = false;
         function attachDeleteIcon(atom) {
             detachDeleteIcon();
             if (MOLECULE_LOCKED || !atom || !atom.userData) return;
+            // 大分子保护（2026-11）：远视角下原子只有几个像素，20px 的垃圾桶图标会
+            // 盖住原子中心（实测胰岛素默认取景时图标压在原子上）——用户「单击选中
+            // 再拖动」的第二下会点在图标上，误点还会直接删原子。大分子不挂图标，
+            // 删除仍可用 Delete/Backspace（帮助浮层里有说明）。
+            if (structureProtectionState().protect) return;
             // 双层结构（2026-10）：外层 div 仅定位/命中——CSS2DRenderer 每帧重写它的
             // style.transform（定位矩阵），对外层做缩放动画会被覆盖；内层 span 承载视觉，
             // 悬停缩放内层 transform（renderer 不触碰内层，且以其自身中心缩放无漂移）。
@@ -6469,6 +6518,19 @@ isOptimizing = false;
         // Shift+O 快捷键与"全局同步优化"按钮共用的入口：开启自动补氢时先补氢再优化，
         // 避免键盘路径（只调 optimizeAllAtoms）与按钮路径（先补氢）行为不一致
         function optimizeAllWithAutoHydrogen(opts) {
+            const o = opts || {};
+            // 结构保护（2026-11）：大分子 / 真实坐标天然产物不跑通用优化器。
+            // 优化器对小分子是"把几何拉到理想值"，对 400 原子蛋白是"逐原子互相拉扯"，
+            // 一次点击就会把骨架撕成几十个碎片（实测胰岛素 414→393 键 / 20 碎片）。
+            // 内部生成流程（如 generateFromSmiles 的小分子分支）如需强制优化可传 force。
+            const guard = structureProtectionState();
+            if (!o.force && guard.protect) {
+                const why = guard.reason === 'precise' ? '来自实验/真实坐标' : '原子数较多';
+                _lastOptSkipInfo = { atoms: guard.atoms, reason: guard.reason, at: Date.now() };
+                showToast(`已跳过全局优化：该分子${why}（${guard.atoms} 个原子），通用优化器会拉断键`, 5200);
+                console.warn('[结构保护] 跳过全局优化', JSON.stringify(guard));
+                return false;
+            }
             if (HYDROGENATE_AUTO) {
                 try {
                     const n = addMissingHydrogens();
@@ -6477,6 +6539,7 @@ isOptimizing = false;
             }
             optimizeAllAtoms(opts);
             commitHistory();   // 撤销/恢复：优化完成记一条（复合操作内部由 historySuppress 抑制）
+            return true;
         }
 
         // ===== 撤销 / 恢复（2026-10-18 新增）=====
@@ -6769,6 +6832,8 @@ isOptimizing = false;
         function clearMolecule(opts) {
             // 单键旋转状态清理（含旋转轴指示棒）
             clearTorsion();
+            // 结构保护标记复位（生成路线会在放置原子后重新置位）
+            MOLECULE_PRECISE_GEOMETRY = false;
             // 兜底：清空场景时强制结束任何残留的优化状态（若 isOptimizing 被
             // 异常遗留为 true，后续 updateBonds() 只更新几何不重建键列表）
             isOptimizing = false;
@@ -9358,7 +9423,9 @@ const fSide = new Set();
                     optimizeAllAtoms({ timeBudgetMs: 3000, maxIterations: 12 });
                     showToast(`分子较大（${heavyCount} 个重原子）：已用粗坐标快速生成，几何为近似值`, 5200);
                 } else {
-                    optimizeAllWithAutoHydrogen();
+                    // force：生成流程自己的优化不受「大分子结构保护」拦截
+                    //（本地粗坐标必须先优化才有可用的键角，否则质量闸门会误杀）
+                    optimizeAllWithAutoHydrogen({ force: true });
                 }
             } finally { HYDROGENATE_AUTO = prevHydro; }
             const atoms = atomsGroup.children.filter(c => c.userData && c.userData.isAtom);
@@ -9488,6 +9555,9 @@ const fSide = new Set();
             const keepExisting = !!(opts && opts.keepExisting);
             const prevCount = keepExisting ? atomsGroup.children.filter(c => c.userData && c.userData.isAtom).length : 0;
             if (!keepExisting) clearMolecule();
+            // 真实 3D 坐标（PubChem 3D / RCSB 理想组分）：标记为精确几何，
+            // 大分子不再走通用优化器（见 structureProtectionState）
+            MOLECULE_PRECISE_GEOMETRY = true;
             const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
             for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
             aromatize3DRings();
@@ -9657,6 +9727,8 @@ const fSide = new Set();
             _sparseAtomVisuals = struct.atoms.length > SPARSE_VISUAL_ATOMS;
             try {
                 clearMolecule();
+                // 实验结构（PDB）：精确几何标记，大分子跳过通用优化器
+                MOLECULE_PRECISE_GEOMETRY = true;
                 const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
                 for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
                 updateBonds();
@@ -12889,7 +12961,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             historySuppress++;   // 撤销/恢复：整段生成（清场 + 放置 + 居中）合并为一条记录
             try {
             const keepExisting = !!(opts && opts.keepExisting);
-            if (!keepExisting) clearMolecule();
+            if (!keepExisting) { clearMolecule(); MOLECULE_PRECISE_GEOMETRY = false; }   // 本地粗坐标管线
             const n = spec.types.length;
             const atoms = spec.types.map(t => createCompleteAtom(t, new THREE.Vector3(0, 0, 0)));
             const pos = atoms.map(a => a.position);
@@ -14075,6 +14147,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 // 锁定态跳过（setTorsionPivot 内部也有守卫，这里提前跳过避免连续提示）
                 if (!MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
                 else if (!MOLECULE_LOCKED) clearTorsion();
+                // 大分子保护（2026-11）：密集结构上按下几乎必中原子，直接拖动会误拆骨架。
+                // 未选中的原子 → 只选中不拖动（本次按下不 preventDefault，交给 OrbitControls
+                // 旋转视角）；再按一次（已选中）才进入拖动 =「先单击选中，再拖动移动」。
+                if (atom !== selectedAtom && structureProtectionState().protect) {
+                    setSelectedAtom(atom);
+                    showLargeDragHint();
+                    return;
+                }
                 startExistingDrag(atom, e.clientX, e.clientY);
                 setSelectedAtom(atom);
                 e.preventDefault();
@@ -14140,6 +14220,13 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     const atom = atomIntersects[0].object;
                     if (!MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
                     else if (!MOLECULE_LOCKED) clearTorsion();
+                    // 大分子保护（同鼠标端）：未选中的原子只选中、不拖动，本次触摸交给
+                    // OrbitControls 旋转视角；已选中再按才移动。
+                    if (atom !== selectedAtom && structureProtectionState().protect) {
+                        setSelectedAtom(atom);
+                        showLargeDragHint();
+                        return;
+                    }
                     startExistingDrag(atom, touch.clientX, touch.clientY);
                     setSelectedAtom(atom);
                     e.preventDefault();

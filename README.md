@@ -27,6 +27,7 @@
 - **卟啉 / 血红素**:解析式平面卟啉模板(4 吡咯 + 4 meso 桥),金属离子(Fe/Mg/Zn/Co/Ni/Cu/Mn)自动配位到环心(Fe–N 2.05 Å);配位键渲染为青蓝色细杆并排除在化学邻接/环枚举之外,核心作为刚体保持平面。
 - **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
 - **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构;蛋白质名称(胰岛素/溶菌酶/核糖核酸酶A/细胞色素c/肌红蛋白/血红蛋白)直接取 **RCSB PDB 实验结构**(真实主链构象与二硫键,如胰岛素 3I40 403 原子单连通、血红蛋白 2HHB 4556 原子含 4 个血红素 Fe),不再走粗坐标管线生成长链碎片。
+- **大分子结构保护**:蛋白 / 天然产物等大结构不再被交互破坏——原子数 >250(或真实坐标来源 ≥100 原子)的分子跳过通用优化器(点「优化」/Shift+O 会 toast 说明并保持原样),左键拖动默认旋转视角(先单击选中、再拖动才移动原子),也不挂选中删除图标(远视角图标会压住原子,删除仍可用 Delete/Backspace)。修复前胰岛素点一次优化会从 414 键/单连通变成 393 键/20 个碎片。
 - **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**分子结构锁**(顶栏锁图标或 L 键,锁定后拖动/编辑/删除/优化/撤销/清空/生成全部禁用,视角仍可旋转/平移/缩放,状态本地记忆)、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 152px / 中间画布 / 右侧检查器 224px,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
 - **可视化**:分子状态条(分子式 / 原子 / 键 / 环 / 芳香 / ∠RMS 实时读数)、检查器(选中原子或键的详情、环清单、视图开关)、蓝色半透明水滴形孤对电子云(NEBOOK 风格、受光立体)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮;大结构(>1500 原子)自动省掉原子标签与光晕(选中时按需补建)、>600 原子不画孤对云,保证蛋白质四聚体仍可流畅交互。
 - **自测体系**:控制台自测(`window.runAllExamplesAndTests()`,33 几何)+ 离域π自测(`window.__runPiSystemTests()`,23 项)+ Playwright 回归脚本(36 基团方位等,全绿)。
@@ -56,12 +57,12 @@
 
 ### 2. 几何优化
 
-- **优化**(顶栏按钮,`title` 为「全局同步优化 (Shift+O)」,或 Shift+O):对当前分子做多轮迭代——键角阶段(sp3 四面体 / sp2 平面 / sp 线性 / 环感知键角)与键长阶段交替收敛,芳香环排布、饱和环规则排列、共轭桥共面收尾。开启自动补氢时该按钮即补氢+优化一体入口。
+- **优化**(顶栏按钮,`title` 为「全局同步优化 (Shift+O)」,或 Shift+O):对当前分子做多轮迭代——键角阶段(sp3 四面体 / sp2 平面 / sp 线性 / 环感知键角)与键长阶段交替收敛,芳香环排布、饱和环规则排列、共轭桥共面收尾。开启自动补氢时该按钮即补氢+优化一体入口。**大分子保护**:原子数 >250 或真实坐标来源(PDB/PubChem 3D/RCSB)≥100 原子时直接跳过并 toast 说明——通用优化器按理想键角逐原子位移,对实验坐标的蛋白是「互相拉扯」,会把骨架撕成碎片(胰岛素 414→393 键 / 20 碎片),这些结构的几何本身已是真实值,不需要也不应该被重排。
 - **手动杂化**:选中原子后按 0/1/2/3 强制 自动 / sp³ / sp² / sp(或 Ctrl/⌘+点击原子弹出杂化菜单),观察 VSEPR 自动推断与手工指定的差异。
 
 ### 3. 交互编辑
 
-- **选中**:单击原子高亮(琥珀色光晕);单击键弹出键菜单(该键上可做的操作)。
+- **选中**:单击原子高亮(琥珀色光晕);单击键弹出键菜单(该键上可做的操作)。**大分子**(>250 原子或真实坐标 ≥100 原子)上左键按下只选中、不拖动(本次拖动交给视角旋转),要移动原子请「先单击选中,再拖动」;首次会 toast 提示。
 - **四种拖动方式**(右下角徽章单击循环,Shift+点击反向;或 Tab/Shift+Tab 快捷键):平面自由拖 / 三轴手柄(红 X·绿 Y·蓝 Z,拖柄或中心球)/ 起始轴锁(首次移动超 6px 锁定最近世界轴)/ 手柄+锁轴组合;方式记忆在本地。
 - **三栏工作台**:顶栏 44px(分子名 + 撤销/恢复/优化/清空/帮助/生成…),左侧「构建台」(默认 152px,顶部「基团 / 元素」页签,单列球形按钮/CPK 圆球,同一时刻只显示一组、选择本地记忆)、中间画布井 + 底部状态条、右侧「检查器」(默认 224px,选中详情 / 环 / 视图开关);点面板标题行收起为 44px 窄轨道(图标 + 朝向展开方向的箭头),再点展开,两侧互不影响、状态本地记忆,Enter/Space 亦可切换。画布带暗角与淡网格地面(纵深参照,不参与吸附)。窄屏(≤899)两侧默认收为轨道,展开一侧自动收起另一侧;手机(≤699)改为底部「构建 / 检查 / 生成」栏 + 底部抽屉。
 - **网格吸附**(`btn-toggle-grid` 或 G 键):松手位置吸附到 0.25 Å 网格。
@@ -104,6 +105,7 @@
 | `verify_isomer_presearch.js` | 大分子式检索前筛选:候选探测(401/capped)、属性抓取、真实 UI(C₁₂H₁₃N₃O₂ 芳香环筛选 30 个、说明条/继续 30→60、条件带入、Esc/停止/取消、无筛选前 30)、手机 375×667/375×400 不超屏可滚动、C2H6O/C6H6 回归(23 项) |
 | `verify_protein_pdb.js` | 蛋白质名称 → RCSB PDB:名称库解析、`parsePDB` 过滤(proteinOnly/altLocFirst/hetKeep)、3I40 拉取与羰基双键推断、生成几何(单连通/二硫键/零碰撞/键长)、真实 UI「胰岛素」「溶菌酶」、多肽守卫、二肽由质量闸门拦截、非法 ID、33 几何(24 项) |
 | `verify_big_molecule.js` | 大分子路线:质量闸门(合法张力分子放行 / 塌缩分子拒绝并回滚保留原分子 / 多片段 / keepExisting 只记录)、RCSB 化学组分(CLA/CNC/BCD/ACX + UI「叶绿素」)、蛋白 PDB(1HRC/1MBO/2HHB)、大结构视觉降噪(标签/光晕/孤对)、33 几何 + 23 π(24 项) |
+| `verify_large_guard.js` | 大分子结构保护(10 项):胰岛素 403 原子基准与保护态、点优化/Shift+O 被跳过且结构不变、大分子左键拖动=旋转视角(无删除图标)、放大后「先选中再拖动」可移动原子、Ctrl+Z 恢复、小分子不触发保护(直拖/优化/删除图标)、33 几何、零 console |
 | `verify_history.js` | 撤销/恢复专项(12 项):按钮/图标/布局/初始状态、空栈提示、拖拽/删除/移动/优化/清空/生成的提交点、复合操作恰记一条、键盘微移合并、redo 失效规则、快捷键、位置精确还原 |
 | `verify_shell.js` | 三栏外壳:顶栏结构(分子名/撤销/恢复/优化/清空/帮助/生成…)、三栏几何(152 / 中间 / 224)、旧角落控件已删除、手机底部栏与底部抽屉(9 项) |
 | `verify_help.js` | 帮助浮层:顶栏 `#btn-help` 打开,四段内容 + Esc 说明,✕ / 点暗背景 / Escape 三种关闭,手机端(8 项) |
@@ -147,7 +149,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ```
 
 - 自测报告读取:轮询 `window.lastRunResults`(33 例全跑完才写入);页面内 `window.runAllExamplesAndTests()` 可手动触发。
-- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;去雾/平移/结构锁 27、三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
+- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;去雾/平移/结构锁 27、三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、大分子结构保护 10/10、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
 
 ## 复现与分析
 
@@ -177,7 +179,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - `window.__diag`(环/芳香/杂化诊断 `ringsInfo()`/`isArom(id)`/`hybOf(id)`/`sigmaProbe()`/**`porphyrinCheck()`/`porphyrinTemplateOf(spec)`**/`visualStats()`/`depthGridVisible()`/`fogInfo()`/`panConfig()`/`camInfo()`)、`window.lastRunResults`、`window._INIT_ERRORS`、`window.__OPT_LAST_TRUNCATED`(限时优化是否被截断)
 - `window.__panels`{set(name,collapsed)/toggle/state}(三栏面板折叠,`name` = `build` / `inspect`)、`window.__sidebars`(旧接口别名,`group-sidebar`/`sidebar` 映射到 `build`)、`window.__buildLib`{get/set/state}(构建台「基团 / 元素」页签,记忆键 `BUILD_LIB`)、`window.__setInputPanelOpen(open)`(生成抽屉开关)
 - `window.__statusBar()`(分子状态条读数:分子式/原子/键/环/芳香/∠RMS)、`window.__fitView()`(取景到当前分子)
-- `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)、`window.__moleculeLock`{get/set/toggle/state}(分子结构锁;`state()` 返回 locked/pressed/icon/bodyClass/statVisible/gizmoVisible/deleteIcon)
+- `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)、`window.__moleculeLock`{get/set/toggle/state}(分子结构锁;`state()` 返回 locked/pressed/icon/bodyClass/statVisible/gizmoVisible/deleteIcon)、`window.__structureGuard`{state/atomCount/precise/setPrecise/resetDragHint/lastSkip/clearLastSkip/selected}(大分子结构保护;`state()` 返回 protect/atoms/reason = `large`/`precise`/空)
 - `window.__ddAnim`{inMs/outMs/idle()/running()/slideShow/slideHide/fadeShow/fadeHide/setCornerBodyOpen/bondMenu{show,hide}}(浮层开合动画;验证脚本用 `idle()` 等待动画收尾)
 - `window.__dragMode`{project/pickAt/bondAt/selectedBond/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
 - `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
