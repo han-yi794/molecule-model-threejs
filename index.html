@@ -601,6 +601,8 @@
             color: var(--muted);
             cursor: pointer;
             user-select: none;
+            touch-action: manipulation;   /* 触摸端整行可点、无 300ms 延迟 */
+            -webkit-tap-highlight-color: transparent;
             transition: background 120ms ease, color 120ms ease;
         }
         .toggle-row:hover { background: var(--active); color: var(--text); }
@@ -5229,7 +5231,8 @@ isOptimizing = false;
                     if (row) row.classList.toggle('on', showGridSnap);
                 };
                 syncGridUI();
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();   // 阻止 label 原生激活：否则同一次点击会先翻一次、再被 change 翻回去（净无效）
                     showGridSnap = !showGridSnap;
                     gridRoot.visible = showGridSnap;
                     try { localStorage.setItem('GRID_SNAP', showGridSnap ? '1' : '0'); } catch (e) {}
@@ -5260,6 +5263,8 @@ isOptimizing = false;
         let torsionDragging = false;        // 正在拖动旋转
         let torsionAngle = 0;               // 累计旋转角度（rad）
         let torsionLastClientX = 0;
+        let torsionDownClient = { x: 0, y: 0 };  // 空白按下位置：区分「单击退出」与「拖动旋转」
+        const TORSION_CLICK_SLOP_PX = 4;         // 按下→抬起位移 < 4px 视为单击
         let torsionAxisMesh = null;         // 旋转轴指示（细棒，静止不动：轴方向不变）
         const torsionHudEl = document.getElementById('torsion-hud');
         function torsionNeighbors(atom) {
@@ -6758,7 +6763,11 @@ isOptimizing = false;
             showToast(DELOCAL_PI_ENABLED ? '离域π键: 已开启（杂化+VSEPR+离域π键）' : '离域π键: 已关闭（仅杂化轨道+VSEPR，旧逻辑）', 2200);
             window.__setDelocPiMode(DELOCAL_PI_ENABLED);
         });
-        document.getElementById('btn-toggle-pi').addEventListener('click', (e) => { e.preventDefault(); try { togglePiSystems(); showToast(showPiSystems ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); } catch (e) { showToast('离域π检测失败: ' + e, 2500); } });
+        document.getElementById('btn-toggle-pi').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!DELOCAL_PI_ENABLED) { showToast('请先开启离域π键', 1200); return; }   // 与复选框 change 的禁用反馈保持一致
+            try { togglePiSystems(); showToast(showPiSystems ? '已高亮离域π体系' : '已隐藏离域π高亮', 1200); } catch (err) { showToast('离域π检测失败: ' + err, 2500); }
+        });
         // （2026-10-17 原子库清理：btn-pi-test 自测按钮已移除，π 自测改为控制台 window.runPiSystemTests()）
         const styleSelect = document.getElementById('atom-style-select');
         if (styleSelect) styleSelect.addEventListener('change', function() {
@@ -6778,9 +6787,8 @@ isOptimizing = false;
             if (HYDROGENATE_AUTO !== want) { HYDROGENATE_AUTO = want; try { localStorage.setItem('HYDROGENATE_AUTO', HYDROGENATE_AUTO ? '1' : '0'); } catch (e) {} updateHydroUI(); showToast(HYDROGENATE_AUTO ? '自动补氢已开启' : '自动补氢已关闭', 1200); }
         });
         document.getElementById('chk-lp').addEventListener('change', function() {
-            const want = this.checked;
-            if (showLonePairs !== want) showLonePairs = !showLonePairs; // 用 toggleLonePairs 翻转
-            toggleLonePairs();
+            // 只按复选框目标值设置一次（旧写法先手动翻再 toggleLonePairs 又翻 → 净无效）
+            toggleLonePairs(this.checked);
         });
         document.getElementById('chk-grid').addEventListener('change', function() {
             const want = this.checked;
@@ -14115,6 +14123,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     let node = gis[0].object;
                     while (node && !node.userData.gizmoAxis && !node.userData.isGizmoCenter) node = node.parent;
                     if (node) {
+                        // 点 gizmo = 点别处：收起键菜单并清掉键选中/旋转模式
+                        hideBondMenu();
+                        selectedBond = null;
+                        clearTorsion();
                         if (node.userData.isGizmoCenter) {
                             // 中心球：在过原子的相机平行平面内拖（原"平面自由拖"语义）
                             startExistingDrag(selectedAtom, e.clientX, e.clientY);
@@ -14134,6 +14146,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 const atom = atomIntersects[0].object;
                 if (e.ctrlKey || e.metaKey) {
                     if (blockWhenLocked('设置杂化')) { e.preventDefault(); return; }
+                    // 点别处：键菜单/键选中/旋转模式一并收起
+                    hideBondMenu();
+                    selectedBond = null;
+                    clearTorsion();
                     selectedAtomForHybrid = atom;
                     setSelectedAtom(atom);
                     const menu = document.getElementById('hybridization-menu');
@@ -14145,8 +14161,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 }
                 // 单键旋转：点中已选中键的端点原子 → 设为旋转侧锚（点另一端可换侧）
                 // 锁定态跳过（setTorsionPivot 内部也有守卫，这里提前跳过避免连续提示）
-                if (!MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
-                else if (!MOLECULE_LOCKED) clearTorsion();
+                const torsionEndpoint = !MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB);
+                if (torsionEndpoint) setTorsionPivot(atom);
+                else {
+                    if (!MOLECULE_LOCKED) clearTorsion();
+                    // 点其它原子 = 点别处：收起键菜单并清掉键选中
+                    hideBondMenu();
+                    selectedBond = null;
+                }
                 // 大分子保护（2026-11）：密集结构上按下几乎必中原子，直接拖动会误拆骨架。
                 // 未选中的原子 → 只选中不拖动（本次按下不 preventDefault，交给 OrbitControls
                 // 旋转视角）；再按一次（已选中）才进入拖动 =「先单击选中，再拖动移动」。
@@ -14195,14 +14217,19 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 e.preventDefault();
             } else {
                 if (torsionActive) {
-                    // 旋转模式：空白处按下 = 拖动旋转该侧（临时禁用视角旋转）
+                    // 旋转模式：空白处按下先按「可能拖动」处理；抬起时位移 < 阈值则视为单击 → 退出旋转
                     controls.enabled = false;
                     torsionDragging = true;
                     torsionLastClientX = e.clientX;
+                    torsionDownClient.x = e.clientX;
+                    torsionDownClient.y = e.clientY;
                     e.preventDefault();
                     return;
                 }
+                // 点空白 = 点别处：收起键菜单 + 清掉键选中 + 取消原子选中
                 clearTorsion();
+                hideBondMenu();
+                selectedBond = null;
                 setSelectedAtom(null);
             }
         });
@@ -14218,8 +14245,13 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 const atomIntersects = raycaster.intersectObjects(atoms);
                 if (atomIntersects.length > 0) {
                     const atom = atomIntersects[0].object;
-                    if (!MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB)) setTorsionPivot(atom);
-                    else if (!MOLECULE_LOCKED) clearTorsion();
+                    const torsionEndpoint = !MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB);
+                    if (torsionEndpoint) setTorsionPivot(atom);
+                    else {
+                        if (!MOLECULE_LOCKED) clearTorsion();
+                        hideBondMenu();
+                        selectedBond = null;
+                    }
                     // 大分子保护（同鼠标端）：未选中的原子只选中、不拖动，本次触摸交给
                     // OrbitControls 旋转视角；已选中再按才移动。
                     if (atom !== selectedAtom && structureProtectionState().protect) {
@@ -14268,10 +14300,15 @@ if (smilesInput) smilesInput.value = smilesToUse;
                         controls.enabled = false;
                         torsionDragging = true;
                         torsionLastClientX = touch.clientX;
+                        torsionDownClient.x = touch.clientX;
+                        torsionDownClient.y = touch.clientY;
                         e.preventDefault();
                         return;
                     }
+                    // 点空白 = 点别处：收起键菜单 + 清掉键选中 + 取消原子选中
                     clearTorsion();
+                    hideBondMenu();
+                    selectedBond = null;
                     setSelectedAtom(null);
                 }
             }
@@ -14312,8 +14349,16 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 commitHistory();   // 撤销/恢复：改键级（被化合价限制拒绝时无变化自动去重）
             });
         });
-        window.addEventListener('mousedown', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) hideBondMenu(); });
-        window.addEventListener('touchstart', (e) => { if (!bondMenu.contains(e.target) && e.target !== canvas) hideBondMenu(); });
+        // 点画布以外任意处 = 点别处：收起键菜单、清键选中、退出单键旋转
+        // （画布内的点击由 canvas mousedown 自己处理，这里必须排除 canvas 以免抢先清状态）
+        const dismissBondInteractions = (e) => {
+            if (bondMenu.contains(e.target) || e.target === canvas) return;
+            hideBondMenu();
+            selectedBond = null;
+            if (torsionActive) clearTorsion();
+        };
+        window.addEventListener('mousedown', dismissBondInteractions);
+        window.addEventListener('touchstart', dismissBondInteractions);
         // 下拉框点击别处自动收起（2026-09）：原生 select 失焦即关闭下拉列表。
         // 捕获阶段监听：点击目标不在任何 select 内（或其弹出的原生列表）时 blur 当前聚焦的 select。
         const _collapseSelects = () => {
@@ -14384,7 +14429,21 @@ if (smilesInput) smilesInput.value = smilesToUse;
             updateDrag(e.clientX, e.clientY);
         });
         window.addEventListener('mouseup', (e) => {
-            if (torsionDragging) { torsionDragging = false; controls.enabled = true; commitHistory(); return; }   // 撤销/恢复：单键旋转结束
+            if (torsionDragging) {
+                torsionDragging = false;
+                controls.enabled = true;
+                // 空白单击（几乎没移动）= 退出旋转模式；真正拖动过才记历史
+                const moved = Math.hypot(e.clientX - torsionDownClient.x, e.clientY - torsionDownClient.y);
+                if (moved < TORSION_CLICK_SLOP_PX) {
+                    clearTorsion();
+                    hideBondMenu();
+                    selectedBond = null;
+                    setSelectedAtom(null);
+                } else {
+                    commitHistory();   // 撤销/恢复：单键旋转结束
+                }
+                return;
+            }
             endDrag(e.clientX, e.clientY);
         });
         window.addEventListener('touchmove', (e) => {
@@ -14400,7 +14459,22 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (isDragging) { e.preventDefault(); if (e.touches.length === 1) updateDrag(e.touches[0].clientX, e.touches[0].clientY); }
         }, { passive: false });
         window.addEventListener('touchend', (e) => {
-            if (torsionDragging) { torsionDragging = false; controls.enabled = true; commitHistory(); return; }   // 撤销/恢复：单键旋转结束（触摸）
+            if (torsionDragging) {
+                torsionDragging = false;
+                controls.enabled = true;
+                const t = e.changedTouches && e.changedTouches[0];
+                const moved = t ? Math.hypot(t.clientX - torsionDownClient.x, t.clientY - torsionDownClient.y) : 0;
+                if (moved < TORSION_CLICK_SLOP_PX) {
+                    // 空白轻点 = 退出旋转模式
+                    clearTorsion();
+                    hideBondMenu();
+                    selectedBond = null;
+                    setSelectedAtom(null);
+                } else {
+                    commitHistory();   // 撤销/恢复：单键旋转结束（触摸）
+                }
+                return;
+            }
             if (isDragging) { e.preventDefault(); if (e.changedTouches.length > 0) endDrag(e.changedTouches[0].clientX, e.changedTouches[0].clientY); else cancelDrag(); }
         });
         window.addEventListener('touchcancel', (e) => { e.preventDefault(); cancelDrag(); });
@@ -14937,8 +15011,11 @@ if (smilesInput) smilesInput.value = smilesToUse;
             }
             updateLonePairVisuals();
         }
-        function toggleLonePairs() {
-            showLonePairs = !showLonePairs;
+        function toggleLonePairs(force) {
+            // force 给布尔时按目标值设置（供复选框 change 用），不给则翻转
+            const next = (typeof force === 'boolean') ? force : !showLonePairs;
+            if (next === showLonePairs) { setToggleOn('lp', showLonePairs); return showLonePairs; }
+            showLonePairs = next;
             try { localStorage.setItem('LONE_PAIRS_VIS', showLonePairs ? '1' : '0'); } catch (e) {}
             setToggleOn('lp', showLonePairs);
             // 若还没有计算，先触发一次，让 __lpDirs 初始化
