@@ -200,9 +200,9 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
     if (e2.ok) {
         await page.mouse.click(e2.mid.x, e2.mid.y);   // 选键弹菜单（selectedBond 置位）
         await page.waitForTimeout(150);
-        await page.mouse.click(500, 400);             // 点空白关菜单
-        await page.waitForTimeout(150);
-        await page.mouse.click(e2.endpoint.x, e2.endpoint.y); // 点端点原子设 pivot
+        // 点空白现在会清掉键选中（2026-11 修复），故直接点端点原子设 pivot；
+        // 点端点时 setTorsionPivot 会先关闭键菜单。
+        await page.mouse.click(e2.endpoint.x, e2.endpoint.y);
         await page.waitForTimeout(200);
         const e2Act = await page.evaluate(() => ({ active: window.__torsion.active(), pivot: window.__torsion.pivot() }));
         await page.evaluate(() => { try { window.__diag.generateSpec('ethane'); } catch (e) {} });
