@@ -980,6 +980,50 @@
         #drag-hud { top: 10px; }
         #torsion-hud { top: 44px; border-color: #3a3327; color: var(--text); }
         #drag-hud.show, #torsion-hud.show { opacity: 1; }
+
+        /* 触屏「点一下放置」提示条（2026-11）：轻点构建库卡片后出现在画布顶部 */
+        #place-banner {
+            position: absolute;
+            left: 50%;
+            top: 10px;
+            transform: translateX(-50%);
+            z-index: 22;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            max-width: calc(100% - 24px);
+            padding: 5px 6px 5px 10px;
+            border-radius: var(--r-chip);
+            background: var(--raised);
+            border: 1px solid var(--accent);
+            color: var(--text);
+            font-size: var(--fs-xs);
+            white-space: nowrap;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+        #place-banner.show { display: flex; }
+        #place-banner .pb-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent); flex: 0 0 8px;
+        }
+        #place-banner-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #place-banner-cancel {
+            flex: 0 0 auto;
+            height: 24px;
+            padding: 0 9px;
+            border-radius: var(--r-control);
+            border: 1px solid var(--border);
+            background: var(--active);
+            color: var(--muted);
+            font-size: var(--fs-xs);
+            font-family: inherit;
+            cursor: pointer;
+        }
+        #place-banner-cancel:hover { color: var(--accent); border-color: var(--accent); }
+        body.placing canvas { cursor: crosshair !important; }
         #drag-hud .hud-axisdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 8px; }
 
         #toast-message {
@@ -1534,6 +1578,9 @@
                 -webkit-overflow-scrolling: touch;
             }
             #build-panel.sheet-open, #inspect-panel.sheet-open { transform: none; visibility: visible; }
+            /* 触屏拖拽期间：抽屉滑出屏幕但保持 visibility（hidden 会让浏览器取消
+               当前触摸序列，拖拽中途丢失），松手后再由 JS 摘掉这个类 */
+            #build-panel.sheet-hiding, #inspect-panel.sheet-hiding { visibility: visible; }
             #build-panel { gap: 0; }
             #build-panel > .panel { border-radius: 0; border: none; }
             #build-panel > .panel:first-child { border-radius: var(--r-card) var(--r-card) 0 0; border-bottom: 1px solid var(--rule); }
@@ -1745,6 +1792,11 @@
                 <div class="ce-sub">从左侧拖入元素或基团开始构建</div>
             </div>
             <div id="drag-hud"><span class="hud-axisdot" id="hud-dot"></span><span id="hud-text"></span></div>
+            <div id="place-banner" aria-hidden="true">
+                <span class="pb-dot"></span>
+                <span id="place-banner-text"></span>
+                <button id="place-banner-cancel" type="button" title="取消放置 (Esc)">取消</button>
+            </div>
             <div id="torsion-hud"><span id="torsion-hud-text"></span></div>
             <div id="toast-message" role="status"></div>
             <div id="mode-badge" title="点击切换拖动方式 (Tab)" role="button" tabindex="0" aria-label="拖动方式"><span class="mode-dot" id="mode-badge-dot"></span><span id="mode-badge-text">平面拖</span></div>
@@ -5009,6 +5061,10 @@ isOptimizing = false;
         let currentGroupKey = null;
         let currentAtomType = 'C';
         let selectedAtom = null;
+        // 触屏拖拽标记（2026-11）：手机上构建库是底部抽屉，卡片在抽屉内 → 手指拖动时
+        // updateDrag/endDrag 的"落在侧栏上"判定会整段放弃（实测原子数不变）。触摸拖拽
+        // 期间跳过侧栏命中判定（抽屉会在拖拽开始时收起），并放宽屏幕拾取半径。
+        let touchDragActive = false;
 
         // ===== 三维拖动重构（2026-08）：拖动方式选择 + 三轴手柄 + 起始轴锁 + 网格吸附 =====
         // dragMode：plane=平面自由拖（原行为）；gizmo=三轴手柄；lockstart=起始轴锁；
@@ -5453,6 +5509,94 @@ isOptimizing = false;
             return new THREE.Vector2(x, y);
         }
 
+        // 屏幕空间拾取原子（2026-11 取代氢修复）：基团/原子的落点目标必须是
+        // "指针下方看到的原子"，而不是 3D 最近距离。相机倾斜时（实测 (8.08,6.06,12.12)）
+        // 拖拽平面上的落点与目标原子深度差可达数 Å，3D 最近邻会选中相邻原子
+        // （把甲基拖到苯环 C1 上却连到 C6，6/6 复现）。
+        // 顺序：射线直接命中原子球（最准）→ 屏幕投影距离最近且在像素阈值内。
+        // opts.exclude 可排除一组原子（基团自身的成员）；opts.maxPx 覆盖像素阈值。
+        function pickAtomAtScreen(clientX, clientY, opts) {
+            const o = opts || {};
+            const maxPx = (typeof o.maxPx === 'number') ? o.maxPx : (o.touch ? 64 : 44);
+            const ndc = getNormalizedMouse(clientX, clientY);
+            if (!ndc) return null;
+            raycaster.setFromCamera(ndc, camera);
+            const excluded = o.exclude ? new Set(o.exclude) : null;
+            const atoms = atomsGroup.children.filter(c => c.userData && c.userData.isAtom && !(excluded && excluded.has(c)));
+            if (!atoms.length) return null;
+            const hits = raycaster.intersectObjects(atoms, false);
+            if (hits.length > 0) return hits[0].object;
+            const rect = canvas.getBoundingClientRect();
+            const v = new THREE.Vector3();
+            let best = null, bestD = Infinity;
+            for (const a of atoms) {
+                v.copy(a.position).project(camera);
+                const sx = rect.left + (v.x + 1) * 0.5 * rect.width;
+                const sy = rect.top + (1 - v.y) * 0.5 * rect.height;
+                const d = Math.hypot(sx - clientX, sy - clientY);
+                if (d < bestD) { bestD = d; best = a; }
+            }
+            return (best && bestD <= maxPx) ? best : null;
+        }
+        window.__pickAtomAtScreen = pickAtomAtScreen;
+
+        // 目标原子的「剩余价方向」（2026-11）：球面 Fibonacci 采样，挑与现有 σ 键方向
+        // 夹角最大的方向。用于直接成键模式下拖拽方向被 target 自己的 H 挡住时的回退——
+        // 绕连接轴旋转只能转组内原子、锚点本身不动，故方向被挡必须换方向而不是换旋转角。
+        // preferredDir 用于在"近似最优"的候选里优先挑最贴近用户拖拽方向的那个。
+        // 返回单位向量或 null（所有方向都被其它原子占住时）。
+        function bestFreeDirectionFor(target, preferredDir, opts) {
+            const o = opts || {};
+            if (!target || !target.userData || !target.userData.isAtom) return null;
+            const N = o.samples || 96;
+            const anchor = o.anchor || target;
+            const tLen = (typeof o.bondLength === 'number') ? o.bondLength : getTargetBondLength(anchor, target);
+            const excluded = new Set(o.exclude || []);
+            excluded.add(target);
+            // 现有 σ 邻居方向（配位键不参与：卟啉 Fe–N 不是价层几何方向）
+            const nbDirs = [];
+            for (const b of bonds) {
+                if (b.coordination) continue;
+                const other = b.atomA === target ? b.atomB : (b.atomB === target ? b.atomA : null);
+                if (!other) continue;
+                const d = other.position.clone().sub(target.position);
+                if (d.lengthSq() > 1e-9) nbDirs.push(d.normalize());
+            }
+            const pref = (preferredDir && preferredDir.lengthSq && preferredDir.lengthSq() > 1e-9)
+                ? preferredDir.clone().normalize() : null;
+            const others = atomsGroup.children.filter(c => c.userData && c.userData.isAtom && !excluded.has(c));
+            const golden = Math.PI * (3 - Math.sqrt(5));
+            const cands = [];
+            for (let i = 0; i < N; i++) {
+                const y = 1 - (i + 0.5) * 2 / N;
+                const r = Math.sqrt(Math.max(0, 1 - y * y));
+                const th = golden * i;
+                const dir = new THREE.Vector3(Math.cos(th) * r, y, Math.sin(th) * r);
+                let minAng = Math.PI;
+                for (const nd of nbDirs) {
+                    const ang = Math.acos(Math.max(-1, Math.min(1, dir.dot(nd))));
+                    if (ang < minAng) minAng = ang;
+                }
+                cands.push({ dir, minAng });
+            }
+            cands.sort((a, b) => b.minAng - a.minAng);
+            const bestMin = cands.length ? cands[0].minAng : 0;
+            const shortlist = cands.filter(c => c.minAng >= bestMin - 0.09);   // 近似最优 ≈5°
+            if (pref) shortlist.sort((a, b) => b.dir.dot(pref) - a.dir.dot(pref));
+            // 锚点本身也不能与其它原子重叠/误成键（旋转角挪不动锚点，必须先筛方向）
+            const fits = (minSep) => shortlist.find(c => {
+                const p = target.position.clone().add(c.dir.clone().multiplyScalar(tLen));
+                for (const other of others) {
+                    const need = getTargetBondLength(anchor, other) * minSep;
+                    if (p.distanceTo(other.position) < need) return false;
+                }
+                return true;
+            });
+            const hit = fits(1.24) || fits(1.0);
+            return hit ? hit.dir.clone() : null;
+        }
+        window.__bestFreeDirectionFor = bestFreeDirectionFor;
+
         function createAtomMesh(type, position) {
             const info = atomTypes[type];
             const vr = getVisualRadiusForType(type, null);
@@ -5786,16 +5930,24 @@ isOptimizing = false;
 
         // 在拖拽中更新提示（点亮最近可连接目标的"选中光晕"）
         function updateConnectHint(src) {
-            const target = findConnectTarget(src);
-            if (target !== connectHintTarget) {
-                restoreConnectHintGlow();
-                connectHintTarget = target;
-                if (target) {
-                    const glow = glowOfAtom(target);
-                    connectHintGlowState = { atom: target, glow: glow || null, prevVisible: !!(glow && glow.visible) };
-                    if (glow) glow.visible = true;
-                }
+            setConnectHintTarget(findConnectTarget(src));
+        }
+
+        // 直接把某个原子设为高亮目标（基团拖拽用：目标由屏幕拾取决定，不走 3D 最近邻）
+        function setConnectHintTarget(target) {
+            if (target === connectHintTarget) return;
+            restoreConnectHintGlow();
+            connectHintTarget = target;
+            if (target) {
+                const glow = glowOfAtom(target);
+                connectHintGlowState = { atom: target, glow: glow || null, prevVisible: !!(glow && glow.visible) };
+                if (glow) glow.visible = true;
             }
+        }
+
+        // 基团拖拽：高亮"松手后会连接/取代"的原子（与单击选中同款光晕）
+        function updateGroupTargetHint(clientX, clientY) {
+            setConnectHintTarget(pickAtomAtScreen(clientX, clientY, { touch: touchDragActive }));
         }
 
         function clearConnectHint() {
@@ -5941,7 +6093,12 @@ isOptimizing = false;
 
         // 放置基团：创建全部原子与内部键，整体平移到落点，
         // 锚原子吸附到最近可键合原子且绕锚旋转使 +X 连接轴指向目标
-        function createCompleteGroup(groupKey, position) {
+        // 基团放置（2026-11 重写）：目标原子改为「指针屏幕位置」判定 + 方向回退 + 安全兜底。
+        //   opts.target   显式目标原子（屏幕拾取结果，优先于 3D 最近距离）
+        //   opts.clientX/Y 指针坐标（用于选"离指针最近的被取代 H"）
+        //   opts.touch    触屏（放宽屏幕拾取半径）
+        function createCompleteGroup(groupKey, position, opts) {
+            const o = opts || {};
             const spec = GROUP_SPECS[groupKey];
             const anchorPos = (position && position.isVector3) ? position.clone() : new THREE.Vector3(position.x, position.y, position.z);
             const meshes = [];
@@ -5962,65 +6119,55 @@ isOptimizing = false;
             const anchor = meshes[spec.anchor];
             const offset = anchorPos.clone().sub(anchor.position);
             meshes.forEach(m => m.position.add(offset));
-            // 寻找最近可键合原子并对准（连接轴 +X 指向目标）
-            // 候选需满足：锚点放到 target 外侧键长距离处后，不与其它已有原子明显重叠
+            // 寻找可键合原子并对准（连接轴 +X 指向目标）
             const others = atomsGroup.children.filter(c => c.userData?.isAtom && !meshes.includes(c));
             function isBonded(a, b) {
                 return bonds.some(bb => (bb.atomA === a && bb.atomB === b) || (bb.atomA === b && bb.atomB === a));
             }
-            // 锚点选择两阶段（2026-08）：附近存在未饱和原子时优先直接成键；
-            // 仅当附近全部饱和（阶段一无 direct 候选）时，才回退为
-            // "选取最近的带 H 中心原子，取代其一个氢"。
-            function scanCandidates(mode) {
-            let target = null, bestScore = Infinity;
-            let chosenQ = null, chosenMarked = null;
-            for (const other of others) {
-                if (mode === 'direct') {
-                    // 阶段一：只收未饱和候选（canAddBond 直接通过）
-                    if (!canAddBond(anchor, other, 1)) continue;
-                } else {
-                    // 阶段二（取代模式）：基团放置≠新增键——target 若连有将被替换的 H
-                    // （常见于芳香环碳/饱和碳），移除该 H 后 σ 不变，属于合法的"取代"
-                    // 语义——放行，放置时该 H 会被删除。
-                    // 无 H 可替换且已满价（如苯环带 H 的碳，effectiveSigmaCapacity=3）
-                    // 的候选必须拒绝，否则会超价（拖拽/连接提示场景不走本分支，
-                    // 仍受 canAddBond 严格限制）。未饱和候选属 direct 阶段，此处跳过。
-                    if (canAddBond(anchor, other, 1)) continue;
-                    const hasReplaceableH = others.some(c => c.userData?.atomType === 'H' && isBonded(c, other));
-                    if (!hasReplaceableH) continue;
+            function hNeighborsOf(target) {
+                return others.filter(c => c.userData?.atomType === 'H' && isBonded(c, target));
+            }
+            // 拖拽方向（锚点相对目标）
+            function dirFromDrop(target) {
+                const d = anchor.position.clone().sub(target.position);
+                return d.lengthSq() > 1e-9 ? d.normalize() : null;
+            }
+            // 取代哪个 H：优先离指针最近的（屏幕上"点在哪个 H 上"就是哪个），
+            // 无指针坐标时退回"与拖拽方向最一致的 H"
+            function sortHsByPointer(target) {
+                const hs = hNeighborsOf(target);
+                if (hs.length <= 1) return hs;
+                if (typeof o.clientX === 'number' && typeof o.clientY === 'number') {
+                    const rect = canvas.getBoundingClientRect();
+                    const v = new THREE.Vector3();
+                    const scored = hs.map(h => {
+                        v.copy(h.position).project(camera);
+                        const sx = rect.left + (v.x + 1) * 0.5 * rect.width;
+                        const sy = rect.top + (1 - v.y) * 0.5 * rect.height;
+                        return { h, d: Math.hypot(sx - o.clientX, sy - o.clientY) };
+                    });
+                    scored.sort((a, b) => a.d - b.d);
+                    return scored.map(s => s.h);
                 }
-                const tLen = getTargetBondLength(anchor, other);
-                const dist = anchor.position.distanceTo(other.position);
-                if (dist > tLen * 1.8) continue;
-                // 连接方向：取代模式（target 已饱和）优先取 target 向外伸出的 H 方向
-                // （取代该 H 的位置，化学语义正确，且可避免锚点贴近 target 邻位原子被
-                // updateBonds 误建第二键）；直接成键模式（target 未饱和）必须用拖拽
-                // 方向——H 不得被取代，若沿 H 方向接近必然与该 H 碰撞而无解。
-                let bestDir = anchor.position.clone().sub(other.position);
-                let bestOutH = null, bestDotH = -1e9;
-                for (const c of others) {
-                    if (!c.userData || c.userData.atomType !== 'H') continue;
-                    if (!isBonded(c, other)) continue;
-                    const hDir = c.position.clone().sub(other.position);
-                    const hLen = hDir.length();
-                    if (hLen < 1e-6) continue;
-                    const dot = hDir.dot(bestDir) / (hLen * bestDir.length());
-                    if (dot > bestDotH) { bestDotH = dot; bestOutH = c; }
-                }
-                if (bestOutH && mode === 'replace') bestDir = bestOutH.position.clone().sub(other.position);
-                if (bestDir.lengthSq() < 1e-9) continue;
-                // 预测锚点最终位置（target 外侧键长处），并旋转组内全部原子（整组 +X 朝外）
-                const candDir = bestDir.clone().normalize();
-                const candPos = other.position.clone().add(candDir.clone().multiplyScalar(tLen));
+                const dir = dirFromDrop(target);
+                if (!dir) return hs;
+                return hs.slice().sort((a, b) =>
+                    b.position.clone().sub(target.position).normalize().dot(dir) -
+                    a.position.clone().sub(target.position).normalize().dot(dir));
+            }
+            // 给定连接方向，尝试 6 个绕轴旋转角，返回第一个无碰撞的 { q, marked }。
+            // 碰撞阈值与 updateBonds 建键阈值(BOND_FACTOR=1.24)对齐，否则会出现
+            // "碰撞检查通过但随后被 updateBonds 补建第二键"的矛盾。
+            function fitAtDirection(target, mode, outH, dir) {
+                const tLen = getTargetBondLength(anchor, target);
                 const oldAnchorPos = anchor.position.clone();
-                // 尝试多个绕连接轴（candDir）的旋转角，选择能使组内原子不碰撞的朝向
+                const candDir = dir.clone().normalize();
+                const candPos = target.position.clone().add(candDir.clone().multiplyScalar(tLen));
+                const qBase = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), candDir);
                 const ROTS = [0, Math.PI / 3, 2 * Math.PI / 3, Math.PI, 4 * Math.PI / 3, 5 * Math.PI / 3];
-                let bestRot = null, bestQ = null, bestMarked = null;
                 for (const rot of ROTS) {
-                    const qBase = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), candDir);
                     const qRot = new THREE.Quaternion().setFromAxisAngle(candDir, rot);
                     const q = qRot.multiply(qBase.clone());
-                    // 组内原子旋转后的预测位置
                     const candMemberPos = meshes.map(m => {
                         const rel = m.position.clone().sub(oldAnchorPos);
                         rel.applyQuaternion(q);
@@ -6029,24 +6176,19 @@ isOptimizing = false;
                     let collide = false;
                     const marked = [];
                     for (const c of others) {
-                        const bondedToTarget = c !== other ? isBonded(c, other) : false;
+                        const isTargetH = (c !== target) && isBonded(c, target) && c.userData?.atomType === 'H';
                         for (let mi = 0; mi < meshes.length; mi++) {
                             const mm = meshes[mi];
                             const isAnchorMember = (mm === anchor);
-                            const isTargetH = (c !== other) && bondedToTarget && c.userData?.atomType === 'H';
                             const cLen = getTargetBondLength(mm, c);
-                            // 碰撞阈值与 updateBonds 建键阈值(BOND_FACTOR=1.24)对齐，
-                            // 否则会出现"碰撞检查通过但随后被 updateBonds 补建第二键"的矛盾
                             if (candMemberPos[mi].distanceTo(c.position) < cLen * 1.24) {
                                 // 锚点与 target 自身：正是要成键的位置，放行
-                                if ((c === other) && isAnchorMember) continue;
-                                // target 的 H：仅"取代模式"（target 已饱和、canAddBond 不通过）
-                                // 且该 H 正是连接方向上被替换的那个（bestOutH）时，才标记待
-                                // 移除并放行。直接成键模式（target 未饱和）下成员压到 target
-                                // 的 H 一律视为该旋转角摆放失败（拒绝换角/换目标）——用户
-                                // 要求：仅当中心原子饱和时才发生取代，未饱和时 H 不得消失。
+                                if ((c === target) && isAnchorMember) continue;
+                                // target 的 H：仅"取代模式"且正是本次要替换的那个才标记移除；
+                                // 直接成键模式下成员压到 target 的 H 一律视为该朝向失败
+                                // （用户要求：仅当中心原子饱和时才发生取代）。
                                 if (isTargetH) {
-                                    if (mode === 'replace' && c === bestOutH) {
+                                    if (mode === 'replace' && c === outH) {
                                         if (!marked.includes(c)) marked.push(c);
                                         continue;
                                     }
@@ -6058,64 +6200,152 @@ isOptimizing = false;
                         if (collide) break;
                     }
                     if (collide) continue;
-                    bestRot = rot; bestQ = q; bestMarked = marked;
-                    break;
+                    return { q, marked };
                 }
-                if (bestRot === null) continue;
-                const score = Math.abs(dist - tLen);
-                if (score < bestScore) { bestScore = score; target = other; chosenQ = bestQ; chosenMarked = bestMarked; }
+                return null;
             }
-            return { target, chosenQ, chosenMarked, mode };
-            }
-            // 阶段一优先；阶段二仅当附近无未饱和原子时启用
-            let picked = scanCandidates('direct');
-            if (!picked.target) picked = scanCandidates('replace');
-            const target = picked.target, chosenQ = picked.chosenQ, chosenMarked = picked.chosenMarked;
-            const pickedMode = picked.mode;
-            if (target) {
+            // 把基团接到某个 target 上：direct=直接成键 / replace=取代一个 H
+            function tryTarget(target, mode) {
+                if (!target) return null;
                 const tLen = getTargetBondLength(anchor, target);
-                // 连接方向：逻辑在候选循环中已确定（优先 target 的 H 方向，否则拖拽方向），
-                // 此处直接取 H 方向保证放置与碰撞预测一致
-                let dir = anchor.position.clone().sub(target.position);
-                let outH = null, bestDot = -1e9;
-                for (const c of others) {
-                    if (!c.userData || c.userData.atomType !== 'H') continue;
-                    if (!isBonded(c, target)) continue;
-                    const hDir = c.position.clone().sub(target.position);
-                    const hLen = hDir.length();
-                    if (hLen < 1e-6) continue;
-                    const dot = hDir.dot(dir) / (hLen * dir.length());
-                    if (dot > bestDot) { bestDot = dot; outH = c; }
-                }
-                if (outH && pickedMode === 'replace') dir = outH.position.clone().sub(target.position);
-                if (dir.lengthSq() > 1e-6) {
-                    dir.normalize();
-                    const oldAnchor = anchor.position.clone();
-                    if (chosenQ) {
-                        meshes.forEach(m => {
-                            const rel = m.position.clone().sub(oldAnchor);
-                            rel.applyQuaternion(chosenQ);
-                            m.position.copy(oldAnchor.clone().add(rel));
-                        });
+                if (mode === 'replace') {
+                    // 按"离指针最近"的顺序逐个试被取代 H（多 H 中心取最顺手的一个）
+                    for (const h of sortHsByPointer(target)) {
+                        const dir = h.position.clone().sub(target.position);
+                        if (dir.lengthSq() < 1e-9) continue;
+                        dir.normalize();
+                        const fit = fitAtDirection(target, 'replace', h, dir);
+                        if (fit) return { target, mode: 'replace', outH: h, dir, q: fit.q, marked: fit.marked };
                     }
-                    // 锚点放到 target 外侧键长距离处，其余原子跟随平移
-                    const newAnchor = target.position.clone().add(dir.clone().multiplyScalar(tLen));
-                    const shift = newAnchor.clone().sub(oldAnchor);
-                    meshes.forEach(m => m.position.add(shift));
-                    if (chosenMarked && chosenMarked.length) {
-                        // 必须走 removeAtom 统一清理（键 cylinder 几何 + bonds 过滤 +
-                        // label/glow + selectedAtom 重置）。若只 atomsGroup.remove(h) +
-                        // bonds.splice，键对象虽出数组、其 cylinders 仍挂在 scene 上，
-                        // clearMolecule（遍历 bonds 清几何）永远看不到它 →
-                        // 清空场景后幽灵键残留（实测 bug）
-                        chosenMarked.forEach(h => {
-                            try { removeAtom(h, true); } catch (e) { try { atomsGroup.remove(h); } catch (e2) {} }
-                        });
-                    }
+                    return null;
                 }
+                // 直接成键：先用拖拽方向；被 target 自己的 H 挡住时回退到"剩余价方向"
+                // （绕连接轴旋转挪不动锚点本身，方向被挡必须换方向而不是换旋转角）
+                const dragDir = dirFromDrop(target);
+                if (dragDir) {
+                    const fit = fitAtDirection(target, 'direct', null, dragDir);
+                    if (fit) return { target, mode: 'direct', outH: null, dir: dragDir, q: fit.q, marked: fit.marked };
+                }
+                const ideal = bestFreeDirectionFor(target, dragDir, {
+                    anchor, bondLength: tLen, exclude: meshes
+                });
+                if (ideal) {
+                    const fit = fitAtDirection(target, 'direct', null, ideal);
+                    if (fit) return { target, mode: 'direct', outH: null, dir: ideal, q: fit.q, marked: fit.marked };
+                }
+                return null;
+            }
+            // 无显式目标时：沿用 3D 最近距离扫描（程序化放置 / 自测走这条）
+            function scanCandidates(mode) {
+                let best = null, bestScore = Infinity;
+                for (const other of others) {
+                    if (mode === 'direct') {
+                        // 阶段一：只收未饱和候选（canAddBond 直接通过）
+                        if (!canAddBond(anchor, other, 1)) continue;
+                    } else {
+                        // 阶段二（取代模式）：基团放置≠新增键——target 若连有将被替换的 H
+                        // （常见于芳香环碳/饱和碳），移除该 H 后 σ 不变，属于合法的"取代"
+                        // 语义。无 H 可替换且已满价的候选必须拒绝，否则会超价。
+                        if (canAddBond(anchor, other, 1)) continue;
+                        if (!hNeighborsOf(other).length) continue;
+                    }
+                    const tLen = getTargetBondLength(anchor, other);
+                    const dist = anchor.position.distanceTo(other.position);
+                    if (dist > tLen * 1.8) continue;
+                    const res = tryTarget(other, mode);
+                    if (!res) continue;
+                    const score = Math.abs(dist - tLen);
+                    if (score < bestScore) { bestScore = score; best = res; }
+                }
+                return best;
+            }
+            // 安全兜底：没有可用目标时，若落点离已有原子太近（< 1.24×键长 →
+            // updateBonds 会自动建键），把整组推开到不成键的距离。否则会出现
+            // 1.06/1.82 Å 的畸形键并与 H 重叠（环己烷+甲基实测）。
+            function separateGroupFromAtoms(members, pool) {
+                const SAFE = 1.30;
+                for (let iter = 0; iter < 16; iter++) {
+                    let worstOverlap = 0, worstDir = null;
+                    for (const m of members) {
+                        for (const c of pool) {
+                            const need = getTargetBondLength(m, c) * SAFE;
+                            const d = m.position.distanceTo(c.position);
+                            if (d < need - 1e-3 && (need - d) > worstOverlap) {
+                                worstOverlap = need - d;
+                                worstDir = d > 1e-6
+                                    ? m.position.clone().sub(c.position).normalize()
+                                    : new THREE.Vector3(1, 0, 0);
+                            }
+                        }
+                    }
+                    if (!worstDir) return true;
+                    const shift = worstDir.clone().multiplyScalar(worstOverlap + 0.02);
+                    members.forEach(m => m.position.add(shift));
+                }
+                return false;
+            }
+
+            // 显式目标（屏幕拾取）：用户点在 H 上时解析到它连的重原子
+            let explicit = null;
+            if (o.target && others.includes(o.target)) {
+                explicit = o.target;
+                if (explicit.userData?.atomType === 'H') {
+                    const heavy = others.find(c => c.userData?.atomType !== 'H' && isBonded(c, explicit));
+                    if (heavy) explicit = heavy;
+                }
+            }
+            let picked = null;
+            if (explicit) {
+                // 用户明确指向的原子：按价态决定直连/取代，不做 3D 距离闸门
+                // （落点在拖拽平面上，与目标深度差可达数 Å，闸门会误杀正确目标）
+                if (canAddBond(anchor, explicit, 1)) picked = tryTarget(explicit, 'direct');
+                if (!picked && hNeighborsOf(explicit).length) picked = tryTarget(explicit, 'replace');
+            } else {
+                picked = scanCandidates('direct') || scanCandidates('replace');
+            }
+
+            let placedTarget = null;
+            let replacedHPos = null;
+            if (picked) {
+                const oldAnchor = anchor.position.clone();
+                if (picked.q) {
+                    meshes.forEach(m => {
+                        const rel = m.position.clone().sub(oldAnchor);
+                        rel.applyQuaternion(picked.q);
+                        m.position.copy(oldAnchor.clone().add(rel));
+                    });
+                }
+                // 锚点放到 target 外侧键长距离处，其余原子跟随平移
+                const tLen = getTargetBondLength(anchor, picked.target);
+                const newAnchor = picked.target.position.clone().add(picked.dir.clone().multiplyScalar(tLen));
+                const shift = newAnchor.clone().sub(oldAnchor);
+                meshes.forEach(m => m.position.add(shift));
+                if (picked.marked && picked.marked.length) {
+                    // 必须走 removeAtom 统一清理（键 cylinder 几何 + bonds 过滤 +
+                    // label/glow + selectedAtom 重置）。若只 atomsGroup.remove(h) +
+                    // bonds.splice，键对象虽出数组、其 cylinders 仍挂在 scene 上，
+                    // clearMolecule（遍历 bonds 清几何）永远看不到它 →
+                    // 清空场景后幽灵键残留（实测 bug）
+                    picked.marked.forEach(h => {
+                        replacedHPos = [ +h.position.x.toFixed(3), +h.position.y.toFixed(3), +h.position.z.toFixed(3) ];
+                        try { removeAtom(h, true); } catch (e) { try { atomsGroup.remove(h); } catch (e2) {} }
+                    });
+                }
+                placedTarget = picked.target;
+            } else {
+                separateGroupFromAtoms(meshes, others);
             }
             updateBonds();
             setSelectedAtom(anchor);
+            window.__lastGroupPlacement = {
+                groupKey,
+                target: placedTarget,
+                mode: picked ? picked.mode : null,
+                replacedH: replacedHPos,
+                explicit: !!explicit,
+                freeFallback: !picked,
+                anchor: [ +anchor.position.x.toFixed(3), +anchor.position.y.toFixed(3), +anchor.position.z.toFixed(3) ]
+            };
             return meshes;
         }
         window.__createCompleteGroup = createCompleteGroup;
@@ -6815,9 +7045,50 @@ isOptimizing = false;
         const bromineCard = document.getElementById('drag-bromine');
         const iodineCard = document.getElementById('drag-iodine');
         
+        // 触屏卡片绑定（2026-11）：拖动 = 放置；轻点（位移 < TAP_SLOP_PX）= 进入
+        // 「点一下放置」模式（手机底部抽屉里卡片和画布重叠，拖动很难精确落点）。
+        // 触摸拖拽开始时立刻收起底部抽屉，否则 updateDrag/endDrag 会判「落在侧栏上」
+        // 而整段放弃（实测原子数不变）。keepVisible 保持 visibility，避免浏览器
+        // 在 visibility:hidden 时取消当前触摸序列。
+        const CARD_TAP_SLOP_PX = 8;
+        function bindCardTouch(card, kind, key) {
+            let startX = 0, startY = 0, moved = false, active = false;
+            const startDrag = (x, y) => (kind === 'group') ? startGroupDrag(key, x, y) : startNewDrag(key, x, y);
+            card.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) return;
+                e.preventDefault();
+                const t = e.touches[0];
+                startX = t.clientX; startY = t.clientY;
+                moved = false;
+                active = true;
+                closeMobileSheets({ keepVisible: true });
+                startDrag(t.clientX, t.clientY);
+                touchDragActive = isDragging;
+            }, { passive: false });
+            card.addEventListener('touchmove', (e) => {
+                if (!active || e.touches.length !== 1) return;
+                const t = e.touches[0];
+                if (Math.hypot(t.clientX - startX, t.clientY - startY) > CARD_TAP_SLOP_PX) moved = true;
+            }, { passive: true });
+            card.addEventListener('touchend', (e) => {
+                if (!active) return;
+                active = false;
+                const t = e.changedTouches && e.changedTouches[0];
+                const dist = t ? Math.hypot(t.clientX - startX, t.clientY - startY) : 0;
+                if (moved || dist > CARD_TAP_SLOP_PX) return;   // 真拖动：交给 window touchend → endDrag 放置
+                // 轻点：取消拖拽预览，进入点选放置（同一张卡再点一次 = 取消）
+                e.preventDefault();
+                e.stopPropagation();
+                cancelDrag();
+                if (pendingPlacement && pendingPlacement.kind === kind && pendingPlacement.key === key) cancelPlacement();
+                else beginPlacement(kind, key);
+            }, { passive: false });
+            card.addEventListener('touchcancel', () => { active = false; });
+        }
+
         function bindCardEvents(card, type) {
             card.addEventListener('mousedown', (e) => { e.preventDefault(); startNewDrag(type, e.clientX, e.clientY); });
-            card.addEventListener('touchstart', (e) => { e.preventDefault(); if (e.touches.length === 1) startNewDrag(type, e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+            bindCardTouch(card, 'atom', type);
         }
         bindCardEvents(carbonCard, 'C');
         bindCardEvents(hydrogenCard, 'H');
@@ -6832,7 +7103,7 @@ isOptimizing = false;
         const groupCardEls = document.querySelectorAll('.group-card');
         function bindGroupCardEvents(card, groupKey) {
             card.addEventListener('mousedown', (e) => { e.preventDefault(); startGroupDrag(groupKey, e.clientX, e.clientY); });
-            card.addEventListener('touchstart', (e) => { e.preventDefault(); if (e.touches.length === 1) startGroupDrag(groupKey, e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+            bindCardTouch(card, 'group', groupKey);
         }
         groupCardEls.forEach(card => bindGroupCardEvents(card, card.dataset.group));
 
@@ -12693,8 +12964,22 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return true;
         }
         // ---- 手机底部抽屉 ----
-        function closeMobileSheets() {
-            ['build', 'inspect'].forEach(n => { const el = _panelEl(n); if (el) el.classList.remove('sheet-open'); });
+        let _sheetHiding = false;
+        // 触屏拖拽结束时把"保持可见"的抽屉真正隐藏
+        function endSheetHiding() {
+            if (!_sheetHiding) return;
+            _sheetHiding = false;
+            ['build', 'inspect'].forEach(n => { const el = _panelEl(n); if (el) el.classList.remove('sheet-hiding'); });
+        }
+        // opts.keepVisible：滑出屏幕但保持 visibility（触摸拖拽期间用，见 CSS 注释）
+        function closeMobileSheets(opts) {
+            const keepVisible = !!(opts && opts.keepVisible);
+            ['build', 'inspect'].forEach(n => {
+                const el = _panelEl(n);
+                if (!el) return;
+                el.classList.remove('sheet-open');
+                if (keepVisible) { el.classList.add('sheet-hiding'); _sheetHiding = true; }
+            });
             document.querySelectorAll('#mobilebar .mb-btn[data-sheet]').forEach(b => b.classList.remove('active'));
         }
         function toggleMobileSheet(name) {
@@ -12702,6 +12987,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (!el) return;
             const open = !el.classList.contains('sheet-open');
             closeMobileSheets();
+            endSheetHiding();
             if (open) el.classList.add('sheet-open');
             const btn = document.querySelector(`#mobilebar .mb-btn[data-sheet="${name}"]`);
             if (btn) btn.classList.toggle('active', open);
@@ -12901,6 +13187,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
         // 小键盘 → 会继续把抽屉也关掉（一次 Esc 关两层）。捕获阶段先判层级，一次只关一层。
         window.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape' || e.isComposing) return;
+            // 触屏「点一下放置」是最内层的一次性模式：Esc 只退出它，不顺带关抽屉/浮层
+            if (pendingPlacement) { e.preventDefault(); cancelPlacement(); return; }
             const lightbox = document.getElementById('skeletal-lightbox');
             if (lightbox && getComputedStyle(lightbox).display !== 'none') return;   // 由 10987 的处理器关闭
             const isomer = document.getElementById('isomer-panel');
@@ -13940,8 +14228,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
         function updateDrag(clientX, clientY) {
             if (!isDragging || !draggedObject) return;
             if (MOLECULE_LOCKED) return;
-            if (sidebar.contains(document.elementFromPoint(clientX, clientY))) return;
-            if (groupSidebar.contains(document.elementFromPoint(clientX, clientY))) return;
+            if (!touchDragActive) {
+                if (sidebar.contains(document.elementFromPoint(clientX, clientY))) return;
+                if (groupSidebar.contains(document.elementFromPoint(clientX, clientY))) return;
+            }
             const ndc = getNormalizedMouse(clientX, clientY);
             if (!ndc) return;
             raycaster.setFromCamera(ndc, camera);
@@ -13972,6 +14262,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 applySnap(p);
                 draggedObject.position.copy(p);
                 if (!isGroupDrag) updateConnectHint(isNewAtomDrag ? null : draggedObject);
+                else updateGroupTargetHint(clientX, clientY);
                 updateDragHUD();
                 return;
             }
@@ -13980,15 +14271,18 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 applySnap(intersection);
                 draggedObject.position.copy(intersection);
             }
-            // 拖动中实时更新"可连接目标"高亮（基团拖拽除外，其放置有独立吸附逻辑）
+            // 拖动中实时更新"可连接目标"高亮（原子=3D 最近可成键；基团=指针下的原子）
             if (!isGroupDrag) updateConnectHint(isNewAtomDrag ? null : draggedObject);
+            else updateGroupTargetHint(clientX, clientY);
             updateDragHUD();
         }
 
         function endDrag(clientX, clientY) {
             if (!isDragging) return;
             let placed = false;
-            const overSidebar = sidebar.contains(document.elementFromPoint(clientX, clientY)) || groupSidebar.contains(document.elementFromPoint(clientX, clientY));
+            // 触摸拖拽期间不判"落在侧栏"：抽屉在拖拽开始时已收起，且手指轨迹
+            // 可能扫过面板区域（旧逻辑会让整次拖拽作废，实测原子数不变）
+            const overSidebar = !touchDragActive && (sidebar.contains(document.elementFromPoint(clientX, clientY)) || groupSidebar.contains(document.elementFromPoint(clientX, clientY)));
             if (!overSidebar && draggedObject) {
                 if (isNewAtomDrag) {
                     const pos = draggedObject.position.clone();
@@ -14008,7 +14302,13 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     placed = true;
                 } else if (isGroupDrag) {
                     const pos = draggedObject.position.clone();
-                    createCompleteGroup(currentGroupKey, pos);
+                    // 目标原子按"指针屏幕位置"判定（2026-11）：3D 最近距离在倾斜相机下
+                    // 会选中相邻原子（拖到苯环 C1 却连到 C6）
+                    createCompleteGroup(currentGroupKey, pos, {
+                        target: pickAtomAtScreen(clientX, clientY, { touch: touchDragActive }),
+                        clientX, clientY,
+                        touch: touchDragActive
+                    });
                     placed = true;
                 } else {
                     placed = true;
@@ -14052,6 +14352,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
             lockDragAxis = null;
             dragStartClient = null;
             gizmoCenterDrag = false;
+            touchDragActive = false;
+            endSheetHiding();
             controls.enabled = true;
             commitHistory();   // 撤销/恢复：一次拖拽（放置/移动/成键）结束记一条（无变化自动去重）
         }
@@ -14082,9 +14384,122 @@ if (smilesInput) smilesInput.value = smilesToUse;
             lockDragAxis = null;
             dragStartClient = null;
             gizmoCenterDrag = false;
+            touchDragActive = false;
+            endSheetHiding();
             controls.enabled = true;
             commitHistory();   // 撤销/恢复：取消拖拽若已改动位置也记一条（无变化自动去重）
         }
+
+        // ================= 触屏「点一下放置」（2026-11 触屏适配） =================
+        // 手机上构建库是底部抽屉：卡片在抽屉里，手指拖动时落点被手指/抽屉挡住，
+        // 旧逻辑还会因"落在侧栏上"整段放弃（实测原子数不变）。除拖拽外再提供
+        // 点选放置：轻点卡片 → 抽屉收起 + 顶部提示条 → 点画布放置；
+        // 点在原子上则直接连接（饱和中心取代其一个 H）。
+        let pendingPlacement = null;   // { kind: 'group'|'atom', key }
+
+        function placementLabel(kind, key) {
+            if (kind === 'group') {
+                const spec = GROUP_SPECS[key];
+                return spec ? (spec.label || key) : key;
+            }
+            const info = atomTypes[key];
+            return info ? (info.name || key) : key;
+        }
+
+        function updatePlacementBanner() {
+            const el = document.getElementById('place-banner');
+            if (!el) return;
+            const txt = document.getElementById('place-banner-text');
+            if (!pendingPlacement) {
+                el.classList.remove('show');
+                el.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('placing');
+                return;
+            }
+            if (txt) txt.textContent = '点画布放置 ' + placementLabel(pendingPlacement.kind, pendingPlacement.key);
+            el.classList.add('show');
+            el.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('placing');
+        }
+
+        function beginPlacement(kind, key) {
+            if (blockWhenLocked(kind === 'group' ? '添加基团' : '添加原子')) return false;
+            cancelDrag();
+            pendingPlacement = { kind, key };
+            closeMobileSheets();
+            updatePlacementBanner();
+            showToast('点画布放置 · 点原子连接/取代 H · Esc 取消', 2200);
+            return true;
+        }
+
+        function cancelPlacement() {
+            if (!pendingPlacement) return false;
+            pendingPlacement = null;
+            updatePlacementBanner();
+            return true;
+        }
+
+        // 点选放置的落点：过分子质心、正对相机的平面（空画布则过原点）
+        function placementDropPoint(clientX, clientY) {
+            const ndc = getNormalizedMouse(clientX, clientY);
+            if (!ndc) return null;
+            raycaster.setFromCamera(ndc, camera);
+            const atoms = atomsGroup.children.filter(c => c.userData?.isAtom);
+            const center = new THREE.Vector3();
+            if (atoms.length) {
+                for (const a of atoms) center.add(a.position);
+                center.multiplyScalar(1 / atoms.length);
+            }
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(dir, center);
+            const hit = new THREE.Vector3();
+            return raycaster.ray.intersectPlane(plane, hit) ? hit : null;
+        }
+
+        function placePendingAt(clientX, clientY) {
+            const p = pendingPlacement;
+            if (!p) return false;
+            if (blockWhenLocked(p.kind === 'group' ? '添加基团' : '添加原子')) { cancelPlacement(); return false; }
+            const drop = placementDropPoint(clientX, clientY);
+            if (!drop) return false;
+            const target = pickAtomAtScreen(clientX, clientY, { touch: true });
+            if (p.kind === 'group') {
+                createCompleteGroup(p.key, drop, { target, clientX, clientY, touch: true });
+            } else {
+                const atom = createCompleteAtom(p.key, drop.clone());
+                if (target && canAddBond(atom, target, 1)) {
+                    const tLen = getTargetBondLength(atom, target);
+                    let pref = atom.position.clone().sub(target.position);
+                    if (pref.lengthSq() < 1e-9) pref = null;
+                    const dir = bestFreeDirectionFor(target, pref, { anchor: atom, bondLength: tLen })
+                        || pref || new THREE.Vector3(1, 0, 0);
+                    atom.position.copy(target.position.clone().add(dir.clone().normalize().multiplyScalar(tLen)));
+                } else {
+                    snapNewAtomToNearestNeighbor(atom);
+                }
+                updateBonds();
+                setSelectedAtom(atom);
+            }
+            cancelPlacement();
+            commitHistory();
+            return true;
+        }
+        window.__groupPlace = {
+            begin: (kind, key) => beginPlacement(kind, key),
+            cancel: () => cancelPlacement(),
+            active: () => !!pendingPlacement,
+            state: () => pendingPlacement ? { kind: pendingPlacement.kind, key: pendingPlacement.key } : null,
+            placeAt: (x, y) => placePendingAt(x, y),
+            dropPoint: (x, y) => {
+                const p = placementDropPoint(x, y);
+                return p ? [ +p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3) ] : null;
+            }
+        };
+        (function initPlacementBanner() {
+            const btn = document.getElementById('place-banner-cancel');
+            if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); cancelPlacement(); });
+        })();
 
         canvas.addEventListener('pointermove', (e) => {
             if (isDragging) return;
@@ -14112,6 +14527,8 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         canvas.addEventListener('mousedown', (e) => {
             if (isDragging) return;
+            // 点选放置模式（触屏「点一下放置」）：点画布 = 落点，点原子 = 连接/取代
+            if (pendingPlacement) { e.preventDefault(); placePendingAt(e.clientX, e.clientY); return; }
             if (e.button === 0 && e.shiftKey) return;   // Shift+左键 = 平移视角
             const ndc = getNormalizedMouse(e.clientX, e.clientY);
             if (!ndc) return;
@@ -14236,6 +14653,12 @@ if (smilesInput) smilesInput.value = smilesToUse;
 
         canvas.addEventListener('touchstart', (e) => {
             if (isDragging) return;
+            // 点选放置模式（触屏「点一下放置」）：手指点画布/原子即放置
+            if (pendingPlacement && e.touches.length === 1) {
+                e.preventDefault();
+                placePendingAt(e.touches[0].clientX, e.touches[0].clientY);
+                return;
+            }
             if (e.touches.length === 1) {
                 const touch = e.touches[0];
                 const ndc = getNormalizedMouse(touch.clientX, touch.clientY);
@@ -15042,6 +15465,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 return false;
             },
             atoms: () => atomsGroup.children.filter(c => c.userData && c.userData.isAtom).map(a => ({
+                id: a.userData._id,
                 t: a.userData.atomType, p: [ +a.position.x.toFixed(3), +a.position.y.toFixed(3), +a.position.z.toFixed(3) ]
             })),
             project: (x, y, z) => {
