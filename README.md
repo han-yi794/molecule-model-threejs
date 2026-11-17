@@ -28,7 +28,7 @@
 - **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
 - **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构;蛋白质名称(胰岛素/溶菌酶/核糖核酸酶A/细胞色素c/肌红蛋白/血红蛋白)直接取 **RCSB PDB 实验结构**(真实主链构象与二硫键,如胰岛素 3I40 403 原子单连通、血红蛋白 2HHB 4556 原子含 4 个血红素 Fe),不再走粗坐标管线生成长链碎片。
 - **大分子结构保护**:蛋白 / 天然产物等大结构不再被交互破坏——原子数 >250(或真实坐标来源 ≥100 原子)的分子跳过通用优化器(点「优化」/Shift+O 会 toast 说明并保持原样),左键拖动默认旋转视角(先单击选中、再拖动才移动原子),也不挂选中删除图标(远视角图标会压住原子,删除仍可用 Delete/Backspace)。修复前胰岛素点一次优化会从 414 键/单连通变成 393 键/20 个碎片。
-- **交互建模**:9 种预设基团拖拽成键、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**分子结构锁**(顶栏锁图标或 L 键,锁定后拖动/编辑/删除/优化/撤销/清空/生成全部禁用,视角仍可旋转/平移/缩放,状态本地记忆)、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 152px / 中间画布 / 右侧检查器 224px,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
+- **交互建模**:9 种预设基团拖拽成键(**按屏幕拾取落点原子**:拖到哪个原子就连哪个,饱和中心取代离指针最近的 H)、**触屏适配**(手机上轻点构建库卡片进入「点一下放置」——点画布落位、点原子直接连接/取代,再点同卡或 Esc/取消按钮退出;触摸拖动时底部抽屉自动收起)、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**分子结构锁**(顶栏锁图标或 L 键,锁定后拖动/编辑/删除/优化/撤销/清空/生成全部禁用,视角仍可旋转/平移/缩放,状态本地记忆)、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 152px / 中间画布 / 右侧检查器 224px,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
 - **可视化**:分子状态条(分子式 / 原子 / 键 / 环 / 芳香 / ∠RMS 实时读数)、检查器(选中原子或键的详情、环清单、视图开关)、蓝色半透明水滴形孤对电子云(NEBOOK 风格、受光立体)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮;大结构(>1500 原子)自动省掉原子标签与光晕(选中时按需补建)、>600 原子不画孤对云,保证蛋白质四聚体仍可流畅交互。
 - **自测体系**:控制台自测(`window.runAllExamplesAndTests()`,33 几何)+ 离域π自测(`window.__runPiSystemTests()`,23 项)+ Playwright 回归脚本(36 基团方位等,全绿)。
 
@@ -51,7 +51,8 @@
   - *蛋白质名称*:胰岛素 / 溶菌酶 / 核糖核酸酶A / 细胞色素c / 肌红蛋白 / 血红蛋白(中英文、大小写、空格均可)直接下载 **RCSB PDB 实验结构**——自动过滤水分子与 B 构象、保留血红素辅基、推断羰基双键,得到真实折叠的多肽链(胰岛素 3I40:403 原子 / 414 键 / 3 条二硫键,单连通无碎片;细胞色素c 1HRC:866 原子含 Fe;肌红蛋白 1MBO:1260 原子;血红蛋白 2HHB:4556 原子 / 4 个血红素 Fe / 四聚体);名称框或序列框填均可。失败时不会回退粗坐标管线,而是提示改用氨基酸序列由 ESMFold 预测。含 ≥10 个酰胺键的 SMILES 会被拒绝并给出同样的引导(本地管线无法排布大分子骨架)。
   - 在线 API(PubChem / CACTUS / ESMFold / RCSB PDB / RCSB 化学组分)均免费免 key,失败静默回退本地管线,控制台标注分子来源。
 - **自由搭骨架**:左侧构建台顶部切到「元素」页签,单列拖出 **8 种原子**(C/H/O/N/F/Cl/Br/I,CPK 彩色圆球)到画布,靠近已有原子松开即自动成键。
-- **基团拖拽**:左侧构建台顶部切到「基团」页签,单列 **9 个预设基团按钮**(球形胶囊) —— 甲基 CH₃ / 乙基 C₂H₅ / 苯基 Ph / 氨基 NH₂ / 羧基 COOH / 羰基 C=O / 醛基 CHO / 酯基 COOR / 羟基 OH,拖到分子上自动吸附到最近可键合原子,绕连接轴 6 角度选无碰撞朝向(未饱和中心直接成键、保留原有 H;饱和中心沿某 H 方向放置并替换该 H)。
+- **基团拖拽**:左侧构建台顶部切到「基团」页签,单列 **9 个预设基团按钮**(球形胶囊) —— 甲基 CH₃ / 乙基 C₂H₅ / 苯基 Ph / 氨基 NH₂ / 羧基 COOH / 羰基 C=O / 醛基 CHO / 酯基 COOR / 羟基 OH。**落点按屏幕拾取**:射线命中优先、否则取屏幕投影最近的原子(桌面 44px / 触屏 64px 阈值),拖到哪个原子就连哪个(修复前相机倾斜时 3D 最近邻会把甲基连到苯环相邻碳,6/6 复现)。未饱和中心直接成键并保留原有 H;饱和中心沿**离指针最近的那个 H** 方向放置并替换它;拖拽方向被 target 自己的 H 挡住时回退到该原子的「剩余价方向」(球面采样,与现有 σ 键夹角最大)。落点附近没有可连接原子时基团会被推开到不成键距离,不会生成 1.06/1.82 Å 的畸形键。触屏另支持**点选放置**(见交互编辑)。
+- **触屏点选放置**:手机上构建库是底部抽屉、卡片与画布重叠,拖动很难精确落点 → 轻点(位移 <8px)任一基团/元素卡片即进入「点一下放置」模式:抽屉自动收起、画布顶部显示「点画布放置 CH₃」提示条,点画布空白处落位、点已有原子则直接连接(饱和中心取代其一个 H);同一张卡再点一次、提示条「取消」或 Esc 退出。触摸拖动卡片也照旧可用——拖动开始时抽屉自动收起,松手正常放置。
 - **一键补氢**(`btn-toggle-hydro`):开启后每次「优化」自动按价态补齐缺失 H(如乙烷+8、乙烯+4、乙炔+2),再经优化器校正到理想角。
 - **删除**:按 Delete/Backspace 键,或点选中原子旁出现的红底删除图标(垃圾桶);「清空」重置画布。
 
@@ -117,6 +118,7 @@
 | `verify_foolproof.js` | 防呆测试:22 项边界/误操作场景(空状态、非法参数注入、状态机、极端几何、真实鼠标误操作) |
 | `verify_lock_pan.js` | 去雾 / 场景平移 / 分子结构锁:无雾气、右键与 Shift+左键平移、锁定开关 UI、锁定后拖动/键菜单/删除/优化/撤销/清空/生成/侧栏拖拽全部被拒、解锁恢复、键菜单与单键旋转自动退出、刷新保持锁定、触摸端点键、零 console(27 项) |
 | `verify_bond_dismiss_toggle.js` | 键菜单/旋转点别处退出 + 视图开关整行可点:5 个开关行各 5 点位单击恰好翻转一次且 API 同步、π 关闭禁用并提示、菜单在空白/顶栏/检查器/非端点原子处收起且清键选中、空白单击退出旋转(轴/HUD/键选中一并清)、空白拖动仍旋转、检查器退出旋转、零 console(17 项) |
+| `verify_group_replace_h.js` | 基团落点与取代氢 + 触屏点选放置:屏幕拾取(苯环 6 碳各自命中)、真实鼠标把甲基拖到苯环 6 个碳(旧版 6/6 连到相邻碳)、饱和/未饱和中心语义、方向被 H 挡住回退、无目标不建畸形键、放置后无 <0.8 Å 重叠、触屏轻点卡/点画布/点原子/取消/Esc/取消按钮/触摸拖动/原子卡、零 console(20 项) |
 | `verify_inline_offline.js` | 离线验证:file:// 打开 + 拦截全部网络请求,确认零 http 请求(Three.js/SmilesDrawer 内联、键线式本地渲染) |
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
 | `analyze_angle.js` / `analyze_ring.js` / `analyze_trace.js` | 收敛过程分析脚本 |
@@ -150,7 +152,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ```
 
 - 自测报告读取:轮询 `window.lastRunResults`(33 例全跑完才写入);页面内 `window.runAllExamplesAndTests()` 可手动触发。
-- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;去雾/平移/结构锁 27、三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、大分子结构保护 10/10、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
+- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;基团落点/取代氢 + 触屏点选 20、去雾/平移/结构锁 27、三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、大分子结构保护 10/10、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
 
 ## 复现与分析
 
@@ -183,6 +185,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - `window.__history`{undo/redo/canUndo/canRedo/depth/reset/commit/snapshot}(撤销/恢复栈,快照式)、`window.__moleculeLock`{get/set/toggle/state}(分子结构锁;`state()` 返回 locked/pressed/icon/bodyClass/statVisible/gizmoVisible/deleteIcon)、`window.__structureGuard`{state/atomCount/precise/setPrecise/resetDragHint/lastSkip/clearLastSkip/selected}(大分子结构保护;`state()` 返回 protect/atoms/reason = `large`/`precise`/空)
 - `window.__ddAnim`{inMs/outMs/idle()/running()/slideShow/slideHide/fadeShow/fadeHide/setCornerBodyOpen/bondMenu{show,hide}}(浮层开合动画;验证脚本用 `idle()` 等待动画收尾)
 - `window.__dragMode`{project/pickAt/bondAt/selectedBond/raycastGizmo/atoms/...}、`window.__torsion`、`window.__cisTrans`、`window.__conjBridge`{is/list/tryPivot}、`window.__attachDeleteIcon`/`__detachDeleteIcon`
+- 基团放置:`window.__pickAtomAtScreen(clientX, clientY, {exclude, maxPx, touch})`(屏幕空间拾取原子)、`window.__bestFreeDirectionFor(target, preferredDir, {anchor, bondLength, exclude})`(剩余价方向回退)、`window.__createCompleteGroup(key, pos, {target, clientX, clientY, touch})`、`window.__lastGroupPlacement`{groupKey,target,mode,replacedH,explicit,freeFallback,anchor}、`window.__groupPlace`{begin/cancel/active/state/placeAt/dropPoint}(触屏点选放置)
 - `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
 - 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__probeFormulaCandidates`/`__isomerPresearch`{open/close/start/stop/continue/reset/set/state/matches}/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
 - 蛋白名称 PDB:`window.__PROTEIN_NAME_LIB`/`__resolveProteinName`/`__fetchProteinPDBById`/`__inferPdbCarbonylBonds`/`__generateFromProteinPDB`/`__countPeptideBonds`、`window.__RCSB_LIGAND_LIB`/`__resolveRcsbLigand`/`__generateFromRcsbLigand`
