@@ -190,6 +190,8 @@
         .tb-primary:hover { background: #26282e; border-color: #6d7179; }
         .tb-outline { border-color: var(--control); color: var(--text); }
         .tb-outline:hover { background: var(--active); border-color: #6d7179; }
+        .tb-btn:disabled { opacity: 0.55; cursor: default; }
+        .tb-btn:disabled:hover { background: transparent; color: var(--muted); }
         .tb-danger:hover { color: var(--negative); background: var(--active); }
         #btn-undo.hist-empty, #btn-redo.hist-empty { color: var(--faint); }
         /* 分子结构锁：开启时锁图标点亮为琥珀色（唯一的 chrome 强调色用法） */
@@ -1727,6 +1729,7 @@
             <button class="tb-btn tb-danger" id="btn-clear-molecule" title="清空画布"><span class="ui-ic" data-icon="trash-2" data-size="14"></span><span class="tb-label">清空</span></button>
             <span class="tb-sep" aria-hidden="true"></span>
             <button class="tb-btn tb-icon" id="btn-help" title="操作指南 / 快捷键" aria-label="操作指南"><span class="ui-ic" data-icon="circle-help" data-size="16"></span></button>
+            <button class="tb-btn tb-outline" id="btn-canvas-isomers" title="查找画布上分子的同分异构体（按含隐式氢的分子式检索）"><span class="ui-ic" data-icon="shuffle" data-size="14"></span><span class="tb-label">异构体</span></button>
             <button class="tb-btn tb-outline" id="btn-open-input" title="生成分子（名称 / SMILES / 分子式 / 序列）"><span class="ui-ic" data-icon="flask-conical" data-size="14"></span><span class="tb-label">生成…</span></button>
         </nav>
     </header>
@@ -2113,6 +2116,7 @@
 
             <h3><span class="ui-ic" data-icon="lightbulb" data-size="13"></span> 提示</h3>
             <p>选中原子后出现三轴手柄；拖彩色轴时画布上方显示实时位移；接近可成键的原子时会发光提醒。单击原子 = 选中，按住拖动 = 移动。</p>
+            <p>顶栏「异构体」按画布上分子的完整分子式（自动计入隐式氢）检索同分异构体；结果面板可勾选并生成候选结构。</p>
         </div>
     </div>
 </div>
@@ -2185,6 +2189,7 @@
             'grip-vertical': '<circle cx="9" cy="12" r="1" /> <circle cx="9" cy="5" r="1" /> <circle cx="9" cy="19" r="1" /> <circle cx="15" cy="12" r="1" /> <circle cx="15" cy="5" r="1" /> <circle cx="15" cy="19" r="1" />',
             'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2" /> <path d="M7 11V7a5 5 0 0 1 10 0v4" />',
             'lock-open': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2" /> <path d="M7 11V7a5 5 0 0 1 9.9-1" />',
+            'shuffle': '<path d="m18 14 4 4-4 4" /> <path d="m18 2 4 4-4 4" /> <path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22" /> <path d="M2 6h1.972a4 4 0 0 1 3.6 2.2" /> <path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" />',
         };
         function iconSvg(name, size = 14) {
             const inner = LUCIDE_ICONS[name];
@@ -2918,14 +2923,7 @@
         }
 
         // Hill 序分子式：含碳时 C、H、其余按字母；不含碳时全部按字母（H2O → H2O）。
-        function molecularFormulaFromGraph() {
-            const list = atomsGroup.children.filter(a => a.userData?.isAtom);
-            if (!list.length) return '';
-            const counts = {};
-            for (const a of list) {
-                const t = a.userData.atomType || 'C';
-                counts[t] = (counts[t] || 0) + 1;
-            }
+        function hillFormulaFromCounts(counts) {
             const keys = Object.keys(counts);
             const order = [];
             if (counts.C) {
@@ -2937,7 +2935,66 @@
             }
             return order.map(k => k + (counts[k] > 1 ? counts[k] : '')).join('');
         }
+        // 只数画布上的显式原子（状态条口径，保持不变——蛋白等重原子模型仍显示 C256N65O76S6）
+        function molecularFormulaFromGraph() {
+            const list = atomsGroup.children.filter(a => a.userData?.isAtom);
+            if (!list.length) return '';
+            const counts = {};
+            for (const a of list) {
+                const t = a.userData.atomType || 'C';
+                counts[t] = (counts[t] || 0) + 1;
+            }
+            return hillFormulaFromCounts(counts);
+        }
         window.__molecularFormula = molecularFormulaFromGraph;
+
+        // 画布分子的“完整”分子式（2026-11）：显式原子 + 隐式氢。
+        // 手搭骨架通常只有重原子，直接数原子会得到 C6 这类残缺分子式；同分异构体检索
+        // 必须按真实分子式（C6H6）查。隐式氢口径与 addMissingHydrogens 完全一致：
+        // missingH = HYDROGEN_VALENCE[元素] - Σ(键级和)，芳香 1.5 键按 1.5 计，
+        // 配位键（卟啉 Fe–N，不进 getBondsForAtom 化学邻接）按 1 计。
+        // 只读：不创建原子、不改键，仅用于读数 / 检索。
+        function molecularFormulaWithImplicitH() {
+            const list = atomsGroup.children.filter(a => a.userData?.isAtom);
+            if (!list.length) return { formula: '', counts: {}, implicitH: 0, heavy: 0, fragments: 0, atoms: 0 };
+            const listSet = new Set(list);
+            const counts = {};
+            let implicitH = 0;
+            let heavy = 0;
+            for (const a of list) {
+                const t = a.userData.atomType || 'C';
+                counts[t] = (counts[t] || 0) + 1;
+                if (t === 'H') continue;
+                heavy++;
+                const val = HYDROGEN_VALENCE[t] || 0;
+                if (!val) continue;
+                let orderSum = 0;
+                for (const b of getBondsForAtom(a)) orderSum += (b.type || 1);
+                for (const b of bonds) {
+                    if (b.coordination && (b.atomA === a || b.atomB === a)) orderSum += 1;
+                }
+                const k = Math.round(val - orderSum);
+                if (k > 0 && k <= 4) { implicitH += k; counts.H = (counts.H || 0) + k; }
+            }
+            // 连通片段数（只按共价键；配位键不算骨架）
+            let fragments = 0;
+            const seen = new Set();
+            for (const a of list) {
+                if (seen.has(a)) continue;
+                fragments++;
+                seen.add(a);
+                const stack = [a];
+                while (stack.length) {
+                    const cur = stack.pop();
+                    for (const b of getBondsForAtom(cur)) {
+                        const o = b.atomA === cur ? b.atomB : b.atomA;
+                        if (!seen.has(o) && listSet.has(o)) { seen.add(o); stack.push(o); }
+                    }
+                }
+            }
+            return { formula: hillFormulaFromCounts(counts), counts, implicitH, heavy, fragments, atoms: list.length };
+        }
+        window.__molecularFormulaWithImplicitH = molecularFormulaWithImplicitH;
 
         // 全分子键角偏差（取最差原子，与自测指标同源；H 与单键原子不计）
         // 金属中心（Fe/Mg/Zn…）不参与：配位几何由晶体场决定（八面体 90/180°、
@@ -11611,7 +11668,8 @@ function smilesToCondensed(smiles) {
             limit: 60, running: false, runId: 0, runStart: 0,
             offset: 0, scanned: 0, matches: [], seen: new Set(),
             total: 0, totalKnown: false, allCids: null, listPromise: null,
-            exhausted: false, abort: null, lastError: '', scanBudget: 1200
+            exhausted: false, abort: null, lastError: '', scanBudget: 1200,
+            originText: ''
         };
         let _isofPreChipsBuilt = false;
         let _isomerCurrentFormula = '';
@@ -11781,11 +11839,14 @@ function smilesToCondensed(smiles) {
             );
             return (j && j.IdentifierList && j.IdentifierList.CID) || [];
         }
-        function openIsomerPresearchPanel(formula, threshold) {
+        // opts.originText：来源说明（如“画布分子 C₄H₁₀（含 10 个隐式氢）”），
+        // 由「从画布查找异构体」入口传入，检索完成后原样带进结果面板说明条。
+        function openIsomerPresearchPanel(formula, threshold, opts) {
             isofPreBuildUI();
             const panel = document.getElementById('isomer-pre-panel');
             if (!panel) return false;
             if (_isofPre.running) isofPreStop();
+            _isofPre.originText = (opts && opts.originText) || '';
             // 换分子式则重置预筛选条件（同一分子式重开保留上次条件，便于微调后重试）
             if (_isofPre.formula && _isofPre.formula !== formula) {
                 _isofPre.groups.clear(); _isofPre.types.clear();
@@ -11806,7 +11867,8 @@ function smilesToCondensed(smiles) {
             if (title) title.textContent = '检索前筛选 · ' + toSubscriptFormula(formula);
             const hint = document.getElementById('isomer-pre-hint');
             if (hint) {
-                hint.innerHTML = '该分子式在 PubChem 的候选<b>超过 ' + _isofPre.threshold + ' 个</b>。直接全量拉取结构会请求超时，'
+                hint.innerHTML = (_isofPre.originText ? _isofPre.originText + '<br/>' : '')
+                    + '该分子式在 PubChem 的候选<b>超过 ' + _isofPre.threshold + ' 个</b>。直接全量拉取结构会请求超时，'
                     + '请先按结构特征收窄范围——检索会从前往后扫描候选，<b>命中达到上限即停止</b>，无需等待全部记录。<br/>'
                     + '提示：不选任何条件时按 PubChem 顺序取前若干条；结构分析不可用的候选会被跳过。';
             }
@@ -11935,6 +11997,7 @@ function smilesToCondensed(smiles) {
                 isofPreUpdateProgress('命中 ' + _isofPre.matches.length + ' 个');
                 showIsomerPanel(_isofPre.formula, _isofPre.matches.slice(), {
                     filter: isofPreSnapshot(),
+                    originText: _isofPre.originText,
                     presearch: {
                         scanned: _isofPre.scanned,
                         total: _isofPre.total,
@@ -12249,6 +12312,83 @@ if (smilesInput) smilesInput.value = smilesToUse;
         }
         window.__generateFromInput = generateFromInput;
 
+        // ============ 从画布分子查找同分异构体（2026-11 新增）============
+        // 入口：顶栏「异构体」按钮。流程与「分子式输入」完全一致（probe → 预筛选 → 结果面板），
+        // 区别只在于分子式来自画布图结构：显式原子 + 按价态补出的隐式氢。
+        // 设计取舍：
+        //  - 只读检索，因此不拦分子锁（生成选中异构体仍由 generateSelectedIsomers 的锁守卫拦截）。
+        //  - 重原子上限 50：蛋白/天然产物枚举同分异构体没有意义，也避免向 PubChem 发无意义请求。
+        //  - 多片段按合计分子式检索，并在面板说明条如实标注。
+        const ISOF_CANVAS_MAX_HEAVY = 50;
+        let _canvasIsomerBusy = false;
+        function isofCanvasOriginText(info) {
+            const f = toSubscriptFormula(info.formula);
+            const h = info.implicitH > 0
+                ? `含 ${info.implicitH} 个隐式氢`
+                : '画布已含全部氢';
+            let s = `画布分子 ${f}（${h}）`;
+            if (info.fragments > 1) s += ` · ${info.fragments} 个独立片段按合计分子式检索`;
+            s += ' · 结果可能包含当前结构';
+            return s;
+        }
+        async function findIsomersFromCanvas() {
+            if (_canvasIsomerBusy) return false;
+            const info = molecularFormulaWithImplicitH();
+            if (!info.formula) {
+                showToast('画布上还没有分子，请先搭建或生成一个分子', 2600);
+                return false;
+            }
+            if (info.heavy > ISOF_CANVAS_MAX_HEAVY) {
+                showToast(`画布分子含 ${info.heavy} 个重原子，超过同分异构体检索上限（${ISOF_CANVAS_MAX_HEAVY} 个）`, 3800);
+                return false;
+            }
+            const btn = document.getElementById('btn-canvas-isomers');
+            const fStr = info.formula;
+            const originText = isofCanvasOriginText(info);
+            _canvasIsomerBusy = true;
+            if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
+            try {
+                showToast('正在检查 ' + toSubscriptFormula(fStr) + ' 的候选规模…', 2200);
+                const probe = await probeFormulaCandidates(fStr);
+                if (!probe.ok) { showToast('请求失败: ' + probe.error, 3400); return false; }
+                // 候选过多：与分子式输入路径一致，先弹检索前筛选（来源说明会带进预筛选面板与结果面板）
+                if (probe.capped) {
+                    openIsomerPresearchPanel(fStr, probe.threshold, { originText });
+                    showToast(toSubscriptFormula(fStr) + ' 的候选超过 ' + probe.threshold + ' 个，请先筛选', 3200);
+                    return true;
+                }
+                if (!probe.cids.length) {
+                    showToast('未找到该分子式（' + toSubscriptFormula(fStr) + '）的任何记录', 3200);
+                    return false;
+                }
+                showToast('正在获取 ' + toSubscriptFormula(fStr) + ' 的异构体…', 2200);
+                const res = await fetchFormulaIsomers(fStr, { cids: probe.cids });
+                if (res.ok && res.items.length) {
+                    showIsomerPanel(fStr, res.items, { originText });
+                    return true;
+                }
+                showToast(res.error || '未找到该分子式的异构体', 3200);
+                return false;
+            } finally {
+                _canvasIsomerBusy = false;
+                if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
+            }
+        }
+        window.__findIsomersFromCanvas = findIsomersFromCanvas;
+        window.__canvasIsomers = {
+            find: () => findIsomersFromCanvas(),
+            formula: () => molecularFormulaWithImplicitH(),
+            maxHeavy: () => ISOF_CANVAS_MAX_HEAVY,
+            busy: () => _canvasIsomerBusy,
+            button: () => document.getElementById('btn-canvas-isomers'),
+            // 验证脚本用：静默清空（不弹 toast / 不改分子名），避免测试里点清空按钮受锁影响
+            clear: () => { clearMolecule({ silent: true }); return true; }
+        };
+        (function bindCanvasIsomerButton() {
+            const btn = document.getElementById('btn-canvas-isomers');
+            if (btn) btn.addEventListener('click', () => { findIsomersFromCanvas(); });
+        })();
+
         // ============ 异构体选择弹窗（2026-09 新增）============
         // opts.filter：预筛选条件（检索前筛选结果带入，避免再手动设一次）
         // opts.presearch：预筛选统计（已扫描/总数/是否还能继续），用于顶部说明条
@@ -12274,11 +12414,18 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (opts.presearch) {
                 const ps = opts.presearch;
                 const total = ps.totalKnown ? ps.total.toLocaleString('en-US') : (ps.total ? '>' + ps.total.toLocaleString('en-US') : '');
-                let s = '预筛选：已扫描 ' + ps.scanned.toLocaleString('en-US') + (total ? ' / ' + total : '') + ' 个候选 · 命中 ' + items.length + ' 个（每次上限 ' + ps.limit + ' 个）';
+                let s = (opts.originText ? opts.originText + ' · ' : '')
+                    + '预筛选：已扫描 ' + ps.scanned.toLocaleString('en-US') + (total ? ' / ' + total : '') + ' 个候选 · 命中 ' + items.length + ' 个（每次上限 ' + ps.limit + ' 个）';
                 if (ps.exhausted) s += ' · 已扫描完候选';
                 if (ps.canContinue) s += ' · 可继续往后检索';
                 if (noteTxt) noteTxt.textContent = s;
                 if (more) more.style.display = ps.canContinue ? 'inline' : 'none';
+                if (note) note.style.display = 'flex';
+            } else if (opts.originText) {
+                // 从画布反推分子式检索：说明条标注来源（含隐式氢 / 多片段），
+                // 让用户知道查的是“画布分子的完整分子式”而不是状态条里的显式原子式。
+                if (noteTxt) noteTxt.textContent = opts.originText;
+                if (more) more.style.display = 'none';
                 if (note) note.style.display = 'flex';
             } else {
                 if (note) note.style.display = 'none';

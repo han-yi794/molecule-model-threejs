@@ -27,6 +27,7 @@
 - **卟啉 / 血红素**:解析式平面卟啉模板(4 吡咯 + 4 meso 桥),金属离子(Fe/Mg/Zn/Co/Ni/Cu/Mn)自动配位到环心(Fe–N 2.05 Å);配位键渲染为青蓝色细杆并排除在化学邻接/环枚举之外,核心作为刚体保持平面。
 - **芳香体系**:苯/吡啶/吡咯/呋喃/噻吩检测(π 电子 6±1)、离域π体系高亮、共轭桥(烯-烯/环-烯/环-环)共面强制。
 - **输入管线**:名称 / SMILES / 分子式 / 蛋白质序列四种输入——中文名回译校验防翻译错、分子式自动枚举同分异构体(小键盘输入、下标显示、结构简式 + 本地渲染键线式缩略图)、氨基酸序列经 ESMFold 在线预测 3D 结构;蛋白质名称(胰岛素/溶菌酶/核糖核酸酶A/细胞色素c/肌红蛋白/血红蛋白)直接取 **RCSB PDB 实验结构**(真实主链构象与二硫键,如胰岛素 3I40 403 原子单连通、血红蛋白 2HHB 4556 原子含 4 个血红素 Fe),不再走粗坐标管线生成长链碎片。
+- **从画布反查同分异构体**:顶栏「异构体」按**画布上当前分子的完整分子式**检索——手搭骨架通常只有重原子,程序按价态自动补出隐式氢(与「一键补氢」同口径,芳香 1.5 键按 1.5、卟啉配位键按 1 σ),例如手搭 C–C 得到 C₂H₆、六个碳的 1.5 键环得到 C₆H₆;多片段按合计分子式检索并注明片段数,结果面板说明条标注来源与「结果可能包含当前结构」。检索只读、不受分子结构锁限制;重原子超过 50 个只提示不检索;候选 >400 时复用检索前筛选。状态条分子式仍是显式原子口径(蛋白仍显示 C256N65O76S6),两者刻意分开。
 - **大分子结构保护**:蛋白 / 天然产物等大结构不再被交互破坏——原子数 >250(或真实坐标来源 ≥100 原子)的分子跳过通用优化器(点「优化」/Shift+O 会 toast 说明并保持原样),左键拖动默认旋转视角(先单击选中、再拖动才移动原子),也不挂选中删除图标(远视角图标会压住原子,删除仍可用 Delete/Backspace)。修复前胰岛素点一次优化会从 414 键/单连通变成 393 键/20 个碎片。
 - **交互建模**:9 种预设基团拖拽成键(**按屏幕拾取落点原子**:拖到哪个原子就连哪个,饱和中心取代离指针最近的 H)、**触屏适配**(手机上轻点构建库卡片进入「点一下放置」——点画布落位、点原子直接连接/取代,再点同卡或 Esc/取消按钮退出;触摸拖动时底部抽屉自动收起)、一键补氢、四模式拖动(gizmo/锁轴)、拖拽连接提示、单键二面角旋转、双键顺反翻转、选中原子旁删除图标、**分子结构锁**(顶栏锁图标或 L 键,锁定后拖动/编辑/删除/优化/撤销/清空/生成全部禁用,视角仍可旋转/平移/缩放,状态本地记忆)、**撤销/恢复**(顶栏按钮或 Ctrl+Z / Ctrl+Y,覆盖生成/拖拽/删除/优化/清空等操作,最多 50 步)、**三栏工作台**(左侧构建台 152px / 中间画布 / 右侧检查器 224px,两侧面板可收起为 44px 窄轨道,状态本地记忆)。
 - **可视化**:分子状态条(分子式 / 原子 / 键 / 环 / 芳香 / ∠RMS 实时读数)、检查器(选中原子或键的详情、环清单、视图开关)、蓝色半透明水滴形孤对电子云(NEBOOK 风格、受光立体)、四种原子材质风格(自发光/经典/金属/卡通)、网格吸附、拖拽 HUD、悬停高亮;大结构(>1500 原子)自动省掉原子标签与光晕(选中时按需补建)、>600 原子不画孤对云,保证蛋白质四聚体仍可流畅交互。
@@ -47,6 +48,7 @@
   - *分子式*:输入化学式(如 C6H6O / O2),自动弹出**同分异构体选择面板**(在线枚举,排除氘代/同位素/组合物),每行显示名称、结构简式与**键线式缩略图**(SmilesDrawer 本地渲染、离线可用;羟基/氨基按教材习惯合写为一个标签,不再拆成 -O-H),**点缩略图可放大查看**——大图界面可用 ‹/› 或 ←/→ 左右切换候选、并直接勾选"生成此分子",✕/点背景/Esc 关闭;可单选或多选并排生成;**小键盘**输入元素+数字(下角标显示如 C₆H₆;元素/数字分区,移动端自动限宽限高不超出屏幕;**按住标题栏可拖动位置**,鼠标/触摸通用、自动夹取在视口内、再次弹出保持摆放;Esc 或 ✕ 收起)。
     - *候选筛选*:面板顶部可按**官能团**(羟基/醛基/羧基/酯基/醚键/酮羰基/氨基/酰胺/氰基/硝基/苯环/芳香环/环/甲基/C=C/C≡C/卤素)与 **¹H NMR 特征**筛选候选——峰组数表达式(如 `3` / `≥3` / `2-4`)、可排除活泼氢、氢类型(醛氢/芳香氢/烯氢/炔氢/羧酸氢/羟基氢/氨基氢/硫醇氢);多条件支持"满足全部/任一";每行下方实时显示该分子的基团与 ¹H NMR(组数+积分比,如 `3 组 (3:2:1)`),"全选"只勾选当前可见行。
     - *大分子式：检索前筛选*:候选超过 400 个的分子式(如 C₁₂H₁₃N₃O₂,PubChem 上有一万多条记录)不再一次性全量拉取(旧版会因请求超时报"请求失败"),而是先弹出**检索前筛选**面板——同样按官能团 / ¹H NMR 条件收窄,并可选每次上限(30/60/120 个);检索从前往后扫描、命中达到上限即停,顶部实时显示"已扫描 / 总数 · 命中数";结果面板可点**继续检索更多**往后取下一批,预筛选条件会自动带入结果面板的筛选条(可再收窄)。小分子式(≤400 候选)仍直接出结果。
+  - *从画布反查同分异构体*(顶栏「异构体」按钮):不用输分子式——按画布上当前分子的图结构反推**完整分子式**(显式原子 + 按价态补出的隐式氢),再走与分子式输入完全相同的 PubChem 管线(候选探测 → >400 时检索前筛选 → 结果面板)。手搭 C–C 得 C₂H₆、苯环骨架得 C₆H₆、C–C–O 得 C₂H₆O;已显式画出的氢不会被重复计入;多个互不相连的片段按合计分子式检索并在说明条注明「N 个独立片段」。检索是只读操作,分子锁定时同样可用(生成选中候选仍会被锁拦截);重原子 >50 只提示不请求;面板说明条会写「画布分子 C₂H₆O(含 6 个隐式氢) · 结果可能包含当前结构」。
   - *蛋白质序列*:输入氨基酸序列(中文名/三字母/单字母混合均可,≤400 残基),经 **ESMFold** 在线预测 3D 结构(必须联网)。
   - *蛋白质名称*:胰岛素 / 溶菌酶 / 核糖核酸酶A / 细胞色素c / 肌红蛋白 / 血红蛋白(中英文、大小写、空格均可)直接下载 **RCSB PDB 实验结构**——自动过滤水分子与 B 构象、保留血红素辅基、推断羰基双键,得到真实折叠的多肽链(胰岛素 3I40:403 原子 / 414 键 / 3 条二硫键,单连通无碎片;细胞色素c 1HRC:866 原子含 Fe;肌红蛋白 1MBO:1260 原子;血红蛋白 2HHB:4556 原子 / 4 个血红素 Fe / 四聚体);名称框或序列框填均可。失败时不会回退粗坐标管线,而是提示改用氨基酸序列由 ESMFold 预测。含 ≥10 个酰胺键的 SMILES 会被拒绝并给出同样的引导(本地管线无法排布大分子骨架)。
   - 在线 API(PubChem / CACTUS / ESMFold / RCSB PDB / RCSB 化学组分)均免费免 key,失败静默回退本地管线,控制台标注分子来源。
@@ -118,6 +120,7 @@
 | `verify_foolproof.js` | 防呆测试:22 项边界/误操作场景(空状态、非法参数注入、状态机、极端几何、真实鼠标误操作) |
 | `verify_lock_pan.js` | 去雾 / 场景平移 / 分子结构锁:无雾气、右键与 Shift+左键平移、锁定开关 UI、锁定后拖动/键菜单/删除/优化/撤销/清空/生成/侧栏拖拽全部被拒、解锁恢复、键菜单与单键旋转自动退出、刷新保持锁定、触摸端点键、零 console(27 项) |
 | `verify_bond_dismiss_toggle.js` | 键菜单/旋转点别处退出 + 视图开关整行可点:5 个开关行各 5 点位单击恰好翻转一次且 API 同步、π 关闭禁用并提示、菜单在空白/顶栏/检查器/非端点原子处收起且清键选中、空白单击退出旋转(轴/HUD/键选中一并清)、空白拖动仍旋转、检查器退出旋转、零 console(17 项) |
+| `verify_canvas_isomers.js` | 从画布反查同分异构体(16 项):接口/图标/上限、空画布提示、隐式氢口径(C–C/C₆H₆/C₂H₆O/显式氢)、状态条口径不变、真实点击乙醇骨架出 C₂H₆O 面板与来源说明、显式氢「画布已含全部氢」、多片段合计式、51 重原子上限且零请求、C₂₀H₄₂ 进检索前筛选、锁定态仍可检索、375×667 按钮不溢出、33 几何、零 console |
 | `verify_group_replace_h.js` | 基团落点与取代氢 + 触屏点选放置:屏幕拾取(苯环 6 碳各自命中)、真实鼠标把甲基拖到苯环 6 个碳(旧版 6/6 连到相邻碳)、饱和/未饱和中心语义、方向被 H 挡住回退、无目标不建畸形键、放置后无 <0.8 Å 重叠、触屏轻点卡/点画布/点原子/取消/Esc/取消按钮/触摸拖动/原子卡、零 console(20 项) |
 | `verify_inline_offline.js` | 离线验证:file:// 打开 + 拦截全部网络请求,确认零 http 请求(Three.js/SmilesDrawer 内联、键线式本地渲染) |
 | `probe_trace.js` | 单例复现:`node probe_trace.js <seed> <example>` |
@@ -152,7 +155,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 ```
 
 - 自测报告读取:轮询 `window.lastRunResults`(33 例全跑完才写入);页面内 `window.runAllExamplesAndTests()` 可手动触发。
-- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;基团落点/取代氢 + 触屏点选 20、去雾/平移/结构锁 27、三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、大分子结构保护 10/10、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
+- 全部自测当前状态:**33 几何 + 23 π + 36 基团方位全绿**;画布反查异构体 16、基团落点/取代氢 + 触屏点选 20、去雾/平移/结构锁 27、三栏外壳 9、帮助 8、面板折叠/构建库页签 11、布局迁移 8、浮层动画 12、点别处收起 11、小键盘 14、撤销/恢复 12、防呆 22、名称/SMILES 17/17 与 24/24、蛋白 3D 8/8、蛋白名称 PDB 24/24、大分子路线 24/24(质量闸门 + RCSB 组分 + 视觉降噪)、大分子结构保护 10/10、离线零请求、其余异构体/历史/输入/删除图标等 UI 脚本全绿。
 
 ## 复现与分析
 
@@ -188,6 +191,7 @@ cmd /c "node verify_groups_fix.js > verifyG.json 2>&1"
 - 基团放置:`window.__pickAtomAtScreen(clientX, clientY, {exclude, maxPx, touch})`(屏幕空间拾取原子)、`window.__bestFreeDirectionFor(target, preferredDir, {anchor, bondLength, exclude})`(剩余价方向回退)、`window.__createCompleteGroup(key, pos, {target, clientX, clientY, touch})`、`window.__lastGroupPlacement`{groupKey,target,mode,replacedH,explicit,freeFallback,anchor}、`window.__groupPlace`{begin/cancel/active/state/placeAt/dropPoint}(触屏点选放置)
 - `window.__lpStats`(孤对统计)/`__lpDropProfile`(水滴剖面 length/maxR/tipR/widestAt)、`window.__connectHint`、`window.__piSystemsSummary`、`window.__runPiSystemTests()`、`window.__atomStyle`{get/set/list}
 - 输入管线:`window.__parseFormula`/`__toSubscriptFormula`/`__fetchFormulaIsomers`/`__probeFormulaCandidates`/`__isomerPresearch`{open/close/start/stop/continue/reset/set/state/matches}/`__showIsomerPanel`/`__generateSelectedIsomers`/`__parseAaSequence`/`__fetchProteinPDB`/`__generateFromProteinSeq`/`__translateZhToEn`
+- 画布反查异构体:`window.__molecularFormulaWithImplicitH()`(返回 `{formula, counts, implicitH, heavy, fragments, atoms}`,只读)、`window.__molecularFormula()`(状态条口径,仅显式原子)、`window.__findIsomersFromCanvas()`/`window.__canvasIsomers`{find/formula/maxHeavy/busy/button/clear}
 - 蛋白名称 PDB:`window.__PROTEIN_NAME_LIB`/`__resolveProteinName`/`__fetchProteinPDBById`/`__inferPdbCarbonylBonds`/`__generateFromProteinPDB`/`__countPeptideBonds`、`window.__RCSB_LIGAND_LIB`/`__resolveRcsbLigand`/`__generateFromRcsbLigand`
 - 质量闸门:`window.__assessMoleculeQuality()`(当前分子体检)/`__describeQualityFailure(q)`(失败文案)/`window.__LAST_MOL_QUALITY`(最近一次 SMILES 生成的质量记录);大结构降噪读数 `window.__diag.visualStats()`
 - 异构体/键线式:`window.__smilesToCondensed`/`__toSubscriptCondensed`/`__analyzeIsomerStructure`/`__isomerFilter`{analyze/state/set/reset/rows}、`window.__skeletalRender`/`__openSkeletalLightbox`/`__hideSkeletalLightbox`/`__skeletalLightbox`{state/next/prev}
