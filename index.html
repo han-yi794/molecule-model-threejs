@@ -3456,7 +3456,25 @@
                 if (out.lengthSq() < 1e-9) continue;
                 out.normalize();
                 if (hs.length === 1) {
-                    hs[0].position.copy(c.position.clone().add(out.multiplyScalar(1.09)));
+                    // 饱和环：单个 H 与取代基分居环平面两侧才是 sp3 几何。
+                    // 旧实现一律放环平面内（pn=0）会丢掉 H 原来的侧别——
+                    // 1,2-二甲基环丙烷的手性碳（CH3 + H + 2 环键）在扰动把
+                    // CH3 推到近平面时，H 被拉回平面 → 角度阶段按 pn 排序
+                    // 把 CH3 翻到另一侧，手性镜像翻转（实测 seed 15）。
+                    // 保留 H 的法线分量、平面内仍取径向，侧别信息不丢。
+                    if (isAromatic === false) {
+                        const relH = hs[0].position.clone().sub(c.position);
+                        let pn = relH.dot(normal);
+                        const maxPn = 1.09 * 0.98;
+                        if (pn > maxPn) pn = maxPn;
+                        if (pn < -maxPn) pn = -maxPn;
+                        const radial = Math.sqrt(Math.max(0, 1.09 * 1.09 - pn * pn));
+                        hs[0].position.copy(c.position.clone()
+                            .add(out.clone().multiplyScalar(radial))
+                            .add(normal.clone().multiplyScalar(pn)));
+                    } else {
+                        hs[0].position.copy(c.position.clone().add(out.clone().multiplyScalar(1.09)));
+                    }
                 } else {
                     const s60 = Math.sin(Math.PI / 3), c60 = Math.cos(Math.PI / 3);
                     const up = out.clone().multiplyScalar(c60).add(normal.clone().multiplyScalar(s60));
@@ -4199,7 +4217,99 @@
                 }
             } catch (eA) {}
 
-            for (const ni of orderIdx) {
+            // 手性保持（sp3 四配位）：锚定邻居固定占 0° 槽后，另外三个槽
+            // （120°/240°/360°）的分配必须保持当前几何的四面体手性——任何
+            // 交换两个邻居的奇置换都会把手型镜像翻转。贪心「各自取 dot
+            // 最大的槽」在理想四面体附近恰好保序，但手搭的非理想几何
+            // （实测 200 个随机四取代中心里 46 个）会交换两个邻居 →
+            // 一键优化后手性碳从 R 变 S（用户报告的核心 bug）。
+            // 做法：先把三个非锚定邻居按绕锚轴极角排序（给出一种循环顺序），
+            // 再用有符号体积对比「当前四面体」与「候选目标四面体」的手性；
+            // 符号相反就交换后两个邻居（翻转一次）。最后在三种保持手性的
+            // 循环旋转里选位移最小的（baseDirs 正是按 0°/120°/240° 在同一
+            // (u,v) 基底上生成的）。
+            let chiralOrderDone = false;
+            if (hyb === 'sp3' && num === 4 && baseDirs.length === 4 && anchorForcedIdx >= 0) {
+                try {
+                    const axis = baseDirs[0].clone().normalize();
+                    let cu = new THREE.Vector3(1, 0, 0);
+                    if (Math.abs(axis.x) > 0.9) cu = new THREE.Vector3(0, 1, 0);
+                    cu.sub(axis.clone().multiplyScalar(cu.dot(axis))).normalize();
+                    const cv = axis.clone().cross(cu).normalize();
+                    const rest = [];
+                    for (let i = 0; i < num; i++) {
+                        if (i === anchorForcedIdx) continue;
+                        const proj = currDirs[i].clone()
+                            .sub(axis.clone().multiplyScalar(currDirs[i].dot(axis)));
+                        let ang;
+                        if (proj.lengthSq() < 1e-12) {
+                            // 与锚轴共线：极角无定义（退化几何，手性本身接近 0），
+                            // 记 0 保证确定性，不参与有意义的顺序判断。
+                            ang = 0;
+                        } else {
+                            proj.normalize();
+                            ang = Math.atan2(proj.dot(cv), proj.dot(cu));
+                        }
+                        rest.push({ i, ang });
+                    }
+                    rest.sort((a, b) => a.ang - b.ang);
+                    const freeSlots = [1, 2, 3];
+                    // 仅按极角升序分配，只在"三个非锚定邻居都位于锚轴背面"时
+                    // 才等价于保手性；手搭几何常有邻居在锚轴正面（当前轴分量
+                    // >0），此时极角顺序与三维手性相反。故直接用有符号体积
+                    // 判定：当前四面体符号 vs 候选分配的目标符号，不一致就
+                    // 交换后两个邻居（翻转一次）——目标四面体与当前同手性。
+                    const idOf = (i) => {
+                        const u = neighbors[i] && neighbors[i].userData;
+                        return (u && typeof u._id === 'number') ? u._id : i;
+                    };
+                    const detOfDirs = (byIndex) => {
+                        const ord = [0, 1, 2, 3].sort((x, y) => idOf(x) - idOf(y));
+                        const q = ord.map(i => byIndex[i]);
+                        const e1 = q[0].clone().sub(q[3]);
+                        const e2 = q[1].clone().sub(q[3]);
+                        const e3 = q[2].clone().sub(q[3]);
+                        return e1.dot(new THREE.Vector3().crossVectors(e2, e3));
+                    };
+                    const curDet = detOfDirs(currDirs);
+                    const probeDirs = new Array(num).fill(null);
+                    probeDirs[anchorForcedIdx] = baseDirs[0];
+                    for (let k = 0; k < rest.length && k < freeSlots.length; k++) {
+                        probeDirs[rest[k].i] = baseDirs[freeSlots[k]];
+                    }
+                    const tgtDet = detOfDirs(probeDirs);
+                    if (curDet * tgtDet < 0) {
+                        const tmp = rest[1]; rest[1] = rest[2]; rest[2] = tmp;
+                    }
+                    // 三种循环旋转都保手性，选与当前极角差之和最小的那个
+                    // （即最省力的同手性映射），避免把三个邻居整体多转
+                    // 最多 120°（实测随机四取代中心 99/200 不收敛）。
+                    const slotAng = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
+                    const wrapPi = (x) => {
+                        while (x > Math.PI) x -= 2 * Math.PI;
+                        while (x < -Math.PI) x += 2 * Math.PI;
+                        return x;
+                    };
+                    let bestRot = 0, bestCost = Infinity;
+                    for (let r = 0; r < 3; r++) {
+                        let cost = 0;
+                        for (let k = 0; k < rest.length; k++) {
+                            cost += Math.abs(wrapPi(rest[k].ang - slotAng[(k + r) % 3]));
+                        }
+                        if (cost < bestCost) { bestCost = cost; bestRot = r; }
+                    }
+                    for (let k = 0; k < rest.length && k < freeSlots.length; k++) {
+                        const slot = freeSlots[(k + bestRot) % freeSlots.length];
+                        mapping[rest[k].i] = slot;
+                        assignedDomain[slot] = true;
+                    }
+                    chiralOrderDone = true;
+                } catch (eChiral) {
+                    chiralOrderDone = false;
+                }
+            }
+
+            if (!chiralOrderDone) for (const ni of orderIdx) {
                 if (mapping[ni] >= 0) continue;
                 let best = -1; let bestDot = -Infinity;
                 for (let di = 0; di < baseDirs.length; di++) {
@@ -4734,8 +4844,68 @@ const perm = Array.from({ length: idealDirs.length }, (_, i) => i);
                                 const s60 = Math.sin(Math.PI / 3), c60 = Math.cos(Math.PI / 3);
                                 const up = e.clone().multiplyScalar(c60).add(nrm.clone().multiplyScalar(s60));
                                 const down = e.clone().multiplyScalar(c60).sub(nrm.clone().multiplyScalar(s60));
-                                targetPositions[outers[0]] = atom.position.clone().add(up.multiplyScalar(targetDistances[outers[0]]));
-                                targetPositions[outers[1]] = atom.position.clone().add(down.multiplyScalar(targetDistances[outers[1]]));
+                                // 侧别保持（环上手性中心）：两个环外邻居可能不同
+                                // （如 1,2-二甲基环丙烷每个手性碳的 CH3 与 H，或两个
+                                // 不同取代基）。旧实现固定 outers[0] 走 +法线、
+                                // outers[1] 走 -法线，与它们扰动前所在侧无关 →
+                                // 环上手性中心 100% 镜像翻转（实测 30/30）。
+                                // 优先用有符号体积判定：扰动可能把两个环外邻居都
+                                // 推到同一侧（或其中一个几乎落在环平面内），此时
+                                // 单纯按当前法线分量排序会让另一个穿过环平面 →
+                                // 手性翻转（实测 1,2-二甲基环丙烷 seed 15：CH3 的
+                                // 法线分量被扰动到 -0.02，排序把 CH3 翻到 +侧）。
+                                // 候选 A（outers[0] 上 / outers[1] 下）与候选 B（互换）
+                                // 的手性相反，选与当前四面体同号的那个；只有当前
+                                // 几何接近平面（体积≈0）时才退回按侧别排序。
+                                let hi = outers[0], lo = outers[1];
+                                let pickedByChirality = false;
+                                try {
+                                    if (neighbors.length === 4 && nrm) {
+                                        const idOfR = (i) => {
+                                            const u2 = neighbors[i] && neighbors[i].userData;
+                                            return (u2 && typeof u2._id === 'number') ? u2._id : i;
+                                        };
+                                        const detOfR = (byIndex) => {
+                                            const ord = [0, 1, 2, 3].sort((x, y) => idOfR(x) - idOfR(y));
+                                            const q = ord.map(i => byIndex[i]);
+                                            const e1 = q[0].clone().sub(q[3]);
+                                            const e2 = q[1].clone().sub(q[3]);
+                                            const e3 = q[2].clone().sub(q[3]);
+                                            return e1.dot(new THREE.Vector3().crossVectors(e2, e3));
+                                        };
+                                        const cur = neighbors.map(n => n.position.clone().sub(atom.position).normalize());
+                                        const detCur = detOfR(cur);
+                                        if (Math.abs(detCur) > 1e-9) {
+                                            const candA = cur.map(d => d.clone());
+                                            candA[outers[0]] = up.clone().normalize();
+                                            candA[outers[1]] = down.clone().normalize();
+                                            const detA = detOfR(candA);
+                                            const candB = cur.map(d => d.clone());
+                                            candB[outers[0]] = down.clone().normalize();
+                                            candB[outers[1]] = up.clone().normalize();
+                                            const detB = detOfR(candB);
+                                            if (Math.sign(detCur) === Math.sign(detA)) {
+                                                hi = outers[0]; lo = outers[1]; pickedByChirality = true;
+                                            } else if (Math.sign(detCur) === Math.sign(detB)) {
+                                                hi = outers[1]; lo = outers[0]; pickedByChirality = true;
+                                            }
+                                        }
+                                    }
+                                } catch (eChirR) {}
+                                if (!pickedByChirality) {
+                                    try {
+                                        const sideOf = (idx) => nrm
+                                            ? neighbors[idx].position.clone().sub(atom.position).dot(nrm)
+                                            : 0;
+                                        if (sideOf(hi) < sideOf(lo)) { const tmp = hi; hi = lo; lo = tmp; }
+                                    } catch (eSide) {}
+                                }
+                                targetPositions[hi] = atom.position.clone().add(up.multiplyScalar(targetDistances[hi]));
+                                targetPositions[lo] = atom.position.clone().add(down.multiplyScalar(targetDistances[lo]));
+                                for (let oi = 2; oi < outers.length; oi++) {
+                                    // 超过 2 个环外邻居（不应出现于正常价态）时沿外角平分排开
+                                    targetPositions[outers[oi]] = atom.position.clone().add(e.clone().multiplyScalar(targetDistances[outers[oi]]));
+                                }
                             }
                         }
                     }
@@ -14284,6 +14454,75 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 }
             };
         } catch (e) { console.warn('export to window failed', e); }
+
+        // 手性中心诊断（2026-11，配合「一键优化保持手型」修复）：
+        // 有符号体积 sign(det(v1-v4, v2-v4, v3-v4))，邻居按 id 升序固定
+        // （id 与拓扑一一对应，优化前后不会变），符号翻转即构型镜像。
+        // of(id) 查指定中心；all() 扫描画布上所有 4 配位、|det|≥阈值 的中心
+        // （含手搭的非理想几何）；sign(id) 只返回 ±1/0。
+        try {
+            const _chiralityOf = (atom) => {
+                if (!atom || !atom.userData?.isAtom) return { ok: false, err: 'no atom' };
+                const nbs = getBondsForAtom(atom)
+                    .map(b => b.atomA === atom ? b.atomB : b.atomA)
+                    .filter(n => n && n.userData?.isAtom);
+                nbs.sort((x, y) => (x.userData._id || 0) - (y.userData._id || 0));
+                if (nbs.length !== 4) {
+                    return { ok: false, err: 'need 4 neighbors, got ' + nbs.length,
+                        id: atom.userData._id, types: nbs.map(n => n.userData.atomType) };
+                }
+                const v = nbs.map(n => n.position.clone().sub(atom.position));
+                // 化学手性口径：四条射线的单位方向（与键长无关）。位置有符号
+                // 体积在长短键混排（H 1.09 vs Br 1.95）时可能与方向手性反号，
+                // 只作为 detPos 附带返回。
+                const u = v.map(x => x.clone().normalize());
+                const a = u[0].clone().sub(u[3]);
+                const b2 = u[1].clone().sub(u[3]);
+                const c = u[2].clone().sub(u[3]);
+                const det = a.x * (b2.y * c.z - b2.z * c.y)
+                    - a.y * (b2.x * c.z - b2.z * c.x)
+                    + a.z * (b2.x * c.y - b2.y * c.x);
+                const pa = v[0].clone().sub(v[3]);
+                const pb = v[1].clone().sub(v[3]);
+                const pc = v[2].clone().sub(v[3]);
+                const detPos = pa.x * (pb.y * pc.z - pb.z * pc.y)
+                    - pa.y * (pb.x * pc.z - pb.z * pc.x)
+                    + pa.z * (pb.x * pc.y - pb.y * pc.x);
+                const angles = [];
+                for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+                    const la = v[i].length(), lb = v[j].length();
+                    if (la < 1e-9 || lb < 1e-9) continue;
+                    const cosv = Math.max(-1, Math.min(1, v[i].dot(v[j]) / (la * lb)));
+                    angles.push(+(Math.acos(cosv) * 180 / Math.PI).toFixed(1));
+                }
+                return {
+                    ok: true, id: atom.userData._id, type: atom.userData.atomType,
+                    det: +det.toFixed(4),
+                    sign: det > 1e-9 ? 1 : (det < -1e-9 ? -1 : 0),
+                    detPos: +detPos.toFixed(4),
+                    signPos: detPos > 1e-9 ? 1 : (detPos < -1e-9 ? -1 : 0),
+                    ids: nbs.map(n => n.userData._id),
+                    types: nbs.map(n => n.userData.atomType),
+                    angles: angles.sort((x, y) => x - y)
+                };
+            };
+            window.__chirality = {
+                of(id) {
+                    const atom = atomsGroup.children.find(a => a.userData?._id === id && a.userData?.isAtom);
+                    return _chiralityOf(atom);
+                },
+                all(minAbsDet = 0.05) {
+                    const out = [];
+                    for (const a of atomsGroup.children) {
+                        if (!a.userData?.isAtom) continue;
+                        const r = _chiralityOf(a);
+                        if (r.ok && Math.abs(r.det) >= minAbsDet) out.push(r);
+                    }
+                    return out;
+                },
+                sign(id) { const r = this.of(id); return r.ok ? r.sign : null; }
+            };
+        } catch (e) { console.warn('__chirality export failed', e); }
 
         // 绑定 UI 按钮
         // （2026-10-17：btn-run-all-tests 按钮已随原子库清理移除；自测仍可用 window.runAllExamplesAndTests() 触发）
