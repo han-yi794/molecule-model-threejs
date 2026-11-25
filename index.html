@@ -835,7 +835,7 @@
         /* ================================================================
            7. 分子式小键盘
            ================================================================ */
-        #formula-keypad {
+        #formula-keypad, #smiles-keypad {
             position: fixed;
             z-index: 999;
             width: 240px;
@@ -867,7 +867,7 @@
         .fkp-grip { color: var(--faint); }
         .fkp-head.dragging .fkp-grip { color: var(--muted); }
         .fkp-head b { color: var(--text); font-size: var(--fs-sm); font-weight: 600; }
-        #formula-keypad-close {
+        #formula-keypad-close, #smiles-keypad-close {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -878,7 +878,7 @@
             color: var(--faint);
             cursor: pointer;
         }
-        #formula-keypad-close:hover { background: var(--active); color: var(--text); }
+        #formula-keypad-close:hover, #smiles-keypad-close:hover { background: var(--active); color: var(--text); }
         .fkp-sect { font-size: var(--fs-xs); color: var(--faint); margin: 6px 0 4px; }
         .fkp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
         .fkp-key {
@@ -915,6 +915,8 @@
         }
         .fkp-act:hover { border-color: var(--control); color: var(--text); }
         .fkp-act.primary { border-color: var(--control); color: var(--text); font-weight: 600; }
+        /* 异构体「自定义基团」SMILES 小键盘（2026-11）：比分子式键盘宽，层级要盖过异构体弹窗 */
+        #smiles-keypad { width: 300px; z-index: 1260; }
 
         /* ================================================================
            8. 菜单 / HUD / Toast / 徽章
@@ -1275,6 +1277,42 @@
         .isof-reset:hover { color: var(--text); }
         .isof-check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--muted); white-space: nowrap; }
         .isof-check input { accent-color: var(--accent); }
+
+        /* 自定义基团（SMILES 子结构筛选，2026-11） */
+        .isof-custom-input {
+            width: 190px;
+            height: 26px;
+            padding: 0 6px;
+            border-radius: var(--r-chip);
+            border: 1px solid var(--control);
+            background: var(--sunken);
+            color: var(--text);
+            font-size: var(--fs-xs);
+            font-family: var(--mono);
+            outline: none;
+        }
+        .isof-custom-input.isof-invalid { border-color: var(--negative); }
+        .isof-mini-btn {
+            display: inline-flex;
+            align-items: center;
+            height: 24px;
+            padding: 0 8px;
+            border-radius: var(--r-chip);
+            border: 1px solid var(--border);
+            background: var(--raised);
+            color: var(--muted);
+            font-size: var(--fs-xs);
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .isof-mini-btn:hover { border-color: var(--control); color: var(--text); }
+        .isof-mini-btn.primary { border-color: var(--control); color: var(--text); }
+        .isof-custom-chips { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+        .isof-custom-chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); }
+        .isof-custom-chip .isof-chip-x { color: var(--faint); font-family: var(--mono); line-height: 1; }
+        .isof-custom-chip:hover .isof-chip-x { color: var(--negative); }
+        .isof-custom-hint { color: var(--negative); font-size: var(--fs-xs); }
 
         #isomer-list {
             flex: 1 1 auto;
@@ -1643,7 +1681,7 @@
             .drawer-head { height: 48px; padding: 0 10px 0 14px; }
             .drawer-title { font-size: var(--fs-lg); }
             #input-panel-body { padding: 12px; }
-            #formula-keypad { width: min(300px, calc(100vw - 16px)); }
+            #formula-keypad, #smiles-keypad { width: min(300px, calc(100vw - 16px)); }
             .fkp-key { min-height: 34px; font-size: var(--fs-lg); }
             #help-overlay, #skeletal-lightbox { padding: 12px; }
             #help-card { padding: 20px 16px 20px; }
@@ -1948,6 +1986,14 @@
                 <span id="isomer-group-chips" style="display:flex; flex-wrap:wrap; gap:4px 6px;"></span>
             </div>
             <div class="isof-row">
+                <span class="isof-cap">自定义</span>
+                <input type="text" id="isomer-custom-input" class="isof-custom-input" placeholder="SMILES，如 c1ccccc1O" title="按子结构匹配（元素 / 芳香性 / 键级）；方括号可约束氢数，如 [OH]、[CH3]" autocomplete="off" spellcheck="false" />
+                <span class="isof-mini-btn" id="isomer-custom-keypad-btn" title="用小键盘输入 SMILES">小键盘</span>
+                <span class="isof-mini-btn primary" id="isomer-custom-add" title="添加为筛选条件">添加</span>
+                <span class="isof-custom-hint" id="isomer-custom-hint"></span>
+                <span class="isof-custom-chips" id="isomer-custom-chips" style="display:none;"></span>
+            </div>
+            <div class="isof-row">
                 <span class="isof-cap">¹H NMR</span>
                 <span>峰组数</span>
                 <input type="text" id="isomer-nmr-count" placeholder="如 3 / ≥3 / 2-4" title="支持 =n、>n、<n、a-b 区间；默认不计时全部" autocomplete="off" />
@@ -1982,6 +2028,14 @@
             <div class="isof-row">
                 <span class="isof-cap">官能团</span>
                 <span id="isomer-pre-group-chips" style="display:flex; flex-wrap:wrap; gap:4px 6px;"></span>
+            </div>
+            <div class="isof-row">
+                <span class="isof-cap">自定义</span>
+                <input type="text" id="isomer-pre-custom-input" class="isof-custom-input" placeholder="SMILES，如 c1ccccc1O" title="按子结构匹配（元素 / 芳香性 / 键级）；方括号可约束氢数，如 [OH]、[CH3]" autocomplete="off" spellcheck="false" />
+                <span class="isof-mini-btn" id="isomer-pre-custom-keypad-btn" title="用小键盘输入 SMILES">小键盘</span>
+                <span class="isof-mini-btn primary" id="isomer-pre-custom-add" title="添加为筛选条件">添加</span>
+                <span class="isof-custom-hint" id="isomer-pre-custom-hint"></span>
+                <span class="isof-custom-chips" id="isomer-pre-custom-chips" style="display:none;"></span>
             </div>
             <div class="isof-row">
                 <span class="isof-cap">¹H NMR</span>
@@ -2049,6 +2103,28 @@
             <span id="formula-keypad-backspace" class="fkp-act"><span class="ui-ic" data-icon="delete" data-size="13"></span>退格</span>
             <span id="formula-keypad-clear" class="fkp-act">清空</span>
             <span id="formula-keypad-ok" class="fkp-act primary">生成</span>
+        </div>
+    </div>
+
+    <!-- ============================ SMILES 小键盘（异构体自定义基团，2026-11） ============================ -->
+    <div id="smiles-keypad" style="display:none;" role="dialog" aria-label="SMILES 键盘">
+        <div class="fkp-head" title="按住标题栏拖动键盘">
+            <span class="fkp-head-title">
+                <span class="ui-ic fkp-grip" data-icon="grip-vertical" data-size="13"></span>
+                <b>SMILES 键盘</b>
+            </span>
+            <span id="smiles-keypad-close" data-icon="x" data-size="14" title="关闭"></span>
+        </div>
+        <div class="fkp-sect">原子</div>
+        <div id="smiles-keypad-atoms" class="fkp-grid"></div>
+        <div class="fkp-sect">芳香 / 括号</div>
+        <div id="smiles-keypad-arom" class="fkp-grid"></div>
+        <div class="fkp-sect">环号 / 键 / 电荷</div>
+        <div id="smiles-keypad-misc" class="fkp-grid"></div>
+        <div class="fkp-actions">
+            <span id="smiles-keypad-backspace" class="fkp-act"><span class="ui-ic" data-icon="delete" data-size="13"></span>退格</span>
+            <span id="smiles-keypad-clear" class="fkp-act">清空</span>
+            <span id="smiles-keypad-ok" class="fkp-act primary">添加</span>
         </div>
     </div>
 
@@ -2473,9 +2549,20 @@
         camera.position.set(8, 6, 12);
         camera.lookAt(0, 0, 0);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        // 自动化低负载渲染（2026-11）：Playwright/webdriver 下测试脚本大量时间在等待
+        // 网络与几何优化，若仍按 60fps + 全分辨率 + 抗锯齿渲染，实测 4 核 CPU 空闲
+        // 占用约 75%，跑测试时直接 100%。仅自动化环境降级（普通浏览器完全不变）：
+        // 关闭抗锯齿、像素比 0.5、按场景限帧（交互 30fps / 优化中 4fps / 空闲 8fps，
+        // 见 autoRenderFps）。URL 加 ?hifx=1 可强制保持原画质（排查渲染问题时用），
+        // ?fps=N 可覆盖自动化帧率。
+        const AUTOMATION_LOW_FX = (typeof navigator !== 'undefined' && navigator.webdriver === true
+            && !/[?&]hifx=1(?:&|$)/.test(location.search));
+        const renderer = new THREE.WebGLRenderer({
+            antialias: !AUTOMATION_LOW_FX,
+            powerPreference: AUTOMATION_LOW_FX ? 'low-power' : 'default'
+        });
         renderer.setSize(_vs0.w, _vs0.h);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setPixelRatio(AUTOMATION_LOW_FX ? 0.5 : Math.min(window.devicePixelRatio || 1, 2));
         (canvasHost || document.body).appendChild(renderer.domElement);
 
         const labelRenderer = new CSS2DRenderer();
@@ -2501,7 +2588,10 @@
         }
 
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
+        // 自动化下关闭阻尼：限帧后阻尼的"残余惯性"会让相机在松手后继续缓慢漂移，
+        // 而脚本是「先投影出屏幕坐标 → 立刻点击」的，漂移会导致射线打偏（锁定点键
+        // 选不中、拖原子落空）。关掉阻尼后松手即定格，相机最终位置与原来一致。
+        controls.enableDamping = !AUTOMATION_LOW_FX;
         controls.dampingFactor = 0.05;
         controls.screenSpacePanning = true;
         controls.enablePan = true;
@@ -2512,15 +2602,18 @@
         controls.maxPolarAngle = Math.PI;
 
         // Shift + 左键拖 = 平移（触控板/无右键场景的备用手势）。
-        // 必须在捕获阶段先于 OrbitControls 读取 mouseButtons.LEFT；松开后恢复旋转。
+        // 注意：OrbitControls **原生**就支持这个手势——onMouseDown 里 mouseAction 为
+        // ROTATE 且按住 Shift 时会自动切到 PAN（反之亦然）。2026-11 的旧实现把
+        // mouseButtons.LEFT 改成 PAN，反而触发了它"PAN + Shift → ROTATE"的反向分支，
+        // 结果 Shift+左键一直在旋转（实测相机位置绕目标转了 60°，target 不动）。
+        // 现在只记录手势标记（供 __diag.panConfig 诊断），mouseButtons 一律保持默认。
         let _shiftPanActive = false;
         function setShiftPan(on) {
             if (on === _shiftPanActive) return;
             _shiftPanActive = on;
-            controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
         }
-        renderer.domElement.addEventListener('pointerdown', (e) => {
-            if (e.button === 0 && e.shiftKey) setShiftPan(true);
+        window.addEventListener('pointerdown', (e) => {
+            if (e.button === 0 && e.shiftKey && e.target === renderer.domElement) setShiftPan(true);
         }, true);
         window.addEventListener('pointerup', () => setShiftPan(false), true);
         window.addEventListener('pointercancel', () => setShiftPan(false), true);
@@ -2612,6 +2705,8 @@
                 camera.position.set(8, 6, 12);
                 camera.updateProjectionMatrix();
                 controls.update();
+                camera.updateMatrixWorld();
+                camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
                 depthGround.position.y = -3.2;
                 return;
             }
@@ -2636,6 +2731,11 @@
             camera.far = Math.max(100, d * 12);
             camera.updateProjectionMatrix();
             controls.update();
+            // 立刻同步相机矩阵：matrixWorldInverse 平时由 renderer.render 每帧刷新，
+            // 自动化限帧下最长 125ms 才有一帧——此间脚本用 __dragMode.project 投影
+            // 屏幕坐标再点击就会打偏（旧坐标 = 取景前的相机）。手动刷一次。
+            camera.updateMatrixWorld();
+            camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
         }
         window.__fitView = fitViewToMolecule;
 
@@ -5728,7 +5828,27 @@ isOptimizing = false;
             return hasPlane(u) && hasPlane(v);
         }
 
+        // 相机矩阵同步（2026-11 自动化限帧配套）：matrixWorldInverse 平时由
+        // renderer.render 每帧刷新，自动化限帧后最长 125ms 才有一帧；此间任何
+        // "改相机 → 立刻投影/射线"的调用都会用旧矩阵。所有拾取/投影都经
+        // getNormalizedMouse 或 project，在这里统一同步一次（开销 ~2 次矩阵乘）。
+        function syncCameraMatrices() {
+            camera.updateMatrixWorld();
+            camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+        }
+
+        // 场景矩阵同步（2026-11 自动化限帧配套）：新原子/键的 matrixWorld 只在
+        // renderer.render 里刷新。限帧后"生成分子 → 立刻射线拾取"会读到尚未刷新
+        // 的单位阵——所有新原子都停在世界原点、半径 0.46 的球堆成一团，点键必被
+        // "原子"抢走（实测 ethane：首次点击正常，再生成后同一点击 atoms=16 全命中）。
+        // 拾取前统一刷一次（updateMatrixWorld 只对脏对象做矩阵合成）。
+        function syncSceneMatrices() {
+            try { scene.updateMatrixWorld(); } catch (e) {}
+        }
+
         function getNormalizedMouse(clientX, clientY) {
+            syncSceneMatrices();
+            syncCameraMatrices();
             const rect = canvas.getBoundingClientRect();
             if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
             const x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -11226,7 +11346,9 @@ function smilesToCondensed(smiles) {
              按环内键级交替规则识别，归一为芳香（避免苯环 H 被误判为烯氢）。
            已知限制：方括号内电荷不参与价态修正（候选列表本身已过滤含 '[' 的 SMILES）。 */
         const ISOF_GROUP_DEFS = [
-            { key: 'oh',       label: '羟基',   tip: 'O–H（醇 / 酚 / 羧酸）' },
+            { key: 'oh',       label: '羟基',   tip: '任意 O–H（醇 / 酚 / 羧酸）' },
+            { key: 'phoh',     label: '酚羟基', tip: '芳香环碳上的 –OH' },
+            { key: 'aloh',     label: '醇羟基', tip: '饱和非芳香碳上的 –OH（不含羧酸 / 烯醇）' },
             { key: 'ald',      label: '醛基',   tip: '–CHO' },
             { key: 'cooh',     label: '羧基',   tip: '–COOH' },
             { key: 'ester',    label: '酯基',   tip: '–COO–' },
@@ -11376,7 +11498,16 @@ function smilesToCondensed(smiles) {
                 const cNb = i => adj[i].filter(e => isC(e.j));
                 for (let i = 0; i < n; i++) {
                     const el = atoms[i].type;
-                    if (el === 'O' && hC[i] >= 1 && adj[i].some(e => isC(e.j) && e.order < 1.9)) G.oh = true;
+                    if (el === 'O' && hC[i] >= 1) {
+                        const ohC = adj[i].filter(e => isC(e.j) && e.order < 1.9);
+                        if (ohC.length) {
+                            G.oh = true;
+                            // 酚羟基：O 连在芳香环碳上；醇羟基：O 连在饱和非芳香碳上
+                            // （该碳除 C–O 外全为单键——排除羧酸 C=O 与烯醇 C=C）。
+                            if (ohC.some(e => aromMark[e.j])) G.phoh = true;
+                            if (ohC.some(e => !aromMark[e.j] && dblO(e.j).length === 0 && adj[e.j].every(x => x.order < 1.9))) G.aloh = true;
+                        }
+                    }
                     if (isC(i) && !aromMark[i] && hC[i] >= 1 && dblO(i).length === 1) {
                         // 醛基：C(=O)H，除羰基 O 外只允许碳邻居（排除甲酰胺/甲酸酯）
                         if (oNb(i).length === 1 && adj[i].every(e => atoms[e.j].type === 'O' ? Math.abs(e.order - 2) < 0.01 : isC(e.j))) G.ald = true;
@@ -11479,6 +11610,13 @@ function smilesToCondensed(smiles) {
                 return {
                     groups: ISOF_GROUP_DEFS.filter(d => G[d.key]).map(d => d.key),
                     groupSet: G,
+                    // 供「自定义基团」子图同构匹配使用：元素 / 芳香性 / 隐式氢 / 有效键级（芳环键归一 1.5）
+                    graph: {
+                        el: atoms.map(a => a.type),
+                        arom: aromMark.map(x => x === true),
+                        h: hC,
+                        adj: adj.map(list => list.map(e => ({ j: e.j, o: aromRingBond.has(e.bi) ? 1.5 : e.order })))
+                    },
                     hClasses: hClasses.map(c => ({ protons: c.protons, type: c.type, exch: c.exch })),
                     count: hClasses.length,
                     countNoExch: noExchCls.length,
@@ -11490,6 +11628,151 @@ function smilesToCondensed(smiles) {
             } catch (e) { return null; }
         }
         window.__analyzeIsomerStructure = isofAnalyzeStructure;
+
+        // ---- 自定义基团（SMILES 子结构，2026-11）----
+        // 语义：把用户输入的 SMILES 当作「子结构查询」，在候选结构里做子图同构匹配。
+        // · 元素与芳香性必须一致（Kekulé 写法的芳环与解析器同规则归一为芳香）；
+        // · 键级必须一致（芳环内键归一 1.5；查询里的 C=C 不会匹配芳环）；
+        // · 隐式氢默认不约束；方括号显式氢作为「至少 N 个 H」约束（如 [OH]、[CH3]）。
+        // 只接受单片段、≤24 重原子 / ≤32 条键的查询，避免组合爆炸。
+        const ISOF_CUSTOM_MAX_ATOMS = 24;
+        const ISOF_CUSTOM_MAX_BONDS = 32;
+        const ISOF_CUSTOM_MATCH_BUDGET = 200000;
+        const _isofQueryCache = new Map();
+
+        function isofCompileCustom(smiles) {
+            const raw = String(smiles == null ? '' : smiles).trim();
+            if (!raw) return { ok: false, error: '请输入 SMILES' };
+            if (_isofQueryCache.has(raw)) return _isofQueryCache.get(raw);
+            const res = (function () {
+                const stripped = stripStereoMarkers(raw).trim();
+                if (!stripped) return { ok: false, error: '请输入 SMILES' };
+                if (stripped.indexOf('.') >= 0) return { ok: false, error: '只支持单个片段（不要用 . 分隔）' };
+                let p = null;
+                try { p = parseSmiles(stripped); } catch (e) { p = null; }
+                if (!p || p.error || !p.atoms || !p.atoms.length) {
+                    return { ok: false, error: 'SMILES 解析失败' + (p && p.error && p.error.msg ? '：' + p.error.msg : '') };
+                }
+                const atoms = p.atoms, bonds = p.bonds, n = atoms.length;
+                if (n > ISOF_CUSTOM_MAX_ATOMS) return { ok: false, error: '查询结构过大（最多 ' + ISOF_CUSTOM_MAX_ATOMS + ' 个重原子）' };
+                if (bonds.length > ISOF_CUSTOM_MAX_BONDS) return { ok: false, error: '查询结构过大（最多 ' + ISOF_CUSTOM_MAX_BONDS + ' 条键）' };
+                const adj = atoms.map(() => []);
+                const bondIdx = Object.create(null);
+                bonds.forEach((b, bi) => {
+                    adj[b[0]].push({ j: b[1], order: b[2], bi: bi });
+                    adj[b[1]].push({ j: b[0], order: b[2], bi: bi });
+                    bondIdx[isofBondKey(b[0], b[1])] = bi;
+                });
+                const orderOf = (a, b) => {
+                    const bi = bondIdx[isofBondKey(a, b)];
+                    return bi === undefined ? null : bonds[bi][2];
+                };
+                const hC = isofHCounts(atoms, adj);
+                const rings = isofFindRings(adj, 12);
+                const aromMark = atoms.map(a => a.aromatic === true);
+                const aromRingBond = new Set();
+                const ringAtomSet = new Set();
+                rings.forEach(r => r.forEach(i => ringAtomSet.add(i)));
+                rings.forEach(ring => {
+                    if (!isofRingAromCandidate(ring, atoms, orderOf, adj, ringAtomSet)) return;
+                    ring.forEach(i => { aromMark[i] = true; });
+                    ring.forEach((i, k) => {
+                        const bi = bondIdx[isofBondKey(i, ring[(k + 1) % ring.length])];
+                        if (bi !== undefined) aromRingBond.add(bi);
+                    });
+                });
+                return {
+                    ok: true,
+                    smiles: stripped,
+                    query: {
+                        n: n,
+                        atoms: atoms.map((a, i) => ({
+                            el: a.type,
+                            arom: aromMark[i] === true,
+                            hMin: (a.explicitH !== undefined) ? a.explicitH : -1,
+                            deg: adj[i].length
+                        })),
+                        adj: adj.map(list => list.map(e => ({ j: e.j, o: aromRingBond.has(e.bi) ? 1.5 : e.order })))
+                    }
+                };
+            })();
+            if (_isofQueryCache.size > 200) _isofQueryCache.clear();
+            _isofQueryCache.set(raw, res);
+            return res;
+        }
+
+        function isofMatchCustomQuery(an, query) {
+            if (!an || !an.graph || !query) return false;
+            const g = an.graph, q = query;
+            const hn = g.el.length, qn = q.n;
+            if (!hn || qn > hn) return false;
+            // 候选集：元素 + 芳香性 + 显式氢下限 + 度（查询里每条键都要映射到宿主键）
+            const cand = new Array(qn);
+            for (let i = 0; i < qn; i++) {
+                const qa = q.atoms[i];
+                const list = [];
+                for (let j = 0; j < hn; j++) {
+                    if (g.el[j] !== qa.el) continue;
+                    if (g.arom[j] !== qa.arom) continue;
+                    if (qa.hMin >= 0 && g.h[j] < qa.hMin) continue;
+                    if (g.adj[j].length < qa.deg) continue;
+                    list.push(j);
+                }
+                if (!list.length) return false;
+                cand[i] = list;
+            }
+            const order = new Array(qn);
+            for (let i = 0; i < qn; i++) order[i] = i;
+            order.sort((a, b) => (cand[a].length - cand[b].length) || (q.adj[b].length - q.adj[a].length));
+            const map = new Int32Array(qn); map.fill(-1);
+            const used = new Uint8Array(hn);
+            const gAdj = g.adj, qAdj = q.adj;
+            let budget = ISOF_CUSTOM_MATCH_BUDGET;
+            const okAt = (qi, hj) => {
+                for (const e of qAdj[qi]) {
+                    const mj = map[e.j];
+                    if (mj < 0) continue;
+                    let found = false;
+                    for (const ge of gAdj[hj]) {
+                        if (ge.j !== mj) continue;
+                        found = true;
+                        if (Math.abs(ge.o - e.o) > 0.01) return false;
+                        break;
+                    }
+                    if (!found) return false;
+                }
+                return true;
+            };
+            const dfs = (k) => {
+                if (k === qn) return true;
+                if (--budget <= 0) return false;   // 兜底：极端结构下不卡死页面
+                const qi = order[k];
+                const list = cand[qi];
+                for (let t = 0; t < list.length; t++) {
+                    const hj = list[t];
+                    if (used[hj]) continue;
+                    if (!okAt(qi, hj)) continue;
+                    map[qi] = hj; used[hj] = 1;
+                    if (dfs(k + 1)) return true;
+                    used[hj] = 0; map[qi] = -1;
+                }
+                return false;
+            };
+            return dfs(0);
+        }
+
+        // 结果记忆化：同一结构对象（it._an）对同一查询只算一次
+        function isofMatchCustom(an, smiles) {
+            if (!an) return false;
+            const comp = isofCompileCustom(smiles);
+            if (!comp.ok) return false;
+            if (!an._cq) an._cq = Object.create(null);
+            const key = comp.smiles;
+            if (an._cq[key] === undefined) an._cq[key] = isofMatchCustomQuery(an, comp.query);
+            return an._cq[key];
+        }
+        window.__isofCompileCustom = isofCompileCustom;
+        window.__isofMatchCustom = isofMatchCustom;
 
         // ---- 峰组数表达式：空=不限；n / =n / >n / >=n / <n / <=n / a-b 区间；非法返回 undefined ----
         function isofParseCountExpr(raw) {
@@ -11523,16 +11806,18 @@ function smilesToCondensed(smiles) {
         }
 
         // ---- 筛选状态 + 面板接线 ----
-        const _isofState = { groups: new Set(), types: new Set(), countRaw: '', noExch: false, mode: 'all' };
+        const _isofState = { groups: new Set(), types: new Set(), custom: [], countRaw: '', noExch: false, mode: 'all' };
         let _isofInited = false;
 
         function isofRowMatches(an, expr, state) {
             const f = state || _isofState;
-            if (!f.groups.size && !f.types.size && !expr) return true;   // 无筛选条件：全部显示（含分析不可用的行）
+            const custom = f.custom || [];
+            if (!f.groups.size && !f.types.size && !custom.length && !expr) return true;   // 无筛选条件：全部显示（含分析不可用的行）
             if (!an) return false;                                       // 有筛选条件但结构分析不可用：无法匹配
             const conds = [];
             f.groups.forEach(k => conds.push(an.groupSet[k] === true));
             f.types.forEach(k => conds.push(!!an.hTypes[k]));
+            custom.forEach(smi => conds.push(isofMatchCustom(an, smi)));
             if (expr) conds.push(isofMatchCount(expr, f.noExch ? an.countNoExch : an.count));
             return f.mode === 'all' ? conds.every(Boolean) : conds.some(Boolean);
         }
@@ -11587,6 +11872,7 @@ function smilesToCondensed(smiles) {
         function isofSyncUI() {
             document.querySelectorAll('#isomer-group-chips .isof-chip').forEach(c => c.classList.toggle('on', _isofState.groups.has(c.dataset.key)));
             document.querySelectorAll('#isomer-nmr-types .isof-chip').forEach(c => c.classList.toggle('on', _isofState.types.has(c.dataset.key)));
+            isofCustomRefresh('isomer');
             const cnt = document.getElementById('isomer-nmr-count');
             if (cnt) { cnt.value = _isofState.countRaw; cnt.classList.toggle('isof-invalid', isofParseCountExpr(_isofState.countRaw) === undefined); }
             const nx = document.getElementById('isomer-nmr-noexch');
@@ -11596,10 +11882,100 @@ function smilesToCondensed(smiles) {
         }
         function isofResetFilter() {
             _isofState.groups.clear(); _isofState.types.clear();
+            _isofState.custom = [];
             _isofState.countRaw = ''; _isofState.noExch = false; _isofState.mode = 'all';
+            isofCustomHint('isomer', '');
             isofSyncUI();
             isofUpdateRowTags();
             return isofApplyFilter();
+        }
+
+        // ---- 自定义基团 UI（结果面板 + 检索前筛选共用，owner = 'isomer' | 'pre'）----
+        function isofCustomState(owner) {
+            return owner === 'pre' ? _isofPre : _isofState;
+        }
+        function isofCustomEl(owner, kind) {
+            const pre = owner === 'pre';
+            const ids = {
+                input: pre ? 'isomer-pre-custom-input' : 'isomer-custom-input',
+                hint:  pre ? 'isomer-pre-custom-hint' : 'isomer-custom-hint',
+                chips: pre ? 'isomer-pre-custom-chips' : 'isomer-custom-chips',
+                add:   pre ? 'isomer-pre-custom-add' : 'isomer-custom-add',
+                kp:    pre ? 'isomer-pre-custom-keypad-btn' : 'isomer-custom-keypad-btn'
+            };
+            return document.getElementById(ids[kind]);
+        }
+        function isofCustomHint(owner, msg) {
+            const hint = isofCustomEl(owner, 'hint');
+            const input = isofCustomEl(owner, 'input');
+            if (hint) hint.textContent = msg || '';
+            if (input) input.classList.toggle('isof-invalid', !!msg);
+        }
+        function isofCustomRefresh(owner) {
+            const st = isofCustomState(owner);
+            const wrap = isofCustomEl(owner, 'chips');
+            if (!wrap) return;
+            const list = st.custom || [];
+            wrap.innerHTML = '';
+            list.forEach((smi, idx) => {
+                const chip = document.createElement('span');
+                chip.className = 'isof-chip isof-custom-chip on';
+                chip.dataset.smiles = smi;
+                chip.title = '点击移除该自定义基团';
+                const t = document.createElement('span');
+                t.textContent = smi;
+                const x = document.createElement('span');
+                x.className = 'isof-chip-x';
+                x.textContent = '×';
+                chip.appendChild(t); chip.appendChild(x);
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    isofRemoveCustom(owner, idx);
+                });
+                wrap.appendChild(chip);
+            });
+            wrap.style.display = list.length ? 'flex' : 'none';
+        }
+        function isofAddCustom(owner, raw) {
+            const st = isofCustomState(owner);
+            const input = isofCustomEl(owner, 'input');
+            const val = String(raw != null ? raw : (input ? input.value : '')).trim();
+            const comp = isofCompileCustom(val);
+            if (!comp.ok) { isofCustomHint(owner, comp.error); return false; }
+            if (!st.custom) st.custom = [];
+            if (st.custom.indexOf(comp.smiles) < 0) st.custom.push(comp.smiles);
+            if (input) { input.value = ''; input.classList.remove('isof-invalid'); }
+            isofCustomHint(owner, '');
+            isofCustomRefresh(owner);
+            if (owner === 'pre') isofPreUpdateStatus();
+            else { isofUpdateRowTags(); isofApplyFilter(); }
+            return true;
+        }
+        function isofRemoveCustom(owner, idx) {
+            const st = isofCustomState(owner);
+            if (!st.custom || idx < 0 || idx >= st.custom.length) return;
+            st.custom.splice(idx, 1);
+            isofCustomRefresh(owner);
+            if (owner === 'pre') isofPreUpdateStatus();
+            else { isofUpdateRowTags(); isofApplyFilter(); }
+        }
+        function isofBindCustomUI(owner) {
+            const input = isofCustomEl(owner, 'input');
+            const add = isofCustomEl(owner, 'add');
+            const kpBtn = isofCustomEl(owner, 'kp');
+            if (add) add.addEventListener('click', (e) => { e.preventDefault(); isofAddCustom(owner); });
+            if (input) {
+                input.addEventListener('input', () => { if (input.classList.contains('isof-invalid')) isofCustomHint(owner, ''); });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); isofAddCustom(owner); }
+                    else if (e.key === 'Escape') { hideSmilesKeypad(); }
+                });
+            }
+            if (kpBtn) {
+                kpBtn.addEventListener('mousedown', (e) => e.preventDefault());
+                kpBtn.addEventListener('click', (e) => { e.preventDefault(); toggleSmilesKeypadFor(owner); });
+            }
+            isofCustomRefresh(owner);
         }
         function isofBuildChipSet(gWrap, tWrap, state, onChange) {
             if (!gWrap || !tWrap || gWrap.childElementCount) return;
@@ -11652,6 +12028,7 @@ function smilesToCondensed(smiles) {
             if (md) md.addEventListener('change', () => { _isofState.mode = md.value; isofApplyFilter(); });
             const rs = document.getElementById('isomer-filter-reset');
             if (rs) rs.addEventListener('click', () => isofResetFilter());
+            isofBindCustomUI('isomer');
         }
         window.__isomerFilter = {
             analyze: isofAnalyzeStructure,
@@ -11659,11 +12036,23 @@ function smilesToCondensed(smiles) {
             typeKeys: ISOF_H_TYPE_DEFS.map(d => d.key),
             parseCount: isofParseCountExpr,
             matchCount: isofMatchCount,
-            state: () => ({ groups: Array.from(_isofState.groups), types: Array.from(_isofState.types), countRaw: _isofState.countRaw, noExch: _isofState.noExch, mode: _isofState.mode }),
+            compileCustom: isofCompileCustom,
+            matchCustom: (an, smiles) => isofMatchCustom(an, smiles),
+            custom: () => (_isofState.custom || []).slice(),
+            addCustom: (s) => isofAddCustom('isomer', s),
+            removeCustom: (i) => isofRemoveCustom('isomer', i),
+            state: () => ({ groups: Array.from(_isofState.groups), types: Array.from(_isofState.types), custom: (_isofState.custom || []).slice(), countRaw: _isofState.countRaw, noExch: _isofState.noExch, mode: _isofState.mode }),
             set: (p) => {
                 if (p) {
                     if (p.groups) _isofState.groups = new Set(p.groups);
                     if (p.types) _isofState.types = new Set(p.types);
+                    if (p.custom) {
+                        _isofState.custom = [];
+                        p.custom.forEach(s => {
+                            const comp = isofCompileCustom(s);
+                            if (comp.ok && _isofState.custom.indexOf(comp.smiles) < 0) _isofState.custom.push(comp.smiles);
+                        });
+                    }
                     if (typeof p.countRaw === 'string') _isofState.countRaw = p.countRaw;
                     if (typeof p.noExch === 'boolean') _isofState.noExch = p.noExch;
                     if (p.mode) _isofState.mode = p.mode;
@@ -11834,7 +12223,7 @@ function smilesToCondensed(smiles) {
         // 状态独立于结果面板的 _isofState：预筛选条件在检索阶段使用，检索完成后原样带入结果面板。
         const _isofPre = {
             formula: '', threshold: ISOF_PRESEARCH_THRESHOLD,
-            groups: new Set(), types: new Set(), countRaw: '', noExch: false, mode: 'all',
+            groups: new Set(), types: new Set(), custom: [], countRaw: '', noExch: false, mode: 'all',
             limit: 60, running: false, runId: 0, runStart: 0,
             offset: 0, scanned: 0, matches: [], seen: new Set(),
             total: 0, totalKnown: false, allCids: null, listPromise: null,
@@ -11846,7 +12235,7 @@ function smilesToCondensed(smiles) {
         let _isomerCurrentPresearch = null;
 
         function isofPreSnapshot() {
-            return { groups: Array.from(_isofPre.groups), types: Array.from(_isofPre.types), countRaw: _isofPre.countRaw, noExch: _isofPre.noExch, mode: _isofPre.mode };
+            return { groups: Array.from(_isofPre.groups), types: Array.from(_isofPre.types), custom: (_isofPre.custom || []).slice(), countRaw: _isofPre.countRaw, noExch: _isofPre.noExch, mode: _isofPre.mode };
         }
         function isofPreLimit() {
             const sel = document.getElementById('isomer-pre-limit');
@@ -11874,7 +12263,7 @@ function smilesToCondensed(smiles) {
         function isofPreUpdateStatus(extra) {
             const st = document.getElementById('isomer-pre-status');
             if (!st) return;
-            const has = _isofPre.groups.size + _isofPre.types.size + (_isofPre.countRaw.trim() ? 1 : 0);
+            const has = _isofPre.groups.size + _isofPre.types.size + (_isofPre.custom || []).length + (_isofPre.countRaw.trim() ? 1 : 0);
             st.textContent = extra || (has ? ('条件 ' + has + ' 项') : ('未选条件（按 PubChem 顺序取前 ' + isofPreLimit() + ' 个）'));
         }
         // 浮层可见性判定：CSS 里默认 display:none、展开时才写内联 display，
@@ -11913,6 +12302,7 @@ function smilesToCondensed(smiles) {
         function isofPreSyncUI() {
             document.querySelectorAll('#isomer-pre-group-chips .isof-chip').forEach(c => c.classList.toggle('on', _isofPre.groups.has(c.dataset.key)));
             document.querySelectorAll('#isomer-pre-nmr-types .isof-chip').forEach(c => c.classList.toggle('on', _isofPre.types.has(c.dataset.key)));
+            isofCustomRefresh('pre');
             const cnt = document.getElementById('isomer-pre-nmr-count');
             if (cnt) {
                 cnt.value = _isofPre.countRaw;
@@ -11928,7 +12318,9 @@ function smilesToCondensed(smiles) {
         function isofPreResetFilter() {
             if (_isofPre.running) return;   // 检索中不改条件，避免前后结果语义不一致
             _isofPre.groups.clear(); _isofPre.types.clear();
+            _isofPre.custom = [];
             _isofPre.countRaw = ''; _isofPre.noExch = false; _isofPre.mode = 'all';
+            isofCustomHint('pre', '');
             isofPreSyncUI();
             isofPreUpdateStatus();
         }
@@ -11941,6 +12333,7 @@ function smilesToCondensed(smiles) {
                 _isofPre,
                 () => { isofPreUpdateStatus(); }
             );
+            isofBindCustomUI('pre');
             const cnt = document.getElementById('isomer-pre-nmr-count');
             if (cnt) cnt.addEventListener('input', () => {
                 _isofPre.countRaw = cnt.value;
@@ -11967,6 +12360,10 @@ function smilesToCondensed(smiles) {
             if (more) more.addEventListener('click', continueIsomerPresearch);
             window.addEventListener('keydown', (e) => {
                 if (!isofElVisible(panel)) return;
+                // SMILES 小键盘开在面板之上：Esc 只关键盘（全局捕获链已处理并 stopPropagation，
+                // 此处再兜一层，避免某条路径下同一次 Esc 把面板也关掉）。
+                const skp = document.getElementById('smiles-keypad');
+                if (skp && getComputedStyle(skp).display !== 'none') return;
                 if (e.key === 'Escape') { e.preventDefault(); hideIsomerPresearchPanel(); }
             });
         }
@@ -12020,7 +12417,9 @@ function smilesToCondensed(smiles) {
             // 换分子式则重置预筛选条件（同一分子式重开保留上次条件，便于微调后重试）
             if (_isofPre.formula && _isofPre.formula !== formula) {
                 _isofPre.groups.clear(); _isofPre.types.clear();
+                _isofPre.custom = [];
                 _isofPre.countRaw = ''; _isofPre.noExch = false; _isofPre.mode = 'all';
+                isofCustomHint('pre', '');
             }
             _isofPre.formula = formula;
             _isofPre.threshold = threshold || ISOF_PRESEARCH_THRESHOLD;
@@ -12058,6 +12457,7 @@ function smilesToCondensed(smiles) {
         }
         function hideIsomerPresearchPanel() {
             if (_isofPre.running) isofPreStop();
+            hideSmilesKeypad();
             const panel = document.getElementById('isomer-pre-panel');
             ddFadeHide(panel, [
                 { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
@@ -12087,6 +12487,7 @@ function smilesToCondensed(smiles) {
             const eff = expr === null ? null : expr;
             _isofPre.limit = isofPreLimit();
             _isofPre.scanBudget = isofPreScanBudget();
+            hideSmilesKeypad();   // 开始检索时收起键盘，避免浮层挡住进度条
             if (!resume) {
                 _isofPre.offset = 0; _isofPre.scanned = 0;
                 _isofPre.matches = []; _isofPre.seen = new Set();
@@ -12210,10 +12611,22 @@ function smilesToCondensed(smiles) {
             continue: () => continueIsomerPresearch(),
             reset: isofPreResetFilter,
             visible: () => isofElVisible(document.getElementById('isomer-pre-panel')),
+            compileCustom: isofCompileCustom,
+            matchCustom: (an, smiles) => isofMatchCustom(an, smiles),
+            custom: () => (_isofPre.custom || []).slice(),
+            addCustom: (s) => isofAddCustom('pre', s),
+            removeCustom: (i) => isofRemoveCustom('pre', i),
             set: (p) => {
                 if (p) {
                     if (p.groups) _isofPre.groups = new Set(p.groups);
                     if (p.types) _isofPre.types = new Set(p.types);
+                    if (p.custom) {
+                        _isofPre.custom = [];
+                        p.custom.forEach(s => {
+                            const comp = isofCompileCustom(s);
+                            if (comp.ok && _isofPre.custom.indexOf(comp.smiles) < 0) _isofPre.custom.push(comp.smiles);
+                        });
+                    }
                     if (typeof p.countRaw === 'string') _isofPre.countRaw = p.countRaw;
                     if (typeof p.noExch === 'boolean') _isofPre.noExch = p.noExch;
                     if (p.mode) _isofPre.mode = p.mode;
@@ -12680,6 +13093,11 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 // 用户看到的结果与筛选状态一致（可继续在此基础上收窄）。
                 _isofState.groups = new Set(opts.filter.groups || []);
                 _isofState.types = new Set(opts.filter.types || []);
+                _isofState.custom = [];
+                (opts.filter.custom || []).forEach(s => {
+                    const comp = isofCompileCustom(s);
+                    if (comp.ok && _isofState.custom.indexOf(comp.smiles) < 0) _isofState.custom.push(comp.smiles);
+                });
                 _isofState.countRaw = opts.filter.countRaw || '';
                 _isofState.noExch = !!opts.filter.noExch;
                 _isofState.mode = opts.filter.mode || 'all';
@@ -12907,6 +13325,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             });
         })();
         function hideIsomerPanel() {
+            hideSmilesKeypad();
             const panel = document.getElementById('isomer-panel');
             ddFadeHide(panel, [
                 { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
@@ -13180,6 +13599,200 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (kp) kp.style.display = 'none';
             generateFromInput();
         });
+
+        // ============ SMILES 小键盘（2026-11）：异构体「自定义基团」输入 ============
+        // 复用分子式键盘的 .fkp-* 样式与交互模型（标题栏拖动、先显示再测量、视口夹取）。
+        // 与分子式键盘的区别：键集是 SMILES 语法片段，目标是两个筛选面板的输入框。
+        const SMILES_KEY_ATOMS = ['C','N','O','S','P','F','Cl','Br','I','H'];
+        const SMILES_KEY_AROM = ['c','n','o','s','(',')','[',']'];
+        const SMILES_KEY_MISC = ['1','2','3','4','5','6','7','8','9','=','+','-','#','%'];
+        let smilesKeypadOwner = 'isomer';
+        let smilesKeypadUserMoved = false;
+        let smilesKeypadDragPos = null;
+
+        function smilesKeypadEl() { return document.getElementById('smiles-keypad'); }
+        function smilesKeypadOwnerInput(owner) {
+            return document.getElementById(owner === 'pre' ? 'isomer-pre-custom-input' : 'isomer-custom-input');
+        }
+        function smilesKeypadClampPos(left, top) {
+            const kp = smilesKeypadEl();
+            const MARGIN = 8;
+            const vw = window.innerWidth;
+            const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            const kpw = kp ? (kp.offsetWidth || 300) : 300;
+            const kpH = kp ? kp.offsetHeight : 0;
+            const maxLeft = Math.max(MARGIN, vw - kpw - MARGIN);
+            const maxTop = Math.max(MARGIN, vh - kpH - MARGIN);
+            return {
+                left: Math.max(MARGIN, Math.min(left, maxLeft)),
+                top: Math.max(MARGIN, Math.min(top, maxTop))
+            };
+        }
+        function positionSmilesKeypad() {
+            const kp = smilesKeypadEl();
+            if (!kp) return;
+            const input = smilesKeypadOwnerInput(smilesKeypadOwner);
+            if (!input) return;
+            const MARGIN = 8, GAP = 4;
+            const vv = window.visualViewport;
+            const vw = window.innerWidth;
+            const vh = vv ? vv.height : window.innerHeight;
+            const r = input.getBoundingClientRect();
+            const kpw = kp.offsetWidth || 300;
+            let kpH = kp.offsetHeight || 0;
+            const maxH = Math.max(120, vh - MARGIN * 2);
+            kp.style.maxHeight = maxH + 'px';
+            if (kpH > maxH) kpH = maxH;
+            if (smilesKeypadUserMoved && smilesKeypadDragPos) {   // 用户摆过位置：只夹取回视口
+                const p = smilesKeypadClampPos(smilesKeypadDragPos.left, smilesKeypadDragPos.top);
+                kp.style.left = p.left + 'px';
+                kp.style.top = p.top + 'px';
+                return;
+            }
+            const left = Math.max(MARGIN, Math.min(r.left, vw - kpw - MARGIN));
+            let top = r.bottom + GAP;
+            if (top + kpH > vh - MARGIN) {
+                const above = r.top - GAP - kpH;
+                top = above >= MARGIN ? above : Math.max(MARGIN, vh - MARGIN - kpH);
+            }
+            kp.style.left = left + 'px';
+            kp.style.top = top + 'px';
+        }
+        function showSmilesKeypad(owner) {
+            const kp = smilesKeypadEl();
+            if (!kp) return;
+            smilesKeypadOwner = owner === 'pre' ? 'pre' : 'isomer';
+            kp.style.display = 'block';   // 先显示再测量（display:none 时 offset* 为 0）
+            positionSmilesKeypad();
+            ddFadeShow(kp, [
+                { opacity: 0, transform: 'translateY(-8px) scale(.96)' },
+                { opacity: 1, transform: 'none' }
+            ]);
+        }
+        function hideSmilesKeypad() {
+            const kp = smilesKeypadEl();
+            if (kp) kp.style.display = 'none';
+        }
+        function toggleSmilesKeypadFor(owner) {
+            const kp = smilesKeypadEl();
+            if (!kp) return;
+            const want = owner === 'pre' ? 'pre' : 'isomer';
+            const visible = kp.style.display !== 'none';
+            if (visible && smilesKeypadOwner === want) { hideSmilesKeypad(); return; }
+            showSmilesKeypad(want);
+        }
+        function appendSmilesKeypad(val) {
+            const input = smilesKeypadOwnerInput(smilesKeypadOwner);
+            if (!input) return;
+            input.value += val;
+            input.classList.remove('isof-invalid');
+            isofCustomHint(smilesKeypadOwner, '');
+            input.focus();
+        }
+        function initSmilesKeypad() {
+            const groups = [
+                ['smiles-keypad-atoms', SMILES_KEY_ATOMS],
+                ['smiles-keypad-arom', SMILES_KEY_AROM],
+                ['smiles-keypad-misc', SMILES_KEY_MISC]
+            ];
+            groups.forEach(([id, keys]) => {
+                const host = document.getElementById(id);
+                if (!host) return;
+                host.innerHTML = '';
+                keys.forEach(k => {
+                    const b = document.createElement('span');
+                    b.className = 'fkp-key';
+                    b.dataset.smilesKey = k;
+                    b.textContent = k;
+                    b.addEventListener('click', () => appendSmilesKeypad(k));
+                    host.appendChild(b);
+                });
+            });
+            const kp = smilesKeypadEl();
+            // 按键按下时防止输入框失焦（与分子式键盘同款）
+            if (kp) kp.addEventListener('mousedown', (e) => e.preventDefault());
+            const close = document.getElementById('smiles-keypad-close');
+            if (close) close.addEventListener('click', hideSmilesKeypad);
+            const back = document.getElementById('smiles-keypad-backspace');
+            if (back) back.addEventListener('click', () => {
+                const input = smilesKeypadOwnerInput(smilesKeypadOwner);
+                if (input && input.value) { input.value = input.value.slice(0, -1); input.focus(); }
+            });
+            const clear = document.getElementById('smiles-keypad-clear');
+            if (clear) clear.addEventListener('click', () => {
+                const input = smilesKeypadOwnerInput(smilesKeypadOwner);
+                if (input) { input.value = ''; input.focus(); }
+                isofCustomHint(smilesKeypadOwner, '');
+            });
+            const ok = document.getElementById('smiles-keypad-ok');
+            if (ok) ok.addEventListener('click', () => {
+                const owner = smilesKeypadOwner;
+                const done = isofAddCustom(owner);
+                if (done) hideSmilesKeypad();
+                const input = smilesKeypadOwnerInput(owner);
+                if (input) input.focus();
+            });
+        }
+        // 拖动（标题栏为把手，Pointer Events 覆盖鼠标/触摸；关闭按钮除外）
+        function initSmilesKeypadDrag() {
+            const kp = smilesKeypadEl();
+            const head = kp ? kp.querySelector('.fkp-head') : null;
+            if (!kp || !head) return;
+            let dragging = false, pointerId = null;
+            let startX = 0, startY = 0, baseLeft = 0, baseTop = 0;
+            head.addEventListener('pointerdown', (e) => {
+                if (e.target.closest && e.target.closest('#smiles-keypad-close')) return;
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                const r = kp.getBoundingClientRect();
+                dragging = true; pointerId = e.pointerId;
+                startX = e.clientX; startY = e.clientY;
+                baseLeft = r.left; baseTop = r.top;
+                head.classList.add('dragging');
+                try { head.setPointerCapture(e.pointerId); } catch (err) {}
+                e.preventDefault();
+            });
+            head.addEventListener('pointermove', (e) => {
+                if (!dragging || e.pointerId !== pointerId) return;
+                const p = smilesKeypadClampPos(baseLeft + (e.clientX - startX), baseTop + (e.clientY - startY));
+                kp.style.left = p.left + 'px';
+                kp.style.top = p.top + 'px';
+                smilesKeypadUserMoved = true;
+                smilesKeypadDragPos = p;
+            });
+            const endDrag = (e) => {
+                if (!dragging || (pointerId !== null && e.pointerId !== pointerId)) return;
+                dragging = false; pointerId = null;
+                head.classList.remove('dragging');
+            };
+            head.addEventListener('pointerup', endDrag);
+            head.addEventListener('pointercancel', endDrag);
+            window.addEventListener('pointerup', endDrag);
+            window.addEventListener('pointercancel', endDrag);
+        }
+        const _repositionSmilesKeypad = () => {
+            const kp = smilesKeypadEl();
+            if (kp && kp.style.display !== 'none') positionSmilesKeypad();
+        };
+        window.addEventListener('resize', _repositionSmilesKeypad);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', _repositionSmilesKeypad);
+        initSmilesKeypad();
+        initSmilesKeypadDrag();
+        window.__smilesKeypad = {
+            show: showSmilesKeypad,
+            hide: hideSmilesKeypad,
+            toggle: toggleSmilesKeypadFor,
+            position: positionSmilesKeypad,
+            owner: () => smilesKeypadOwner,
+            value: () => { const i = smilesKeypadOwnerInput(smilesKeypadOwner); return i ? i.value : ''; },
+            press: (v) => appendSmilesKeypad(String(v == null ? '' : v)),
+            isMoved: () => smilesKeypadUserMoved,
+            resetPosition: () => {
+                smilesKeypadUserMoved = false;
+                smilesKeypadDragPos = null;
+                const kp = smilesKeypadEl();
+                if (kp && kp.style.display !== 'none') positionSmilesKeypad();
+            }
+        };
 
         document.getElementById('btn-molecule-from-input').addEventListener('click', () => { generateFromInput(); });
         for (const inputId of ['name-input', 'smiles-input', 'formula-input']) {
@@ -13508,6 +14121,12 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (pendingPlacement) { e.preventDefault(); cancelPlacement(); return; }
             const lightbox = document.getElementById('skeletal-lightbox');
             if (lightbox && getComputedStyle(lightbox).display !== 'none') return;   // 由 10987 的处理器关闭
+            // SMILES 小键盘浮在异构体弹窗之上：先关它，且 stopPropagation 阻止检索前筛选
+            // 的冒泡处理器同一次 Esc 把面板也关掉（一次只关一层）。
+            const smilesKp = document.getElementById('smiles-keypad');
+            if (smilesKp && getComputedStyle(smilesKp).display !== 'none') {
+                e.preventDefault(); e.stopPropagation(); hideSmilesKeypad(); return;
+            }
             const isomer = document.getElementById('isomer-panel');
             if (isomer && isofElVisible(isomer)) { e.preventDefault(); hideIsomerPanel(); return; }
             const presearch = document.getElementById('isomer-pre-panel');
@@ -14945,8 +15564,16 @@ if (smilesInput) smilesInput.value = smilesToUse;
             }
             const atoms = atomsGroup.children.filter(child => child.userData?.isAtom);
             const atomIntersects = raycaster.intersectObjects(atoms);
-            if (atomIntersects.length > 0) {
-                const atom = atomIntersects[0].object;
+            // 深度比较（2026-11）：键在原子前面时必须选键。旧逻辑「射线只要碰到任何
+            // 原子就先走原子分支」会让环前侧的键被环背面的原子抢走（点键变成选中背后
+            // 的原子，键菜单永远弹不出来）。与 __dragMode.pickAt 的"取最近命中"语义一致。
+            const bondCylinders = bonds.flatMap(b => b.cylinders);
+            const bondIntersects = raycaster.intersectObjects(bondCylinders);
+            const _atomHit = atomIntersects[0];
+            const _bondHit = bondIntersects[0];
+            const _atomInFront = !!_atomHit && (!_bondHit || _atomHit.distance <= _bondHit.distance + 0.05);
+            if (_atomInFront) {
+                const atom = _atomHit.object;
                 if (e.ctrlKey || e.metaKey) {
                     if (blockWhenLocked('设置杂化')) { e.preventDefault(); return; }
                     // 点别处：键菜单/键选中/旋转模式一并收起
@@ -14985,8 +15612,6 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 e.preventDefault();
                 return;
             }
-            const bondCylinders = bonds.flatMap(b => b.cylinders);
-            const bondIntersects = raycaster.intersectObjects(bondCylinders);
             if (bondIntersects.length > 0) {
                 const cyl = bondIntersects[0].object;
                 const bond = bonds.find(b => b.cylinders.includes(cyl));
@@ -15052,8 +15677,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 raycaster.setFromCamera(ndc, camera);
                 const atoms = atomsGroup.children.filter(child => child.userData?.isAtom);
                 const atomIntersects = raycaster.intersectObjects(atoms);
-                if (atomIntersects.length > 0) {
-                    const atom = atomIntersects[0].object;
+                // 深度比较（同鼠标端）：键在原子前面时选键，避免点前侧键却选中背后原子
+                const bondCylinders = bonds.flatMap(b => b.cylinders);
+                const bondIntersects = raycaster.intersectObjects(bondCylinders);
+                const _atomHit = atomIntersects[0];
+                const _bondHit = bondIntersects[0];
+                const _atomInFront = !!_atomHit && (!_bondHit || _atomHit.distance <= _bondHit.distance + 0.05);
+                if (_atomInFront) {
+                    const atom = _atomHit.object;
                     const torsionEndpoint = !MOLECULE_LOCKED && selectedBond && (atom === selectedBond.atomA || atom === selectedBond.atomB);
                     if (torsionEndpoint) setTorsionPivot(atom);
                     else {
@@ -15073,8 +15704,6 @@ if (smilesInput) smilesInput.value = smilesToUse;
                     e.preventDefault();
                     return;
                 }
-                const bondCylinders = bonds.flatMap(b => b.cylinders);
-                const bondIntersects = raycaster.intersectObjects(bondCylinders);
                 if (bondIntersects.length > 0) {
                     const cyl = bondIntersects[0].object;
                     const bond = bonds.find(b => b.cylinders.includes(cyl));
@@ -15193,6 +15822,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             const inputPanel = document.getElementById('input-panel');
             if (inputPanel && inputPanel.classList.contains('open')
                 && !target.closest('#input-panel') && !target.closest('#formula-keypad')
+                && !target.closest('#smiles-keypad')
                 && !target.closest('#btn-open-input')) {
                 setInputPanelOpen(false);
                 try { if (navigator.webdriver !== true) localStorage.setItem('INPUT_PANEL_OPEN', '0'); } catch (e) {}
@@ -15202,6 +15832,14 @@ if (smilesInput) smilesInput.value = smilesToUse;
             if (kp && kp.style.display !== 'none'
                 && !target.closest('#formula-keypad') && !target.closest('#formula-input') && !target.closest('#btn-open-keypad')) {
                 hideFormulaKeypad();
+            }
+            // SMILES 小键盘（2026-11）：点面板其它位置/画布即收起，点键盘与两个自定义输入框保留
+            const skp = document.getElementById('smiles-keypad');
+            if (skp && skp.style.display !== 'none'
+                && !target.closest('#smiles-keypad')
+                && !target.closest('#isomer-custom-input') && !target.closest('#isomer-pre-custom-input')
+                && !target.closest('#isomer-custom-keypad-btn') && !target.closest('#isomer-pre-custom-keypad-btn')) {
+                hideSmilesKeypad();
             }
         };
         document.addEventListener('mousedown', (e) => _collapseCornerDropdowns(e.target), true);
@@ -15855,6 +16493,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
                 t: a.userData.atomType, p: [ +a.position.x.toFixed(3), +a.position.y.toFixed(3), +a.position.z.toFixed(3) ]
             })),
             project: (x, y, z) => {
+                syncCameraMatrices();
                 const v = new THREE.Vector3(x, y, z).project(camera);
                 const r = renderer.domElement.getBoundingClientRect();
                 return { x: (v.x * 0.5 + 0.5) * r.width + r.left, y: (-v.y * 0.5 + 0.5) * r.height + r.top };
@@ -16002,8 +16641,46 @@ if (smilesInput) smilesInput.value = smilesToUse;
             return null;
         };
 
-        function animate() {
+        // 自动化限帧（2026-11，用户报告「跑测试脚本时 CPU 100%」）：Playwright 下页面
+        // 90% 的时间在等网络与几何优化，画面并不需要 60fps。这里按场景分级限帧：
+        //   交互中（拖动/单键旋转/轴拖）→ 30fps（保证鼠标反馈跟手）
+        //   优化中（纯计算，没人看画面）→ 4fps
+        //   其余（等待网络、脚本轮询）  → 8fps
+        // 普通浏览器完全不受影响（AUTOMATION_LOW_FX 为 false 时不限帧）。
+        // URL 加 ?fps=N 可覆盖自动化帧率，?hifx=1 可彻底关闭低负载模式。
+        const _autoFpsOverride = (() => {
+            const m = /[?&]fps=(\d+)/.exec(location.search);
+            const v = m ? parseInt(m[1], 10) : 0;
+            return v > 0 ? Math.min(120, v) : 0;
+        })();
+        let _autoLastFrameTs = 0;
+        let _autoFrameCount = 0;
+        let _autoFastUntil = 0;
+        function autoRenderFps() {
+            if (!AUTOMATION_LOW_FX) return 0;         // 0 = 不限帧
+            if (_autoFpsOverride) return _autoFpsOverride;
+            if (isDragging || torsionDragging || gizmoAxisDrag || torsionActive) return 30;
+            if (performance.now() < _autoFastUntil) return 30;   // 相机刚变过，短暂提速
+            if (isOptimizing) return 4;
+            return 8;
+        }
+        // 相机变动（旋转/平移/缩放）后 300ms 内按 30fps 渲染，避免拖完视角画面滞后
+        controls.addEventListener('change', () => {
+            if (AUTOMATION_LOW_FX) _autoFastUntil = performance.now() + 300;
+        });
+        window.__renderPerf = { lowFx: AUTOMATION_LOW_FX, frames: 0, fps: 0, override: _autoFpsOverride, lastFps: () => autoRenderFps() };
+
+        function animate(ts) {
             requestAnimationFrame(animate);
+            const now = (typeof ts === 'number') ? ts : performance.now();
+            const cap = autoRenderFps();
+            if (cap > 0) {
+                // -1ms 容差：rAF 的节拍（16.7/33.3ms）不会精确命中 1000/cap
+                if (now - _autoLastFrameTs < (1000 / cap) - 1) return;
+                _autoLastFrameTs = now;
+            }
+            _autoFrameCount++;
+            if (window.__renderPerf) { window.__renderPerf.frames = _autoFrameCount; window.__renderPerf.fps = cap; }
             controls.update();
             updateGizmo();
             if (showLonePairs) updateLonePairVisuals();
