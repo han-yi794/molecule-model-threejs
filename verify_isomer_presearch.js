@@ -43,7 +43,7 @@ const { chromium } = require('playwright');
     await page.fill('#formula-input', 'C12H13N3O2');
     await page.press('#formula-input', 'Enter');
     await page.waitForFunction(() => window.__isomerPresearch.visible(), null, { timeout: 30000 });
-    await page.waitForFunction(() => document.querySelectorAll('#isomer-pre-group-chips .isof-chip').length >= 17, null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelectorAll('#isomer-pre-group-chips .isof-chip').length >= 19, null, { timeout: 10000 });
     const q1 = await page.evaluate(() => ({
         visible: window.__isomerPresearch.visible(),
         title: document.getElementById('isomer-pre-title').textContent,
@@ -53,9 +53,9 @@ const { chromium } = require('playwright');
         formula: window.__isomerPresearch.state().formula,
         isomerPanel: getComputedStyle(document.getElementById('isomer-panel')).display
     }));
-    ok('Q1 大分子式打开预筛选面板（官能团 17 + 氢类型 8）', q1.visible === true
+    ok('Q1 大分子式打开预筛选面板（官能团 19 + 氢类型 8）', q1.visible === true
         && q1.title.indexOf('检索前筛选') >= 0 && q1.title.indexOf('C') >= 0
-        && q1.chips === 17 && q1.types === 8 && q1.formula === 'C12H13N3O2'
+        && q1.chips === 19 && q1.types === 8 && q1.formula === 'C12H13N3O2'
         && q1.isomerPanel === 'none', q1);
     ok('Q2 提示语说明候选超过 400 且命中上限即停',
         q1.hint.indexOf('400') >= 0 && q1.hint.indexOf('命中达到上限即停止') >= 0,

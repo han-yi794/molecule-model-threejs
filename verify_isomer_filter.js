@@ -122,7 +122,7 @@ const { chromium } = require('playwright');
         };
     });
     ok('M1 面板 2 行且带标签行（基团+¹H NMR）', st0.rows === 2 && st0.tags.every(t => t && t.indexOf('基团：') >= 0 && t.indexOf('¹H NMR：') >= 0), st0.tags);
-    ok('M2 chips 17 官能团 + 8 氢类型', st0.chipsG === 17 && st0.chipsT === 8, { g: st0.chipsG, t: st0.chipsT });
+    ok('M2 chips 19 官能团 + 8 氢类型', st0.chipsG === 19 && st0.chipsT === 8, { g: st0.chipsG, t: st0.chipsT });
     ok('M3 初始全显示 2/2', st0.status.indexOf('显示 2 / 2') >= 0, st0.status);
     const ethTag = st0.tags.find(t => t && t.indexOf('羟基') >= 0) || '';
     ok('M4 乙醇标签 3 组 (3:2:1)', /3 组 \(3:2:1\)/.test(ethTag), ethTag);
