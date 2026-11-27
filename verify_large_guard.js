@@ -46,7 +46,7 @@ const readStats = () => {
   await page.goto('http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?noauto=1&v=largeguard', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__diag && window.__generateFromInput && window.__structureGuard, null, { timeout: 30000 });
 
-  // ---------- G1 胰岛素（403 原子）生成：单连通、结构保护生效 ----------
+  // ---------- G1 胰岛素（782 原子，含自动补氢）生成：单连通、结构保护生效 ----------
   await page.evaluate(() => window.__setInputPanelOpen(true));
   await page.waitForTimeout(250);
   await page.fill('#name-input', '胰岛素');
@@ -54,8 +54,8 @@ const readStats = () => {
   await page.waitForFunction(() => /已从名称生成: 胰岛素/.test((document.getElementById('toast-message') || {}).textContent || ''), null, { timeout: 120000 });
   await page.waitForTimeout(1200);
   const gen = await page.evaluate(readStats);
-  t('G1 胰岛素 403 原子 / 414 键 / 单连通，结构保护已生效',
-    gen.atoms === 403 && gen.bonds === 414 && gen.nComp === 1 && gen.bad === 0
+  t('G1 胰岛素 782 原子（含自动补氢）/ 793 键 / 单连通，结构保护已生效',
+    gen.atoms === 782 && gen.bonds === 793 && gen.nComp === 1 && gen.bad === 0
     && gen.guard.protect === true && gen.guard.reason === 'large' && gen.precise === true,
     JSON.stringify({ atoms: gen.atoms, bonds: gen.bonds, comps: gen.comps, bad: gen.bad, guard: gen.guard, precise: gen.precise }));
 
@@ -66,8 +66,8 @@ const readStats = () => {
   const optToast = await page.evaluate(() => (document.getElementById('toast-message') || {}).textContent || '');
   const opt = await page.evaluate(readStats);
   t('G2 点「优化」被结构保护跳过（toast + lastSkip），键数/连通性/键长不变',
-    /已跳过全局优化/.test(optToast) && !!opt.skip && opt.skip.atoms === 403 && opt.skip.reason === 'large'
-    && opt.bonds === 414 && opt.nComp === 1 && opt.bad === 0 && opt.maxLen <= 2.1,
+    /已跳过全局优化/.test(optToast) && !!opt.skip && opt.skip.atoms === 782 && opt.skip.reason === 'large'
+    && opt.bonds === 793 && opt.nComp === 1 && opt.bad === 0 && opt.maxLen <= 2.1,
     JSON.stringify({ toast: optToast, skip: opt.skip, bonds: opt.bonds, comps: opt.comps, bad: opt.bad, maxLen: opt.maxLen }));
 
   // ---------- G3 Shift+O 同样被跳过 ----------
@@ -76,7 +76,7 @@ const readStats = () => {
   await page.waitForTimeout(900);
   const shiftO = await page.evaluate(readStats);
   t('G3 Shift+O 快捷键同样被跳过，结构不变',
-    !!shiftO.skip && shiftO.skip.reason === 'large' && shiftO.bonds === 414 && shiftO.nComp === 1,
+    !!shiftO.skip && shiftO.skip.reason === 'large' && shiftO.bonds === 793 && shiftO.nComp === 1,
     JSON.stringify({ skip: shiftO.skip, bonds: shiftO.bonds, comps: shiftO.comps }));
 
   // ---------- G4 密集结构上左键拖动 = 旋转视角，不拖原子 ----------
@@ -95,7 +95,7 @@ const readStats = () => {
   const largeIcon = await page.evaluate(() => !!document.querySelector('[title="删除选中原子"]'));
   t('G4 大分子上左键拖动 = 旋转视角（相机变化、键数不变、只选中不拖动、无删除图标）',
     !!centerPick && centerPick.kind === 'atom' && camMoved
-    && rotated.bonds === 414 && rotated.nComp === 1 && !!rotated.sel && largeIcon === false,
+    && rotated.bonds === 793 && rotated.nComp === 1 && !!rotated.sel && largeIcon === false,
     JSON.stringify({ pick: centerPick, camBefore, camAfter: rotated.cam.pos, bonds: rotated.bonds, sel: rotated.sel && rotated.sel.id, deleteIcon: largeIcon }));
 
   // ---------- G5 放大后：先单击选中，再拖动可移动原子 ----------
@@ -140,8 +140,8 @@ const readStats = () => {
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(900);
   const undone = await page.evaluate(readStats);
-  t('G6 撤销恢复蛋白几何（414 键 / 单连通）',
-    undone.bonds === 414 && undone.nComp === 1 && undone.atoms === 403,
+  t('G6 撤销恢复蛋白几何（793 键 / 单连通）',
+    undone.bonds === 793 && undone.nComp === 1 && undone.atoms === 782,
     JSON.stringify({ atoms: undone.atoms, bonds: undone.bonds, comps: undone.comps }));
 
   // ---------- G7 小分子：不触发保护，按下即可直接拖动 ----------

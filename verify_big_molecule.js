@@ -247,11 +247,11 @@ const STATS_FN = `(function(limit){
     const vis = window.__diag.visualStats();
     return { ok: g.ok, count: g.count, ms, stats, vis, angleStd: +window.__statusBar().angleStd.toFixed(1) };
   }, STATS_FN);
-  t('D1 1HRC 细胞色素c：866 原子 / 含 1 Fe / 单连通 / 0 重叠',
-    d1.ok && d1.count === 866 && d1.stats.cnt.Fe === 1 && d1.stats.nComp === 1 && d1.stats.clashes === 0,
+  t('D1 1HRC 细胞色素c：1742 原子（含 876 自动补氢）/ 含 1 Fe / 单连通 / 0 重叠',
+    d1.ok && d1.count === 1742 && d1.stats.cnt.Fe === 1 && d1.stats.nComp === 1 && d1.stats.clashes === 0,
     JSON.stringify({ count: d1.count, Fe: d1.stats.cnt.Fe, nComp: d1.stats.nComp, clash: d1.stats.clashes, ms: d1.ms }));
-  t('D2 1HRC 保留标签、>600 原子不画孤对',
-    d1.vis.labels === 866 && d1.vis.lpDisabled === true && d1.stats.atoms === 866,
+  t('D2 1HRC 保留标签（1742，含 H）、>600 原子不画孤对',
+    d1.vis.labels === 1742 && d1.vis.lpDisabled === true && d1.stats.atoms === 1742,
     JSON.stringify(d1.vis));
 
   const d3 = await page.evaluate(async (fnSrc) => {
@@ -262,8 +262,8 @@ const STATS_FN = `(function(limit){
     const stats = (new Function('return ' + fnSrc))()();
     return { ok: g.ok, count: g.count, ms, stats };
   }, STATS_FN);
-  t('D3 1MBO 肌红蛋白：1260 原子 / 含 1 Fe / 单连通',
-    d3.ok && d3.count === 1260 && d3.stats.cnt.Fe === 1 && d3.stats.nComp === 1,
+  t('D3 1MBO 肌红蛋白：2536 原子（含 1276 自动补氢）/ 含 1 Fe / 单连通',
+    d3.ok && d3.count === 2536 && d3.stats.cnt.Fe === 1 && d3.stats.nComp === 1,
     JSON.stringify({ count: d3.count, Fe: d3.stats.cnt.Fe, nComp: d3.stats.nComp, ms: d3.ms }));
 
   const d4 = await page.evaluate(async () => {
@@ -277,9 +277,9 @@ const STATS_FN = `(function(limit){
     const msStatus = Math.round(performance.now() - t1);
     return { ok: g.ok, count: g.count, ms, vis, msStatus, sb: { atoms: sb.atoms, bonds: sb.bonds, formula: sb.formula, rings: sb.rings, angleStd: +sb.angleStd.toFixed(1) } };
   });
-  t('D4 2HHB 血红蛋白：4556 原子 / 4 Fe / 4 条链（四聚体）',
-    d4.ok && d4.count === 4556 && d4.vis.atoms === 4556
-    && /^C2954FE4N780O806S12$/i.test(d4.sb.formula.replace(/[^A-Za-z0-9]/g, '')),
+  t('D4 2HHB 血红蛋白：9058 原子（含 4502 自动补氢）/ 4 Fe / 4 条链（四聚体）',
+    d4.ok && d4.count === 9058 && d4.vis.atoms === 9058
+    && /^C2954H4502FE4N780O806S12$/i.test(d4.sb.formula.replace(/[^A-Za-z0-9]/g, '')),
     JSON.stringify({ count: d4.count, formula: d4.sb.formula, atoms: d4.vis.atoms }));
   t('D5 2HHB 状态条不再卡顿（<3000ms）且角度 RMS 修好后 <40°',
     d4.msStatus < 3000 && d4.sb.angleStd > 0 && d4.sb.angleStd < 40,

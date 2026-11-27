@@ -111,8 +111,8 @@ const t = (name, cond, detail) => {
       return { ok: true, count: r.count, nAtoms: atoms.length, nBonds: bonds.length, comps, nComp: comps.length, clash, minD: +Math.sqrt(minD).toFixed(2), maxLen: +maxLen.toFixed(2), ss, cnt };
     });
   });
-  t('P5 3I40 生成 403 原子', p5.ok && p5.nAtoms === 403, JSON.stringify(p5));
-  t('P5b 单一连通分量（无碎片）', p5.ok && p5.nComp === 1 && p5.comps[0] === 403, JSON.stringify(p5.comps));
+  t('P5 3I40 生成 782 原子（403 重原子 + 379 自动补氢）', p5.ok && p5.nAtoms === 782 && p5.cnt.H === 379, JSON.stringify(p5));
+  t('P5b 单一连通分量（无碎片）', p5.ok && p5.nComp === 1 && p5.comps[0] === 782, JSON.stringify(p5.comps));
   t('P5c 3 条二硫键 2.0-2.1Å', p5.ok && p5.ss.length === 3 && p5.ss.every(x => x >= 2.0 && x <= 2.1), JSON.stringify(p5.ss));
   t('P5d 零原子碰撞（非键合 <0.8Å）', p5.ok && p5.clash === 0, JSON.stringify({ clash: p5.clash, minD: p5.minD }));
   t('P5e 键长合理（最长 ≤2.1Å）', p5.ok && p5.maxLen <= 2.1, JSON.stringify({ maxLen: p5.maxLen }));
@@ -134,8 +134,8 @@ const t = (name, cond, detail) => {
     formula: window.__statusBar ? window.__statusBar().formula : ''
   }));
   t('P6 UI 名称「胰岛素」走 PDB 路线（toast 含 PDB 3I40）', /PDB 3I40/.test(p6.toast), JSON.stringify(p6));
-  t('P6b UI 生成 403 原子 · 分子名=胰岛素', p6.atoms === 403 && p6.molName === '胰岛素', JSON.stringify(p6));
-  t('P6c 状态栏分子式 C256N65O76S6', p6.formula === 'C256N65O76S6', JSON.stringify(p6));
+  t('P6b UI 生成 782 原子（含自动补氢）· 分子名=胰岛素', p6.atoms === 782 && p6.molName === '胰岛素', JSON.stringify(p6));
+  t('P6c 状态栏分子式 C256H379N65O76S6', p6.formula === 'C256H379N65O76S6', JSON.stringify(p6));
 
   // ---------- P7 序列框里填蛋白名同样命中 ----------
   await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
@@ -152,7 +152,7 @@ const t = (name, cond, detail) => {
     atoms: window.__diag.atomPositions().length,
     toast: (document.getElementById('toast-message') || {}).textContent || ''
   }));
-  t('P7 序列框输入「溶菌酶」也走 PDB 2LYZ', /PDB 2LYZ/.test(p7.toast) && p7.atoms === 1001, JSON.stringify(p7));
+  t('P7 序列框输入「溶菌酶」也走 PDB 2LYZ（含自动补氢）', /PDB 2LYZ/.test(p7.toast) && p7.atoms === 1974, JSON.stringify(p7));
   await page.evaluate(() => window.__setInputPanelOpen && window.__setInputPanelOpen(true));
   await page.waitForTimeout(250);
   await page.fill('#seq-input', '');
