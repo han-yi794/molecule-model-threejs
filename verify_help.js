@@ -1,7 +1,7 @@
 // verify_help.js — 帮助浮层 + 视图段并入检查器 验证（2026-10-27 重设计，替代 verify_guide_panel.js）
 // 覆盖：#guide-panel / #settings-panel 已删除；顶栏 #btn-help 打开 #help-overlay 操作指南
 //       （鼠标 / 快捷键 / 拖动方式 / 提示 四段 + Esc 说明）；✕、点暗背景、Escape 三种关闭；
-//       视图开关（自动补氢/孤对/网格/离域π/π高亮 + 原子材质）已在检查器「视图」段；
+//       视图开关（自动补氢/孤对/原子标签/网格/离域π/π高亮 + 原子材质）已在检查器「视图」段；
 //       390 手机浮层不超屏且卡片可滚动；零 console 错误。
 // 运行：cmd /c "node verify_help.js > out.json 2>&1"（timeout 900000ms）
 const { chromium } = require('playwright');
@@ -121,15 +121,15 @@ async function ensureServer() { if (await waitPort(1000)) return null; for (cons
             const sel = document.getElementById('atom-style-select');
             return {
                 heads,
-                toggles: ['btn-toggle-hydro', 'btn-toggle-lp', 'btn-toggle-grid', 'btn-toggle-deloc', 'btn-toggle-pi'].filter(has),
+                toggles: ['btn-toggle-hydro', 'btn-toggle-lp', 'btn-toggle-labels', 'btn-toggle-grid', 'btn-toggle-deloc', 'btn-toggle-pi'].filter(has),
                 styleSelect: !!sel && !!sel.closest('#inspect-panel'),
                 styleOptions: sel ? sel.options.length : 0,
-                outsidePanel: ['btn-toggle-hydro', 'btn-toggle-lp', 'btn-toggle-grid', 'btn-toggle-deloc', 'btn-toggle-pi', 'atom-style-select']
+                outsidePanel: ['btn-toggle-hydro', 'btn-toggle-lp', 'btn-toggle-labels', 'btn-toggle-grid', 'btn-toggle-deloc', 'btn-toggle-pi', 'atom-style-select']
                     .filter(id => { const el = document.getElementById(id); return el && !el.closest('#inspect-panel'); })
             };
         });
-        step('H7 视图开关全部并入检查器「视图」段（5 个开关 + 原子材质 4 选项）',
-            h7.heads.includes('视图') && h7.toggles.length === 5 && h7.styleSelect && h7.styleOptions === 4
+        step('H7 视图开关全部并入检查器「视图」段（6 个开关 + 原子材质 4 选项）',
+            h7.heads.includes('视图') && h7.toggles.length === 6 && h7.styleSelect && h7.styleOptions === 4
             && h7.outsidePanel.length === 0,
             h7);
 

@@ -28,6 +28,7 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
     const resetToggles = () => page.evaluate(() => {
         try { window.__setHydrogenate(false); } catch (e) {}
         try { window.__toggleLonePairs(false); } catch (e) {}
+        try { if (window.__atomLabels && !window.__atomLabels.get()) window.__atomLabels.set(true); } catch (e) {}
         const g = document.getElementById('chk-grid');
         if (g && g.checked) { g.checked = false; g.dispatchEvent(new Event('change', { bubbles: true })); }
         const p = document.getElementById('chk-pi');
@@ -44,6 +45,7 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
             disabled: row.classList.contains('disabled'),
             hydro: window.__hydrogenateAuto(),
             lp: window.__lpVisualMode(),
+            labels: window.__atomLabels ? window.__atomLabels.get() : null,
             grid: window.__dragMode.gridSnap(),
             deloc: window.__delocPiMode()
         };
@@ -63,7 +65,7 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
             nb: { x: nb.x, y: nb.y, w: nb.width, h: nb.height }
         };
     }));
-    check('T0 检查器视图段共 5 个开关行', rowInfo.length === 5, JSON.stringify(rowInfo.map(r => r.id)));
+    check('T0 检查器视图段共 6 个开关行', rowInfo.length === 6, JSON.stringify(rowInfo.map(r => r.id)));
 
     const pointsOf = (r) => [
         { at: '左内边距', x: r.row.x + 3, y: r.row.y + r.row.h / 2 },
@@ -74,7 +76,7 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
     ];
 
     // ---------- T1. 视图开关：整行 5 个点位都能翻转一次 ----------
-    for (const id of ['chk-hydro', 'chk-lp', 'chk-grid', 'chk-deloc']) {
+    for (const id of ['chk-hydro', 'chk-lp', 'chk-labels', 'chk-grid', 'chk-deloc']) {
         const r = rowInfo.find(x => x.id === id);
         let all = true; const details = [];
         for (const p of pointsOf(r)) {
@@ -91,6 +93,7 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
             const flipped = after.checked === !before.checked && after.on === after.checked;
             const apiOk = (id === 'chk-hydro') ? after.hydro === after.checked
                 : (id === 'chk-lp') ? after.lp === after.checked
+                : (id === 'chk-labels') ? after.labels === after.checked
                 : (id === 'chk-grid') ? after.grid === after.checked
                 : after.deloc === after.checked;
             if (!flipped || !apiOk) all = false;

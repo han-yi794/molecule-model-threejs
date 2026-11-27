@@ -159,6 +159,7 @@ class AssertionCollector {
                     'clear-btn': '.clear-btn',
                     'btn-toggle-hydro': '#btn-toggle-hydro',
                     'btn-toggle-lp': '#btn-toggle-lp',
+                    'btn-toggle-labels': '#btn-toggle-labels',
                     'btn-toggle-grid': '#btn-toggle-grid',
                     'btn-toggle-deloc': '#btn-toggle-deloc',
                     'mobilebar': '#mobilebar'
@@ -200,7 +201,7 @@ class AssertionCollector {
             const on = await readSwitch();
             await page.evaluate(() => { document.getElementById('chk-grid').checked = false; });
             const ac = new AssertionCollector();
-            ac.ok(off.cls === 'switch' && off.rows === 5, `5 个视图开关均为 .switch（实际 ${off.rows}）`);
+            ac.ok(off.cls === 'switch' && off.rows === 6, `6 个视图开关均为 .switch（实际 ${off.rows}）`);
             ac.ok(off.w === 28 && off.h === 16, `开关 28×16（实际 ${off.w}×${off.h}）`);
             ac.ok(on.knob !== off.knob && /matrix\(1, 0, 0, 1, 12/.test(on.knob), `勾选后滑块右移 12px（${off.knob} → ${on.knob}）`);
             ac.ok(on.border !== off.border && /240, 180, 90/.test(on.border), `勾选后描边变琥珀（${off.border} → ${on.border}）`);

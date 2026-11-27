@@ -1764,6 +1764,7 @@
             <button class="tb-btn tb-icon" id="btn-lock-molecule" title="锁定分子结构（禁止拖动/编辑）(L)" aria-label="锁定分子结构" aria-pressed="false"><span class="ui-ic" data-icon="lock-open" data-size="15"></span></button>
             <span class="tb-sep" aria-hidden="true"></span>
             <button class="tb-btn tb-primary" id="btn-optimize-all" title="全局同步优化 (Shift+O)"><span class="ui-ic" data-icon="sparkles" data-size="14"></span><span class="tb-label">优化</span></button>
+            <button class="tb-btn" id="btn-hydrogenate" title="一键补氢：按价态补足缺失的氢原子（只加氢，不改已有几何）"><span class="ui-ic" data-icon="atom" data-size="14"></span><span class="tb-label">补氢</span></button>
             <button class="tb-btn tb-danger" id="btn-clear-molecule" title="清空画布"><span class="ui-ic" data-icon="trash-2" data-size="14"></span><span class="tb-label">清空</span></button>
             <span class="tb-sep" aria-hidden="true"></span>
             <button class="tb-btn tb-icon" id="btn-help" title="操作指南 / 快捷键" aria-label="操作指南"><span class="ui-ic" data-icon="circle-help" data-size="16"></span></button>
@@ -1884,6 +1885,11 @@
                         <input type="checkbox" id="chk-lp" />
                         <span class="switch"></span>
                         <span class="toggle-name" id="btn-toggle-lp">孤对电子</span>
+                    </label>
+                    <label class="toggle-row" title="显示或隐藏原子上的元素符号标签（被前方原子挡住时自动隐藏）">
+                        <input type="checkbox" id="chk-labels" />
+                        <span class="switch"></span>
+                        <span class="toggle-name" id="btn-toggle-labels">原子标签</span>
                     </label>
                     <label class="toggle-row" title="拖动时吸附 0.25Å 网格 (G)">
                         <input type="checkbox" id="chk-grid" />
@@ -2193,6 +2199,8 @@
             <h3><span class="ui-ic" data-icon="lightbulb" data-size="13"></span> 提示</h3>
             <p>选中原子后出现三轴手柄；拖彩色轴时画布上方显示实时位移；接近可成键的原子时会发光提醒。单击原子 = 选中，按住拖动 = 移动。</p>
             <p>顶栏「异构体」按画布上分子的完整分子式（自动计入隐式氢）检索同分异构体；结果面板可勾选并生成候选结构。</p>
+            <p>顶栏「补氢」一键按价态补足缺失的氢原子（只加氢、不改已有几何）；「视图 → 自动补氢」开关则是在全局优化前自动补氢。</p>
+            <p>「视图 → 原子标签」可随时隐藏场景中的元素符号；标签被前方原子挡住时会自动隐藏，符合透视关系。</p>
         </div>
     </div>
 </div>
@@ -2463,6 +2471,13 @@
         // 状态持久化到 localStorage.HYDROGENATE_AUTO，默认关闭
         let HYDROGENATE_AUTO = false;
         try { HYDROGENATE_AUTO = localStorage.getItem('HYDROGENATE_AUTO') === '1'; } catch (e) {}
+        // ===== 原子标签显示开关（2026-11-27 新增）=====
+        // true = 场景中每个原子显示元素符号标签；false = 全部隐藏。
+        // 持久化到 localStorage.ATOM_LABELS_VISIBLE（'0' = 关闭，缺省/其它 = 开启）。
+        // 大结构（> SPARSE_VISUAL_ATOMS 原子）仍不建标签，避免上千个 CSS2D
+        // 逐帧 DOM 更新拖垮帧率（由 setAtomLabelsVisible 单独兜底）。
+        let ATOM_LABELS_VISIBLE = true;
+        try { ATOM_LABELS_VISIBLE = localStorage.getItem('ATOM_LABELS_VISIBLE') !== '0'; } catch (e) {}
         // ===== 分子结构锁（2026-11 新增）=====
         // 开启后禁止一切结构修改（拖动原子/基团、改键级、顺反翻转、单键旋转、
         // 删除原子、优化、撤销/恢复、清空、生成新分子）；视角旋转/平移/缩放不受影响。
@@ -6078,7 +6093,7 @@ isOptimizing = false;
         };
 
         function createLabel(type) {
-            if (_sparseAtomVisuals) return null;
+            if (_sparseAtomVisuals || !ATOM_LABELS_VISIBLE) return null;
             const info = atomTypes[type];
             const div = document.createElement('div');
             div.textContent = info ? info.symbol : type;
@@ -6191,6 +6206,213 @@ isOptimizing = false;
                 if (el && el.textContent !== undefined) el.textContent = text;
             } catch (e) {}
         }
+
+        // ===== 原子标签显示开关 + 透视遮挡（2026-11-27 新增）=====
+        // 开关：一键隐藏/显示场景中每个原子上的元素符号（CSS2D 标签）。
+        //   关闭 → 现有标签 visible=false；之后新建原子不再建标签（createLabel 早退）。
+        //   开启 → 给缺标签的原子懒补建（大结构 > SPARSE_VISUAL_ATOMS 除外）。
+        // 遮挡：CSS2D 标签是 DOM 覆盖层，天然永远盖在 3D 画面上。为了让标签符合
+        //   透视关系，这里每 ~90ms 做一次屏幕空间遮挡测试：标签锚点若被更靠近相机的
+        //   原子挡住（屏幕距离 < 该原子投影半径、深度至少近 0.25Å），临时隐藏该标签。
+        //   只测原子（键太细）；有 0.92/1.06 的隐藏/恢复双阈值，避免边缘闪烁。
+        const LABEL_OCCLUSION_INTERVAL_MS = 90;
+        const LABEL_OCCLUSION_DEPTH_MARGIN = 0.25;
+        const LABEL_OCCLUSION_HIDE_FACTOR = 0.92;
+        const LABEL_OCCLUSION_SHOW_FACTOR = 1.06;
+        const LABEL_OCCLUSION_CELL_PX = 48;   // 屏幕分桶网格边长（像素）
+        let _labelOccLastTs = -1e9;
+        let _labelOccStats = { ts: 0, labels: 0, hidden: 0, atoms: 0, ms: 0 };
+        const _labelOccA = new THREE.Vector3();
+        const _labelOccB = new THREE.Vector3();
+        const _labelOccNDC = new THREE.Vector3();
+        const _labelOccCam = new THREE.Vector3();
+
+        function atomLabelsWithMesh() {
+            const out = [];
+            for (const atom of atomsGroup.children) {
+                if (!atom.userData || !atom.userData.isAtom) continue;
+                if (atom.userData.label) out.push(atom);
+            }
+            return out;
+        }
+
+        function setAtomLabelsVisible(on, opts) {
+            const want = !!on;
+            const silent = !!(opts && opts.silent);
+            ATOM_LABELS_VISIBLE = want;
+            try { localStorage.setItem('ATOM_LABELS_VISIBLE', want ? '1' : '0'); } catch (e) {}
+            setToggleOn('labels', want);
+            _labelOccLastTs = -1e9;
+            let created = 0;
+            const sparse = moleculeAtomCount() > SPARSE_VISUAL_ATOMS;
+            if (want) {
+                for (const atom of atomsGroup.children) {
+                    if (!atom.userData || !atom.userData.isAtom) continue;
+                    let label = atom.userData.label;
+                    if (!label && !sparse) {
+                        const type = atom.userData.atomType;
+                        label = createLabel(type);
+                        if (label) {
+                            label.position.set(0, getVisualRadiusForType(type, null) + 0.3, 0);
+                            atom.add(label);
+                            atom.userData.label = label;
+                            updateAtomLabel(atom);
+                            created++;
+                        }
+                    }
+                    if (label) {
+                        if (label.userData) label.userData.__occHidden = false;
+                        label.visible = true;
+                    }
+                }
+                // 立即做一次遮挡测试，避免刚打开的标签在原子后面闪烁 ~90ms
+                if (atomLabelsWithMesh().length) updateAtomLabelOcclusion(performance.now(), true);
+                if (!silent) {
+                    showToast(sparse
+                        ? `当前结构较大（> ${SPARSE_VISUAL_ATOMS} 原子），已自动省略原子标签`
+                        : '原子标签已显示', sparse ? 2400 : 1200);
+                }
+            } else {
+                for (const atom of atomsGroup.children) {
+                    if (!atom.userData || !atom.userData.isAtom || !atom.userData.label) continue;
+                    if (atom.userData.label.userData) atom.userData.label.userData.__occHidden = false;
+                    atom.userData.label.visible = false;
+                }
+                if (!silent) showToast('原子标签已隐藏', 1200);
+            }
+            return { enabled: want, created, labels: atomLabelsWithMesh().length };
+        }
+
+        function updateAtomLabelOcclusion(now, force) {
+            if (!ATOM_LABELS_VISIBLE) return null;
+            const ts = (typeof now === 'number') ? now : performance.now();
+            if (!force && ts - _labelOccLastTs < LABEL_OCCLUSION_INTERVAL_MS) return null;
+            _labelOccLastTs = ts;
+            const t0 = performance.now();
+            const owners = atomLabelsWithMesh();
+            if (!owners.length) {
+                _labelOccStats = { ts, labels: 0, hidden: 0, atoms: 0, ms: 0 };
+                return _labelOccStats;
+            }
+            // 刷新相机/场景矩阵：动画循环里 renderer.render 在本函数之后才跑，
+            // 刚移动过的相机或原子若用旧矩阵投影，遮挡判定会滞后一帧。
+            syncCameraMatrices();
+            syncSceneMatrices();
+            const size = labelRenderer.getSize();
+            const halfH = size.height / 2;
+            const tanHalfFov = Math.tan(camera.fov * Math.PI / 360);
+            // 预投影所有原子：屏幕坐标 + 相机空间深度 + 投影半径（像素）。
+            // 屏幕分桶：逐标签与全部原子两两比较是 O(n²)（1500 原子 × 1500 标签
+            // 每 90ms 要算 225 万次）；这里把原子按 48px 网格分桶（投影半径大的
+            // 球按外接框跨桶登记），标签只查自身所在 3×3 桶，复杂度近 O(n)。
+            const occ = [];
+            const buckets = new Map();
+            const CELL = LABEL_OCCLUSION_CELL_PX;
+            const gridW = Math.ceil(size.width / CELL) + 2;   // 边缘留冗余，允许负坐标桶
+            const gridH = Math.ceil(size.height / CELL) + 2;
+            const bucketKey = (cx, cy) => cy * gridW + cx;
+            for (const atom of atomsGroup.children) {
+                if (!atom.userData || !atom.userData.isAtom) continue;
+                atom.getWorldPosition(_labelOccA);
+                _labelOccCam.copy(_labelOccA).applyMatrix4(camera.matrixWorldInverse);
+                const depth = -_labelOccCam.z;
+                if (depth <= 0.05) continue;
+                _labelOccNDC.copy(_labelOccA).project(camera);
+                if (_labelOccNDC.z < -1 || _labelOccNDC.z > 1) continue;
+                const rWorld = (atom.geometry && atom.geometry.parameters && atom.geometry.parameters.radius)
+                    || getVisualRadiusForAtom(atom) || 0.3;
+                const ent = {
+                    atom, depth,
+                    x: (_labelOccNDC.x * 0.5 + 0.5) * size.width,
+                    y: (-_labelOccNDC.y * 0.5 + 0.5) * size.height,
+                    rPx: rWorld / (depth * tanHalfFov) * halfH,
+                    stamp: 0
+                };
+                occ.push(ent);
+                const cx0 = Math.max(0, Math.floor((ent.x - ent.rPx) / CELL));
+                const cx1 = Math.min(gridW - 1, Math.floor((ent.x + ent.rPx) / CELL));
+                const cy0 = Math.max(0, Math.floor((ent.y - ent.rPx) / CELL));
+                const cy1 = Math.min(gridH - 1, Math.floor((ent.y + ent.rPx) / CELL));
+                for (let cy = cy0; cy <= cy1; cy++) {
+                    for (let cx = cx0; cx <= cx1; cx++) {
+                        const key = bucketKey(cx, cy);
+                        let arr = buckets.get(key);
+                        if (!arr) { arr = []; buckets.set(key, arr); }
+                        arr.push(ent);
+                    }
+                }
+            }
+            let hidden = 0;
+            let queryStamp = 0;
+            for (const owner of owners) {
+                const label = owner.userData.label;
+                label.getWorldPosition(_labelOccA);
+                _labelOccCam.copy(_labelOccA).applyMatrix4(camera.matrixWorldInverse);
+                const depth = -_labelOccCam.z;
+                _labelOccNDC.copy(_labelOccA).project(camera);
+                let blocked = false;
+                if (depth > 0.05 && _labelOccNDC.z >= -1 && _labelOccNDC.z <= 1) {
+                    const lx = (_labelOccNDC.x * 0.5 + 0.5) * size.width;
+                    const ly = (-_labelOccNDC.y * 0.5 + 0.5) * size.height;
+                    const wasHidden = !!(label.userData && label.userData.__occHidden);
+                    const factor = wasHidden ? LABEL_OCCLUSION_SHOW_FACTOR : LABEL_OCCLUSION_HIDE_FACTOR;
+                    const lcx = Math.floor(lx / CELL);
+                    const lcy = Math.floor(ly / CELL);
+                    queryStamp++;
+                    for (let cy = lcy - 1; cy <= lcy + 1 && !blocked; cy++) {
+                        if (cy < 0 || cy >= gridH) continue;
+                        for (let cx = lcx - 1; cx <= lcx + 1 && !blocked; cx++) {
+                            if (cx < 0 || cx >= gridW) continue;
+                            const arr = buckets.get(bucketKey(cx, cy));
+                            if (!arr) continue;
+                            for (const o of arr) {
+                                if (o.stamp === queryStamp) continue;   // 跨桶登记的同一原子只测一次
+                                o.stamp = queryStamp;
+                                if (o.atom === owner) continue;
+                                if (o.depth > depth - LABEL_OCCLUSION_DEPTH_MARGIN) continue;
+                                const rad = o.rPx * factor;
+                                const dx = o.x - lx, dy = o.y - ly;
+                                if (dx * dx + dy * dy < rad * rad) { blocked = true; break; }
+                            }
+                        }
+                    }
+                }
+                if (!label.userData) label.userData = {};
+                label.userData.__occHidden = blocked;
+                label.visible = !blocked;
+                if (blocked) hidden++;
+            }
+            _labelOccStats = {
+                ts: +ts.toFixed(1), labels: owners.length, hidden,
+                atoms: atomsGroup.children.length, ms: +(performance.now() - t0).toFixed(2)
+            };
+            return _labelOccStats;
+        }
+
+        window.__atomLabels = {
+            get: () => ATOM_LABELS_VISIBLE,
+            set: (on) => setAtomLabelsVisible(on),
+            toggle: () => setAtomLabelsVisible(!ATOM_LABELS_VISIBLE),
+            state: () => {
+                let labels = 0, visible = 0;
+                for (const atom of atomsGroup.children) {
+                    if (!atom.userData || !atom.userData.isAtom || !atom.userData.label) continue;
+                    labels++;
+                    if (atom.userData.label.visible) visible++;
+                }
+                return {
+                    enabled: ATOM_LABELS_VISIBLE, labels, visibleLabels: visible,
+                    hiddenLabels: labels - visible,
+                    sparse: moleculeAtomCount() > SPARSE_VISUAL_ATOMS
+                };
+            }
+        };
+        window.__atomLabelOcclusion = {
+            intervalMs: LABEL_OCCLUSION_INTERVAL_MS,
+            update: (force) => updateAtomLabelOcclusion(performance.now(), force !== false),
+            stats: () => _labelOccStats,
+            reset: () => { _labelOccLastTs = -1e9; }
+        };
 
         function createPreviewSphere(type) {
             const info = atomTypes[type];
@@ -7324,6 +7546,10 @@ isOptimizing = false;
             if (blockWhenLocked('优化结构')) return;
             optimizeAllWithAutoHydrogen();
         });
+        // 一键补氢（2026-11-27）：独立按钮，点击立即补足缺失的 H，不依赖「自动补氢」开关
+        document.getElementById('btn-hydrogenate').addEventListener('click', () => {
+            hydrogenateNow();
+        });
         document.getElementById('btn-toggle-hydro').addEventListener('click', (e) => {
             e.preventDefault();
             HYDROGENATE_AUTO = !HYDROGENATE_AUTO;
@@ -7367,6 +7593,9 @@ isOptimizing = false;
             // 只按复选框目标值设置一次（旧写法先手动翻再 toggleLonePairs 又翻 → 净无效）
             toggleLonePairs(this.checked);
         });
+        document.getElementById('chk-labels').addEventListener('change', function() {
+            setAtomLabelsVisible(this.checked);
+        });
         document.getElementById('chk-grid').addEventListener('change', function() {
             const want = this.checked;
             if (showGridSnap !== want) { showGridSnap = want; gridRoot.visible = showGridSnap; try { localStorage.setItem('GRID_SNAP', showGridSnap ? '1' : '0'); } catch (e) {} setToggleOn('grid', showGridSnap); }
@@ -7381,6 +7610,7 @@ isOptimizing = false;
             else { this.checked = false; showToast('请先开启离域π键', 1200); }
         });
         updateStyleUI();
+        setToggleOn('labels', ATOM_LABELS_VISIBLE);   // 原子标签开关初始状态（localStorage，默认开启）
 
         // --- 卡片事件绑定（与之前相同）---
         const carbonCard = document.getElementById('drag-carbon');
@@ -7789,6 +8019,33 @@ isOptimizing = false;
         window.__addMissingHydrogens = () => addMissingHydrogens();
         window.__hydrogenateAuto = () => HYDROGENATE_AUTO;
         window.__setHydrogenate = (on) => { HYDROGENATE_AUTO = !!on; try { localStorage.setItem('HYDROGENATE_AUTO', HYDROGENATE_AUTO ? '1' : '0'); } catch (e) {} updateHydroUI(); };
+
+        // ===== 一键补氢按钮（2026-11-27 新增）=====
+        // 与「自动补氢」开关解耦：开关只决定「全局优化前是否先补氢」；
+        // 本按钮点击后立即按价态补足缺失的 H，不跑优化器（几何修正交给「优化」按钮）。
+        // 返回补上的 H 数；-1 = 被拦截（结构锁 / 空画布 / 异常）。
+        function hydrogenateNow() {
+            if (blockWhenLocked('一键补氢')) return -1;
+            let atomCount = 0;
+            for (const c of atomsGroup.children) if (c.userData && c.userData.isAtom) atomCount++;
+            if (!atomCount) { showToast('画布上还没有分子，先搭建或生成一个', 1800); return -1; }
+            let n = 0;
+            try {
+                n = addMissingHydrogens();
+            } catch (err) {
+                console.error('[补氢] 失败', err);
+                showToast('补氢失败：' + (err && err.message ? err.message : err), 2600);
+                return -1;
+            }
+            if (n > 0) {
+                commitHistory();   // 撤销/恢复：整次补氢记一条
+                showToast(`已补 ${n} 个氢原子（键角可再点「优化」修正）`, 2200);
+            } else {
+                showToast('没有需要补的氢：分子已饱和', 1600);
+            }
+            return n;
+        }
+        window.__hydrogenateNow = () => hydrogenateNow();
         window.__createHeavyAtom = (t, p) => createCompleteAtom(t, p && p.isVector3 ? p : new THREE.Vector3(p.x, p.y, p.z));
         window.__manualBond = (a, b, o) => {
             const isAtom = x => !!(x && x.userData && x.userData.isAtom) && atomsGroup.children.includes(x);
@@ -16690,6 +16947,7 @@ if (smilesInput) smilesInput.value = smilesToUse;
             // pyrrole 1-3/1-4、furan 1-3）；键的创建只应发生在生成器/显式交互里
             updateBonds(true);
             renderer.render(scene, camera);
+            updateAtomLabelOcclusion(now);   // 标签被前方原子挡住时隐藏（透视遮挡）
             labelRenderer.render(scene, camera);
         }
         resetHistory();   // 撤销/恢复：启动基线 = 空场景；同步两按钮置灰状态

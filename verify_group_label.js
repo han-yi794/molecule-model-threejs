@@ -1,4 +1,7 @@
 // verify_group_label.js — 基团原子标签与其他原子一致
+// 2026-11-27 起标签可被前方原子遮挡（透视关系，见 setAtomLabelsVisible/updateAtomLabelOcclusion）：
+// 标签对象数仍应等于原子数，但 DOM 里「可见」标签可能少于对象数（被挡住的标签由
+// CSS2DRenderer 从 DOM 摘除）。因此 S2/S3 以对象数为准，DOM 只验「可见且无杂化后缀」。
 const { chromium } = require('playwright');
 const http = require('http');
 const PORT = 8039;
@@ -34,25 +37,36 @@ async function ensureServer() { if (await waitPort(1000)) return null; const { s
         });
         step('S1 基团4原子全部带标签', out.S1.withLabel === out.S1.groupAtoms && out.S1.groupAtoms >= 4, out.S1);
 
-        // 等一帧让 labelRenderer 渲染,再从 DOM 统计全部标签文本
+        // 等一帧让 labelRenderer 渲染,再从 DOM 统计可见标签文本
         await page.waitForTimeout(800);
         out.S2 = await page.evaluate(() => {
             const divs = [...document.querySelectorAll('[data-role="atom-label"]')];
-            return { allTexts: divs.map(d => d.textContent), count: divs.length };
+            const st = window.__atomLabels ? window.__atomLabels.state() : null;
+            return {
+                allTexts: divs.map(d => d.textContent),
+                count: divs.length,
+                labelObjects: st ? st.labels : null,
+                hiddenLabels: st ? st.hiddenLabels : null
+            };
         });
-        // 甲烷 C+4H + 甲基 C+3H = 9 标签;全部为纯元素符号(无 (spX) 杂化后缀)
+        // 甲烷 C+4H + 甲基 C+3H = 9 个标签对象；可见标签 ≥8（允许 1 个被遮挡），
+        // 且全部为纯元素符号（无 (spX) 杂化后缀）
         const cCount = out.S2.allTexts.filter(t => t === 'C').length;
         const hCount = out.S2.allTexts.filter(t => t === 'H').length;
         const noHybSuffix = out.S2.allTexts.every(t => !t.includes('('));
-        step('S2 标签共9个(C×2 + H×7),全部无杂化后缀', out.S2.count === 9 && cCount === 2 && hCount === 7 && noHybSuffix, out.S2);
+        step('S2 标签对象共9个；可见标签无杂化后缀',
+            out.S2.labelObjects === 9 && out.S2.count >= 8 && cCount >= 1 && hCount >= 6 && noHybSuffix, out.S2);
 
-        // S3:优化后标签仍在且保持纯元素符号
+        // S3:优化后标签对象仍在且可见者保持纯元素符号
         out.S3 = await page.evaluate(() => {
             window.__diag.runOpt();
             const divs = [...document.querySelectorAll('[data-role="atom-label"]')];
-            return { afterOpt: divs.map(d => d.textContent).sort() };
+            const st = window.__atomLabels ? window.__atomLabels.state() : null;
+            return { afterOpt: divs.map(d => d.textContent).sort(), labelObjects: st ? st.labels : null };
         });
-        step('S3 优化后标签保留且仍无杂化后缀', out.S3.afterOpt.length === 9 && out.S3.afterOpt.every(t => !t.includes('(')), out.S3);
+        step('S3 优化后标签保留且仍无杂化后缀',
+            out.S3.labelObjects === 9 && out.S3.afterOpt.length >= 8
+            && out.S3.afterOpt.every(t => !t.includes('(')), out.S3);
 
         await page.screenshot({ path: 'd_glbl.png' });
         console.log(JSON.stringify(report, null, 1));
