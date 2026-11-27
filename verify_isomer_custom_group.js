@@ -342,6 +342,69 @@ const { chromium } = require('playwright');
         && m11.chips[0] === 'CCO' && m11.vis === 1 && m11.status.indexOf('显示 1 / 2') >= 0, m11);
     await page.evaluate(() => window.__isomerFilter.set({ custom: [], groups: [], types: [], countRaw: '', mode: 'all' }));
 
+    // ============ N 半键基团（- 标记开放连接点，2026-11-28） ============
+    {
+        const nc = await page.evaluate(async () => {
+            const C = window.__isomerFilter.compileCustom;
+            const M = (an, s) => window.__isofMatchCustom(an, s);
+            const anEth = window.__isomerFilter.analyze('CCO');    // 乙醇 CH3-CH2-OH
+            const anMeo = window.__isomerFilter.analyze('COC');    // 甲醚 CH3-O-CH3
+            const anMet = window.__isomerFilter.analyze('C');      // 甲烷（无重原子邻居可挂）
+            const out = {};
+            out.c1 = C('-OH');                    // 单 O 半键（宽容回退 OH→[OH]）
+            out.c2 = C('-[CH2]-');                // 桥接 CH2（同一原子 2 个半键）
+            out.c3 = C('CH3-');                   // 末端甲基（宽容回退 CH3→[CH3]）
+            out.c4 = C('-CH2-CH2-');              // 链接子（两端各 1 个半键）
+            out.c5 = C('-');
+            out.mEthOH = M(anEth, '-OH');         // O 有子图外重邻居（CH2）✓
+            out.mMeoOH = M(anMeo, '-OH');         // 醚 O 无 H（[OH] hMin=1 不符）✗
+            out.mEthCH2 = M(anEth, '-[CH2]-');    // 乙醇 CH2 两侧各接 CH3/O ✓
+            out.mMeoCH2 = M(anMeo, '-[CH2]-');    // 甲醚无 CH2 ✗
+            out.mEthCH3 = M(anEth, 'CH3-');       // 末端甲基 ✓
+            out.mMeoCH3 = M(anMeo, 'CH3-');       // 醚的 CH3 也是末端 ✓（2/2 语义）
+            out.mMetCH3 = M(anMet, 'CH3-');       // 甲烷 C 无子图外重邻居 ✗
+            out.mEthLinker = M(anEth, '-CH2-CH2-');// 乙醇无两个相邻 CH2 ✗
+            out.bothOpenSingle = (C('-[CH2]-').query.atoms[0].open === 2);
+            return out;
+        });
+        ok('N1 半键编译：-OH 单半键、-[CH2]- 双半键、CH3- 末端半键、裸 - 报错',
+            nc.c1.ok === true && nc.c1.query.atoms[0].open === 1 && nc.c1.raw === '-OH'
+            && nc.bothOpenSingle === true
+            && nc.c3.ok === true && nc.c3.query.atoms[nc.c3.query.n - 1].open === 1
+            && nc.c4.ok === true && nc.c4.query.atoms[0].open === 1 && nc.c4.query.atoms[nc.c4.query.n - 1].open === 1
+            && nc.c5.ok === false, nc);
+        ok('N2 半键匹配：-OH 只挂被取代的 O、-[CH2]- 桥接、CH3- 末端',
+            nc.mEthOH === true && nc.mMeoOH === false
+            && nc.mEthCH2 === true && nc.mMeoCH2 === false
+            && nc.mEthCH3 === true && nc.mMeoCH3 === true
+            && nc.mMetCH3 === false && nc.mEthLinker === false, nc);
+
+        // 真实筛选流：C2H6O 面板 + 半键条件
+        await page.evaluate(async () => {
+            const res = await window.__fetchFormulaIsomers('C2H6O');
+            window.__showIsomerPanel('C2H6O', res.items, {});
+        });
+        await page.waitForTimeout(300);
+        const n3 = await page.evaluate(() => {
+            window.__isomerFilter.set({ custom: ['-OH'], groups: [], types: [], countRaw: '', mode: 'all' });
+            const st = window.__isomerFilter.state();
+            const vis = Array.from(document.querySelectorAll('#isomer-list label')).filter(r => r.style.display !== 'none').length;
+            const chip = (document.querySelector('#isomer-custom-chips .isof-custom-chip span') || {}).textContent;
+            return { custom: st.custom.slice(), vis, chip, status: document.getElementById('isomer-filter-status').textContent };
+        });
+        ok('N3 真实筛选：-OH 芯片保留半键标记、仅乙醇命中 1/2',
+            n3.custom[0] === '-OH' && n3.chip === '-OH' && n3.vis === 1 && n3.status.indexOf('显示 1 / 2') >= 0, n3);
+        const n4 = await page.evaluate(() => {
+            window.__isomerFilter.set({ custom: ['CH3-'], groups: [], types: [], countRaw: '', mode: 'all' });
+            const st = window.__isomerFilter.state();
+            const vis = Array.from(document.querySelectorAll('#isomer-list label')).filter(r => r.style.display !== 'none').length;
+            return { custom: st.custom.slice(), vis };
+        });
+        ok('N4 CH3- 命中两个异构体（各有末端甲基）2/2',
+            n4.custom[0] === 'CH3-' && n4.vis === 2, n4);
+        await page.evaluate(() => window.__isomerFilter.set({ custom: [], groups: [], types: [], countRaw: '', mode: 'all' }));
+    }
+
     // ============ M12 手机 375×667：小键盘不超屏、键位可点 ============
     await page.setViewportSize({ width: 375, height: 667 });
     await page.evaluate(() => { window.__smilesKeypad.resetPosition(); });

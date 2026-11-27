@@ -77,26 +77,34 @@ const { chromium } = require('playwright');
     }
     ok('L1 分析器电池 ' + (battery.length - badBat.length) + '/' + battery.length, badBat.length === 0, badBat.slice(0, 6));
 
-    const pc = await page.evaluate(() => ({
-        eq: window.__isomerFilter.parseCount('3'),
-        ge: window.__isomerFilter.parseCount('≥3'),
-        range: window.__isomerFilter.parseCount('2-4'),
-        range2: window.__isomerFilter.parseCount('3至5'),
-        bad: window.__isomerFilter.parseCount('abc'),
-        bad2: window.__isomerFilter.parseCount('12x'),
-        empty: window.__isomerFilter.parseCount(''),
-        m1: window.__isomerFilter.matchCount(window.__isomerFilter.parseCount('≥3'), 3),
-        m2: window.__isomerFilter.matchCount(window.__isomerFilter.parseCount('≥3'), 2),
-        m3: window.__isomerFilter.matchCount(window.__isomerFilter.parseCount('2-4'), 5),
-        m4: window.__isomerFilter.matchCount(window.__isomerFilter.parseCount('<5'), 4),
-        m5: window.__isomerFilter.matchCount(window.__isomerFilter.parseCount('>2组'), 2),
-    }));
-    ok('L2 峰组数表达式解析/匹配', !!pc.eq && pc.eq.kind === 'cmp' && pc.eq.op === '=' && pc.eq.n === 3
-        && !!pc.ge && pc.ge.op === '>=' && pc.ge.n === 3
-        && !!pc.range && pc.range.lo === 2 && pc.range.hi === 4
-        && !!pc.range2 && pc.range2.lo === 3 && pc.range2.hi === 5
-        && pc.bad === undefined && pc.bad2 === undefined && pc.empty === null
-        && pc.m1 === true && pc.m2 === false && pc.m3 === false && pc.m4 === true && pc.m5 === false, pc);
+    const pc = await page.evaluate(() => {
+        const P = window.__isomerFilter.parseRatio;
+        const an = window.__isomerFilter.analyze('CCO');   // 乙醇：3 类 [3,2,1]，OH 为活泼氢
+        const M = (ratio, noExch) => window.__isomerFilter.matchRatio(P(ratio), an, noExch);
+        return {
+            multi: P('3:3:2:1:1'),
+            order: P('2:3'),
+            norm: P('6:4:2'),        // gcd 2 → [3,2,1]
+            fw: P('3：2'),            // 全角冒号
+            bad: P('abc'),
+            bad2: P('12x'),
+            zero: P('3:0'),
+            empty: P(''),
+            m1: M('3:2:1', false),   // 乙醇全类 [3,2,1] ✓
+            m2: M('1:2:3', false),   // 与组序无关 ✓
+            m3: M('6:4:2', false),   // 归一化等价 ✓
+            m4: M('3:2', false),     // 组数不符 ✗
+            m5: M('3:2:1', true),    // 排除活泼氢后 [3,2] ✗
+            m6: M('3:2', true),      // 排除活泼氢后 [3,2] ✓
+        };
+    });
+    ok('L2 峰面积比解析/匹配（多重集、gcd 归一、与组序无关）',
+        !!pc.multi && pc.multi.kind === 'ratio' && JSON.stringify(pc.multi.list) === JSON.stringify([3, 3, 2, 1, 1])
+        && !!pc.order && JSON.stringify(pc.order.list) === JSON.stringify([3, 2])
+        && !!pc.norm && JSON.stringify(pc.norm.list) === JSON.stringify([3, 2, 1])
+        && !!pc.fw && JSON.stringify(pc.fw.list) === JSON.stringify([3, 2])
+        && pc.bad === undefined && pc.bad2 === undefined && pc.zero === undefined && pc.empty === null
+        && pc.m1 === true && pc.m2 === true && pc.m3 === true && pc.m4 === false && pc.m5 === false && pc.m6 === true, pc);
 
     // ============ M 真实 UI：C2H6O ============
     const openPanel = async (formula, titleSub) => {
@@ -157,12 +165,12 @@ const { chromium } = require('playwright');
     });
     ok('M7 排除活泼氢 → 标签刷新为 2 组 (3:2)', f2.visTag.indexOf('2 组 (3:2)') >= 0 && f2.visTag.indexOf('不含活泼氢') >= 0, f2.visTag);
 
-    // 峰组数 2 → 乙醇可见；3 → 0 行
-    await page.fill('#isomer-nmr-count', '2');
+    // 峰面积比 3:2（排除活泼氢后乙醇 [3,2]）→ 乙醇可见；3:2:1（3 组）→ 0 行
+    await page.fill('#isomer-nmr-count', '3:2');
     const f3 = await page.evaluate(() => document.getElementById('isomer-filter-status').textContent);
-    await page.fill('#isomer-nmr-count', '3');
+    await page.fill('#isomer-nmr-count', '3:2:1');
     const f4 = await page.evaluate(() => document.getElementById('isomer-filter-status').textContent);
-    ok('M8 峰组数=2 命中乙醇 / =3 无命中', f3.indexOf('显示 1 / 2') >= 0 && f4.indexOf('显示 0 / 2') >= 0, { f3, f4 });
+    ok('M8 峰面积比=3:2 命中乙醇 / =3:2:1 无命中', f3.indexOf('显示 1 / 2') >= 0 && f4.indexOf('显示 0 / 2') >= 0, { f3, f4 });
 
     // 非法输入 → 标红且忽略（条件只留 chip）
     await page.fill('#isomer-nmr-count', 'abc');
@@ -225,7 +233,7 @@ const { chromium } = require('playwright');
     ok('M13 取消全选', sa2 === 0, sa2);
 
     // 多条件：满足任一 / 满足全部
-    await page.fill('#isomer-nmr-count', '1');   // 甲醚 count=1
+    await page.fill('#isomer-nmr-count', '6');   // 甲醚 6H 单组
     await page.selectOption('#isomer-filter-mode', 'any');
     const g1 = await page.evaluate(() => document.getElementById('isomer-filter-status').textContent);
     await page.selectOption('#isomer-filter-mode', 'all');

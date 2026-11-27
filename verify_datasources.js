@@ -25,10 +25,11 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
     const results = [];
     const errs = [];
     page.on('pageerror', e => errs.push('pageerror: ' + e.message));
-    // 网络探测的 404/500（PubChem not_found / CACTUS 5xx）是检索流程的预期路径，
-    // 不算 JS 错误；只收集真正的 pageerror 与 JS console.error。
+    // 网络探测的 404/500（PubChem not_found / CACTUS 5xx / ChEMBL 偶发 500 无 CORS 头）
+    // 是检索流程的预期路径，代码侧已静默兜底，不算 JS 错误；只收集真正的
+    // pageerror 与 JS console.error。
     page.on('console', m => {
-        if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push('console: ' + m.text());
+        if (m.type() === 'error' && !/Failed to load resource|blocked by CORS policy/.test(m.text())) errs.push('console: ' + m.text());
     });
 
     const ok = (name, cond, extra) => {

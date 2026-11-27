@@ -69,7 +69,7 @@ const { chromium } = require('playwright');
     const q3 = await page.evaluate(() => window.__isomerPresearch.state());
     ok('Q3 候选总数已统计（> 阈值 400）', q3.totalKnown === true && q3.total > 400, { total: q3.total, totalKnown: q3.totalKnown });
 
-    // 非法峰组数：标红 + toast + 不启动
+    // 非法峰面积比：标红 + toast + 不启动
     await page.fill('#isomer-pre-nmr-count', '3-x');
     const q4a = await page.evaluate(() => document.getElementById('isomer-pre-nmr-count').classList.contains('isof-invalid'));
     await page.click('#isomer-pre-start');
@@ -80,9 +80,9 @@ const { chromium } = require('playwright');
         toast: document.getElementById('toast-message').textContent,
         stillOpen: window.__isomerPresearch.visible()
     }));
-    ok('Q4 非法峰组数：输入框标红、toast 提示、不启动检索',
+    ok('Q4 非法峰面积比：输入框标红、toast 提示、不启动检索',
         q4a === true && q4.running === false && q4.matches === 0 && q4.stillOpen === true
-        && q4.toast.indexOf('峰组数格式不正确') >= 0, q4);
+        && q4.toast.indexOf('峰面积比格式不正确') >= 0, q4);
 
     // 选「芳香环」+ 每次上限 30 → 开始检索
     await page.evaluate(() => window.__isomerPresearch.set({ groups: ['aromatic'], types: [], countRaw: '', noExch: false, mode: 'all', limit: 30 }));
