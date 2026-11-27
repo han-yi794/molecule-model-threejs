@@ -2201,6 +2201,7 @@
             <p>顶栏「异构体」按画布上分子的完整分子式（自动计入隐式氢）检索同分异构体；结果面板可勾选并生成候选结构。</p>
             <p>顶栏「补氢」一键按价态补足缺失的氢原子（只加氢、不改已有几何）；「视图 → 自动补氢」开关则是在全局优化前自动补氢。</p>
             <p>「视图 → 原子标签」可随时隐藏场景中的元素符号；标签被前方原子挡住时会自动隐藏，符合透视关系。</p>
+<p>名称检索依次查询：RCSB PDB 实验结构（蛋白名/UniProt accession 如 P01308）→ AlphaFold DB 预测模型（2 亿+ 蛋白）→ PubChem 3D（小分子）→ ChEMBL（CHEMBLxxx ID 或活性分子名）。PDB 结构会自动按价态补氢并推断芳香环。</p>
         </div>
     </div>
 </div>
@@ -2841,10 +2842,14 @@
             return getVisualRadiusForType(atom.userData.atomType, atom.userData.hybridization || null);
         }
 
-        // 获取两个原子的目标键长（考虑键级与芳香键特殊处理）
-        function getTargetBondLength(atomA, atomB) {
+        // 获取两个原子的目标键长（考虑键级与芳香键特殊处理）。
+        // knownBond（2026-11-27）：调用方已持有该 pair 的键对象时直接传入，跳过
+        // bonds.find 全表扫描——updateBonds 每轮对每条既有键调一次本函数，
+        // 9206 键的血红蛋白单此一项就是 4000 万次比较。
+        function getTargetBondLength(atomA, atomB, knownBond = null) {
             // 查找已存在的键以获取键级
-            const existing = bonds.find(b => (b.atomA === atomA && b.atomB === atomB) || (b.atomA === atomB && b.atomB === atomA));
+            const existing = knownBond ||
+                bonds.find(b => (b.atomA === atomA && b.atomB === atomB) || (b.atomA === atomB && b.atomB === atomA));
             const bondType = existing ? existing.type : 1;
 
             // 芳香键（1.5）强制理想键长（含杂环：pyridine 的 C-N、furan 的 C-O、
@@ -2897,10 +2902,16 @@
         // 记录最近一次优化结束时间（ms），用于在优化后短时内抑制断键操作
         let lastOptimizationEndTime = 0;
 
-        // 简单的键事件日志，用于诊断断键/建键行为
+        // 简单的键事件日志，用于诊断断键/建键行为。
+        // 2026-11-27：默认关闭（window._BOND_LOG_ENABLED = true 才记录）。旧实现无条件
+        // 记录，且每次事件都调 getTargetBondLength（内部 bonds.find 全表扫描 O(m)）——
+        // updateBonds 每轮对每条键记一次「stabilized」，9206 键的血红蛋白一次 updateBonds
+        // 仅日志就要 4000 万次比较，是大分子生成/交互卡顿的隐性大头。需要诊断时在控制台
+        // 置 window._BOND_LOG_ENABLED = true 即可恢复原行为。
         try { window._bondEventLog = window._bondEventLog || []; } catch (e) {}
         function logBondEvent(bond, eventType, reason) {
             try {
+                if (window._BOND_LOG_ENABLED !== true) return;
                 if (!window._bondEventLog) window._bondEventLog = [];
                 const aId = bond && bond.atomA && bond.atomA.userData && bond.atomA.userData._id ? bond.atomA.userData._id : null;
                 const bId = bond && bond.atomB && bond.atomB.userData && bond.atomB.userData._id ? bond.atomB.userData._id : null;
@@ -7010,6 +7021,15 @@ isOptimizing = false;
                 const key = ia < ib ? ia * nAtom + ib : ib * nAtom + ia;
                 if (!existingByPair.has(key)) existingByPair.set(key, bond);
             }
+            // 坐标扁平化（2026-11-27 性能）：pair 循环是 O(n²)——9000 原子 = 4000 万对，
+            // 旧写法每对调一次 a.position.distanceToSquared(b.position)（方法调用 +
+            // 多层属性链），血红蛋白实测一次 updateBonds ~6s。先把坐标拷进 Float64Array，
+            // 内层变成纯类型化数组算术（约快一个数量级），语义完全一致。
+            const PX = new Float64Array(nAtom), PY = new Float64Array(nAtom), PZ = new Float64Array(nAtom);
+            for (let i = 0; i < nAtom; i++) {
+                const p = atoms[i].position;
+                PX[i] = p.x; PY[i] = p.y; PZ[i] = p.z;
+            }
             // 距离剪枝：无既有键且间距超过「任何成键阈值上限」的原子对直接跳过，
             // 省掉 getTargetBondLength 的半径表查询（最大 C-I 单键 2.10Å × 1.24 ≈ 2.60Å，
             // 取 3.6Å 留足余量；既有键无论拉多长都必须处理，用于断键判定）。
@@ -7026,10 +7046,15 @@ isOptimizing = false;
                         newBonds.push(existing);
                         continue;
                     }
-                    const distSq = a.position.distanceToSquared(b.position);
+                    const dxp = PX[i] - PX[j], dyp = PY[i] - PY[j], dzp = PZ[i] - PZ[j];
+                    const distSq = dxp * dxp + dyp * dyp + dzp * dzp;
                     if (!existing && distSq > PAIR_SKIP_SQ) continue;
                     const dist = Math.sqrt(distSq);
-                    const targetLen = getTargetBondLength(a, b);
+                    // 键级来源：既有键直接传入（跳过 getTargetBondLength 的 bonds.find
+                    // 全表扫描）；非键对的键级必为 1，直接用共价半径和（语义等价）。
+                    const targetLen = existing
+                        ? getTargetBondLength(a, b, existing)
+                        : getCovalentRadiusForAtom(a) + getCovalentRadiusForAtom(b);
                     const addThreshold = targetLen * BOND_FACTOR;
                     const removeThreshold = targetLen * BOND_REMOVE_FACTOR;
                     if (existing) {
@@ -7825,8 +7850,11 @@ isOptimizing = false;
             createCompleteAtom('H', atom.position.clone().add(d2.multiplyScalar(hDist)));
         }
 
-        function addBondBetween(atomA, atomB, type = 1) {
-            const existing = bonds.find(b => (b.atomA === atomA && b.atomB === atomB) || (b.atomA === atomB && b.atomB === atomA));
+        function addBondBetween(atomA, atomB, type = 1, opts = null) {
+            // trustNew：调用方保证这是一条全新键（如批量补氢的新 H），跳过 O(m) 的
+            // 既有键查找——大分子补 5000 个 H 时逐键全表扫描是秒级开销。
+            const existing = (opts && opts.trustNew) ? null :
+                bonds.find(b => (b.atomA === atomA && b.atomB === atomB) || (b.atomA === atomB && b.atomB === atomA));
             if (existing) {
                 existing.type = type;
                 markBondsChanged();   // 键级变化影响环芳香性判定
@@ -7860,6 +7888,134 @@ isOptimizing = false;
         function bondsOfAtom(atom) {
             return getBondsForAtom(atom);
         }
+
+        // ===== 芳香环键级推断（2026-11-27，PDB / 手搭分子补氢前置）=====
+        // 背景（用户报告「一键补氢会多补氢，因为芳香环被识别为由单键连接的」）：
+        // PDB 文件不写键级，parsePDB 全按单键建 → 苯丙氨酸/酪氨酸环上 CH 被价态规则
+        // 判成「2 个单键邻居 → 缺 2 个 H」（应缺 1 个），咪唑两个 N 全被质子化。
+        // 这里按几何判据找 5/6 元环（与键级无关，纯几何 + 元素）：
+        //   ① 环原子全是 C/N/O/S 且 σ 邻居 ≤ 3
+        //   ② 环键平均长 < 1.50Å 且最长 < 1.60Å（芳香 C-C≈1.38 / C-N≈1.34；饱和 C-C≈1.53）
+        //   ③ 近平面：环原子到最佳拟合平面最大偏差 < 0.45Å（排除环己烷/脯氨酸的折叠环）
+        // 满足则把仍是单键（type===1）的环键升为 1.5（Kekulé 式交替双键也会被归一，
+        // 与应用内苯环表示一致），并返回需强制带 1 个 H 的 5 元环 N 供体集合：
+        // 吡咯/吲哚/咪唑的 N-H 供体在环键 1.5 后价态算 k=0，但化学上应带 1 个 H；
+        // 环里有 2 个这样的 N（组氨酸）时只给 1 个（互变异构，取原子 id 较小者）。
+        function inferAromaticBondsFromGeometry() {
+            const out = { rings: 0, bondsUpgraded: 0, forcedH: new Set() };
+            try {
+                const atoms = atomsGroup.children.filter(c => c.userData?.isAtom);
+                if (atoms.length < 5) return out;
+                const adj = new Map();
+                for (const a of atoms) adj.set(a, []);
+                const bondByKey = new Map();
+                for (const b of bonds) {
+                    if (b.coordination) continue;
+                    if (!adj.has(b.atomA) || !adj.has(b.atomB)) continue;
+                    adj.get(b.atomA).push(b.atomB);
+                    adj.get(b.atomB).push(b.atomA);
+                    const ia = b.atomA.userData._id, ib = b.atomB.userData._id;
+                    bondByKey.set(ia < ib ? ia + ',' + ib : ib + ',' + ia, b);
+                }
+                // 简单环枚举：以环内最小 _id 为根 DFS（每个简单环恰枚举一次），深度 ≤ 8。
+                // 预算 20 万次调用兜底稠密稠环（正常蛋白/有机分子远用不到）。
+                const rings = [];
+                const seen = new Set();
+                const path = [];
+                const onPath = new Set();
+                const MAX_RING = 8;
+                let budget = 200000;
+                function dfs(root, node, depth) {
+                    if (budget-- <= 0 || depth > MAX_RING) return;
+                    path.push(node);
+                    onPath.add(node);
+                    for (const nb of (adj.get(node) || [])) {
+                        if (nb === root && path.length >= 3) {
+                            const key = path.map(a => a.userData._id).sort((x, y) => x - y).join(',');
+                            if (!seen.has(key)) { seen.add(key); rings.push(path.slice()); }
+                        } else if (!onPath.has(nb) && nb.userData._id > root.userData._id) {
+                            dfs(root, nb, depth + 1);
+                        }
+                    }
+                    path.pop();
+                    onPath.delete(node);
+                }
+                for (const a of atoms) {
+                    if (budget <= 0) break;
+                    dfs(a, a, 1);
+                }
+
+                const EL_OK = { C: 1, N: 1, O: 1, S: 1 };
+                const donorRings = [];
+                for (const ring of rings) {
+                    if (ring.length !== 5 && ring.length !== 6) continue;
+                    let ok = true;
+                    for (const a of ring) {
+                        if (!EL_OK[a.userData.atomType] || (adj.get(a) || []).length > 3) { ok = false; break; }
+                    }
+                    if (!ok) continue;
+                    let sum = 0, maxL = 0;
+                    const ringBonds = [];
+                    for (let i = 0; i < ring.length && ok; i++) {
+                        const a = ring[i], b2 = ring[(i + 1) % ring.length];
+                        const ia = a.userData._id, ib = b2.userData._id;
+                        const bd = bondByKey.get(ia < ib ? ia + ',' + ib : ib + ',' + ia);
+                        if (!bd) { ok = false; break; }
+                        ringBonds.push(bd);
+                        const L = a.position.distanceTo(b2.position);
+                        sum += L;
+                        if (L > maxL) maxL = L;
+                    }
+                    if (!ok) continue;
+                    const meanL = sum / ring.length;
+                    if (meanL >= 1.50 || maxL >= 1.60) continue;
+                    // 平面度：Newell 法线 + 环原子到质心平面的最大偏差
+                    const nrm = new THREE.Vector3();
+                    for (let i = 0; i < ring.length; i++) {
+                        const p1 = ring[i].position, p2 = ring[(i + 1) % ring.length].position, p3 = ring[(i + 2) % ring.length].position;
+                        nrm.x += (p2.y - p1.y) * (p3.z - p1.z) - (p2.z - p1.z) * (p3.y - p1.y);
+                        nrm.y += (p2.z - p1.z) * (p3.x - p1.x) - (p2.x - p1.x) * (p3.z - p1.z);
+                        nrm.z += (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+                    }
+                    if (nrm.lengthSq() < 1e-9) continue;
+                    nrm.normalize();
+                    const c = new THREE.Vector3();
+                    for (const a of ring) c.add(a.position);
+                    c.multiplyScalar(1 / ring.length);
+                    let maxDev = 0;
+                    for (const a of ring) {
+                        const dev = Math.abs(a.position.x * nrm.x + a.position.y * nrm.y + a.position.z * nrm.z
+                            - (c.x * nrm.x + c.y * nrm.y + c.z * nrm.z));
+                        if (dev > maxDev) maxDev = dev;
+                    }
+                    if (maxDev > 0.45) continue;
+                    // ✅ 芳香环：把仍是单键的环键升为 1.5（已标注的 1.5/2/3 不动）
+                    for (const bd of ringBonds) {
+                        if (bd.type === 1) { bd.type = 1.5; updateBondGeometry(bd); out.bondsUpgraded++; }
+                    }
+                    out.rings++;
+                    if (ring.length === 5) donorRings.push(ring);
+                }
+                // N-H 供体：5 元芳香环里 σ==2（两条环键、无环外重原子）且尚未带 H 的 N。
+                // 自稳定（2026-11-27）：环内任一 N 已带 H（上一轮补氢的结果）就整环跳过
+                // ——否则咪唑「另一个 N」在二次运行时又成为唯一候选，被再质子化。
+                for (const ring of donorRings) {
+                    const ringNs = ring.filter(a => a.userData.atomType === 'N');
+                    if (ringNs.some(a => bondsOfAtom(a).some(b => (b.atomA === a ? b.atomB : b.atomA).userData.atomType === 'H'))) continue;
+                    const cands = ringNs.filter(a => bondsOfAtom(a).length === 2);
+                    if (cands.length === 1) out.forcedH.add(cands[0]);
+                    else if (cands.length >= 2) {
+                        cands.sort((x, y) => x.userData._id - y.userData._id);
+                        out.forcedH.add(cands[0]);
+                    }
+                }
+                if (out.bondsUpgraded) markBondsChanged();
+            } catch (e) {
+                console.warn('[芳香推断] 失败（忽略，按原键级补氢）', e);
+            }
+            return out;
+        }
+        window.__inferAromaticBonds = () => inferAromaticBondsFromGeometry();
         // 为一个中心原子生成 k 个补氢方向。
         // 原则：优先按 VSEPR 电子域模板（sp3 109.47° / sp2 120° / sp 180°）摆放，
         // 模板不适用时才退回"与已有方向最小夹角最大化"的球面贪心。
@@ -7973,44 +8129,145 @@ isOptimizing = false;
             }
             return dirs;
         }
-        function addMissingHydrogens() {
+        // ===== 补氢空间网格（2026-11-27，碰撞规避用）=====
+        // 把原子位置按 2Å 立方格分桶；候选 H 位置查询 27 邻桶取最小非键距离。
+        const _HGRID_CELL = 2.0;
+        function _hgridBuild(atoms) {
+            const map = new Map();
+            const key = (p) => Math.floor(p.x / _HGRID_CELL) + ',' + Math.floor(p.y / _HGRID_CELL) + ',' + Math.floor(p.z / _HGRID_CELL);
+            for (const a of atoms) {
+                const k = key(a.position);
+                let arr = map.get(k);
+                if (!arr) { arr = []; map.set(k, arr); }
+                arr.push(a);
+            }
+            map._key = key;
+            return map;
+        }
+        function _hgridInsert(grid, atom) {
+            const k = grid._key(atom.position);
+            let arr = grid.get(k);
+            if (!arr) { arr = []; grid.set(k, arr); }
+            arr.push(atom);
+        }
+        // 候选方向打分：与附近非键原子的最小距离（截断 1.6Å；越大越好）。
+        function _hgridMinDist(grid, pos, exclude) {
+            let best = Infinity;
+            const cx = Math.floor(pos.x / _HGRID_CELL), cy = Math.floor(pos.y / _HGRID_CELL), cz = Math.floor(pos.z / _HGRID_CELL);
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+                const arr = grid.get((cx + dx) + ',' + (cy + dy) + ',' + (cz + dz));
+                if (!arr) continue;
+                for (const a of arr) {
+                    if (exclude.has(a)) continue;
+                    const d = a.position.distanceTo(pos);
+                    if (d < best) best = d;
+                }
+            }
+            return best;
+        }
+        // 在理想方向周围生成 ±20°/±40° 锥形微扰候选（17 个），取「非键净距」最大者；
+        // 打分截断 1.6Å：无冲突时优先用理想方向（候选 0），只有真的挤才让位。
+        function _refineHDir(center, dir, len, grid, exclude) {
+            if (!grid) return dir;
+            const d0 = dir.clone().normalize();
+            const ref = Math.abs(d0.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+            const u = ref.clone().cross(d0).normalize();
+            const v = d0.clone().cross(u).normalize();
+            const CAP = 1.6;
+            let bestDir = d0, bestScore = -1;
+            const tilts = [0, 20, 40];
+            for (let ti = 0; ti < tilts.length; ti++) {
+                const tilt = tilts[ti] * Math.PI / 180;
+                const nAz = ti === 0 ? 1 : 8;
+                for (let j = 0; j < nAz; j++) {
+                    const az = j * 2 * Math.PI / Math.max(1, nAz) + (ti * 0.7);
+                    const cand = d0.clone().multiplyScalar(Math.cos(tilt))
+                        .add(u.clone().multiplyScalar(Math.sin(tilt) * Math.cos(az)))
+                        .add(v.clone().multiplyScalar(Math.sin(tilt) * Math.sin(az))).normalize();
+                    const pos = center.position.clone().add(cand.clone().multiplyScalar(len));
+                    const score = Math.min(_hgridMinDist(grid, pos, exclude), CAP);
+                    if (score > bestScore + 1e-9) { bestScore = score; bestDir = cand; }
+                    if (ti === 0 && bestScore >= CAP) return d0;   // 理想方向已无冲突
+                }
+            }
+            return bestDir;
+        }
+
+        function addMissingHydrogens(opts) {
+            const forcedH = (opts && opts.forcedH) || null;
+            const avoidClash = !!(opts && opts.avoidClash);
             const heavy = atomsGroup.children.filter(c => c.userData?.isAtom && c.userData.atomType !== 'H');
+            // 稀疏大结构补 H 时不建标签/光晕（与生成期 _sparseAtomVisuals 语义一致）：
+            // 血红蛋白补 5000+ H 若逐个建 CSS2D 标签会慢一个数量级。
+            const prevSparse = _sparseAtomVisuals;
+            if (moleculeAtomCount() > SPARSE_VISUAL_ATOMS) _sparseAtomVisuals = true;
+            const grid = avoidClash ? _hgridBuild(heavy) : null;
+            // 配位键计数表（2026-11-27）：配位键（卟啉 Fe–N）有意不进 getBondsForAtom
+            // 的化学邻接表，但它占用配体价域。旧实现在每个重原子循环里全量扫描 bonds
+            // 找配位键（4556 原子 × 9206 键 = 42M 次比较，血红蛋白单这一项 10s+），
+            // 现在一次性建 atom → 配位数 的 Map。
+            const coordCount = new Map();
+            for (const b of bonds) {
+                if (!b.coordination) continue;
+                coordCount.set(b.atomA, (coordCount.get(b.atomA) || 0) + 1);
+                coordCount.set(b.atomB, (coordCount.get(b.atomB) || 0) + 1);
+            }
             const addedMeshes = [];
-            for (const a of heavy) {
-                const t = a.userData.atomType;
-                const val = HYDROGEN_VALENCE[t] || 0;
-                if (!val) continue;
-                let orderSum = 0;
-                const nbHeavy = [];
-                for (const b of bondsOfAtom(a)) {
-                    orderSum += b.type || 1;
-                    const o = b.atomA === a ? b.atomB : b.atomA;
-                    if (o.userData && o.userData.atomType !== 'H') nbHeavy.push(o);
+            const newBonds = [];   // [heavy, h] 延后统一建键：逐键 markBondsChanged 会让
+            try {                  // 邻接缓存反复重建（O(每次建键 × 全部键)），血红蛋白实测 25s
+                for (const a of heavy) {
+                    const t = a.userData.atomType;
+                    const val = HYDROGEN_VALENCE[t] || 0;
+                    if (!val) continue;
+                    let orderSum = 0;
+                    const nbHeavy = [];
+                    for (const b of bondsOfAtom(a)) {
+                        orderSum += b.type || 1;
+                        const o = b.atomA === a ? b.atomB : b.atomA;
+                        if (o.userData && o.userData.atomType !== 'H') nbHeavy.push(o);
+                    }
+                    orderSum += coordCount.get(a) || 0;
+                    let k = Math.round(val - orderSum);
+                    // 芳香 5 元环 N-H 供体（吡咯/吲哚/咪唑互变异构）：环键升 1.5 后价态
+                    // 算出 k=0，但化学上应带 1 个 H（inferAromaticBondsFromGeometry 已
+                    // 排除"已带 H"的 N）。
+                    if (k <= 0 && forcedH && forcedH.has(a)) k = 1;
+                    if (k <= 0 || k > 4) continue;
+                    // 新 H 无既有键：目标键长 = 父原子共价半径 + H 共价半径，
+                    // 等价于 getTargetBondLength(a, fakeH) 但免去 O(m) 的 bonds.find。
+                    const len = getCovalentRadiusForType(t, a.userData.hybridization || null)
+                        + getCovalentRadiusForType('H', null);
+                    let dirs = hydrogenPlacementDirs(a, nbHeavy, k);
+                    // 碰撞排除集只含父原子与既有重原子邻居；先放的 H 兄弟留在网格里
+                    // 当障碍物（后续 H 要避开它们），不能进排除集。
+                    let excludeBase = null;
+                    if (grid) {
+                        excludeBase = new Set([a]);
+                        for (const nb of nbHeavy) excludeBase.add(nb);
+                    }
+                    for (let i = 0; i < dirs.length; i++) {
+                        let d = dirs[i];
+                        if (grid) d = _refineHDir(a, d, len, grid, excludeBase);
+                        const pos = a.position.clone().add(d.clone().multiplyScalar(len));
+                        const h = createCompleteAtom('H', pos);
+                        newBonds.push([a, h]);
+                        addedMeshes.push(h);
+                        // 新 H 也作为重原子邻居的"占位"，避免后续补氢与刚加的 H 重叠
+                        nbHeavy.push(h);
+                        if (grid) _hgridInsert(grid, h);
+                    }
                 }
-                // 配位键（卟啉 Fe–N）有意不进 getBondsForAtom 的化学邻接表（不参与
-                // 杂化/键角/环枚举），但它确实占用配体价域：不计入会让吡咯氮
-                // （2 条单键）被判缺 1 个 H → 金属卟啉多出两个 N-H。
-                for (const b of bonds) {
-                    if (b.coordination && (b.atomA === a || b.atomB === a)) orderSum += 1;
-                }
-                const k = Math.round(val - orderSum);
-                if (k <= 0 || k > 4) continue;
-                const dirs = hydrogenPlacementDirs(a, nbHeavy, k);
-                for (const d of dirs) {
-                    const len = getTargetBondLength(a, { userData: { atomType: 'H' } });
-                    const pos = a.position.clone().add(d.clone().multiplyScalar(len));
-                    const h = createCompleteAtom('H', pos);
-                    addBondBetween(a, h, 1);
-                    addedMeshes.push(h);
-                    // 新 H 也作为重原子邻居的"占位"，避免后续补氢与刚加的 H 重叠
-                    nbHeavy.push(h);
-                }
+            } finally {
+                _sparseAtomVisuals = prevSparse;
             }
             if (addedMeshes.length) {
                 // 补氢后立即建立键（保持 updateBonds 的防误增行为与放置阶段一致）
                 const wasOptimizing = isOptimizing;
                 isOptimizing = true;
-                try { updateBonds(); } finally { isOptimizing = wasOptimizing; }
+                try {
+                    for (const [a, h] of newBonds) addBondBetween(a, h, 1, { trustNew: true });
+                    updateBonds();
+                } finally { isOptimizing = wasOptimizing; }
                 // 化学环境变化 → 强制重算孤对电子（如羰基/胺被加满后 lp 数变化）
                 refreshLonePairVisuals(true);
             }
@@ -8030,16 +8287,22 @@ isOptimizing = false;
             for (const c of atomsGroup.children) if (c.userData && c.userData.isAtom) atomCount++;
             if (!atomCount) { showToast('画布上还没有分子，先搭建或生成一个', 1800); return -1; }
             let n = 0;
+            let arom = null;
             try {
-                n = addMissingHydrogens();
+                // 芳香环键级推断（2026-11-27）：PDB/手搭分子的芳香环全是单键，直接按
+                // 价态补会把芳香 CH 补出 2 个 H。先按几何（平面 + 键长）升 1.5 再补。
+                arom = inferAromaticBondsFromGeometry();
+                n = addMissingHydrogens({ forcedH: arom.forcedH, avoidClash: true });
             } catch (err) {
                 console.error('[补氢] 失败', err);
                 showToast('补氢失败：' + (err && err.message ? err.message : err), 2600);
                 return -1;
             }
-            if (n > 0) {
-                commitHistory();   // 撤销/恢复：整次补氢记一条
-                showToast(`已补 ${n} 个氢原子（键角可再点「优化」修正）`, 2200);
+            if (n > 0 || (arom && arom.bondsUpgraded > 0)) {
+                commitHistory();   // 撤销/恢复：整次补氢（含键级修正）记一条
+                showToast(n > 0
+                    ? `已补 ${n} 个氢原子（键角可再点「优化」修正）`
+                    : `已按芳香环修正 ${arom.bondsUpgraded} 条键级（无氢可补）`, 2200);
             } else {
                 showToast('没有需要补的氢：分子已饱和', 1600);
             }
@@ -10527,11 +10790,21 @@ const fSide = new Set();
             if (!atoms.length) return null;
             const bonds = [];
             const seen = new Set();
+            // 2026-11-27 性能修复：旧写法对每对原子调 getTargetBondLength，其内部
+            // bonds.find 会全表扫描「画布上旧分子」的键——上一分子未清空时
+            // 4556² 对 × 9000 键 ≈ 千亿次比较。结构体原子无既有键，键级恒为 1，
+            // 阈值就是共价半径和 × 1.35（与 getTargetBondLength 语义等价）。
+            // 坐标同时扁平化成 Float64Array（同 updateBonds 的做法）。
+            const rad = atoms.map(a => getCovalentRadiusForType(a.type));
+            const NX = new Float64Array(atoms.length), NY = new Float64Array(atoms.length), NZ = new Float64Array(atoms.length);
+            for (let i = 0; i < atoms.length; i++) { NX[i] = atoms[i].pos.x; NY[i] = atoms[i].pos.y; NZ[i] = atoms[i].pos.z; }
             for (let i = 0; i < atoms.length; i++) {
+                const tolI = rad[i];
                 for (let j = i + 1; j < atoms.length; j++) {
-                    const d = atoms[i].pos.distanceTo(atoms[j].pos);
-                    const tol = getTargetBondLength(atoms[i], atoms[j]) * 1.35;
-                    if (d < tol) {
+                    const dx = NX[i] - NX[j], dy = NY[i] - NY[j], dz = NZ[i] - NZ[j];
+                    const d2 = dx * dx + dy * dy + dz * dz;
+                    const tol = (tolI + rad[j]) * 1.35;
+                    if (d2 < tol * tol) {
                         const key = i < j ? i * 100000 + j : j * 100000 + i;
                         if (!seen.has(key)) { seen.add(key); bonds.push([i, j, 1]); }
                     }
@@ -10612,12 +10885,25 @@ const fSide = new Set();
                 clearMolecule();
                 // 实验结构（PDB）：精确几何标记，大分子跳过通用优化器
                 MOLECULE_PRECISE_GEOMETRY = true;
+                // 键级推断统一在生成入口做（幂等）：RCSB 路线在 fetchProteinPDBById 里
+                // 已推断过一次；ESMFold 序列路线此前从未推断 → 主链羰基 O 会被补氢
+                // 误加 H。重复运行是安全的（已升级的键会被幂等检查跳过）。
+                try { inferPdbCarbonylBonds(struct); } catch (e) {}
                 const meshes = struct.atoms.map(a => createCompleteAtom(a.type, a.pos.clone()));
                 for (const b of struct.bonds) addBondBetween(meshes[b[0]], meshes[b[1]], b[2]);
                 updateBonds();
+                // 芳香环键级推断 + 自动补氢（2026-11-27）：PDB 无键级信息，若不先把
+                // 平面短键 5/6 元环升为 1.5，价态规则会把芳香 CH 补出 2 个 H（多补）。
+                // 补氢带碰撞规避（avoidClash），H 落点避开拥挤区。
+                let addedH = 0;
+                try {
+                    const arom = inferAromaticBondsFromGeometry();
+                    addedH = addMissingHydrogens({ forcedH: arom.forcedH, avoidClash: true });
+                    console.log(`[PDB 补氢] 芳香环 ${arom.rings}（升 ${arom.bondsUpgraded} 键为 1.5）· 补 ${addedH} H`);
+                } catch (e) { console.warn('[PDB 补氢] 失败（跳过）', e); }
                 refreshLonePairVisuals(true);
                 fitViewToMolecule();
-                return meshes.length;
+                return meshes.length + addedH;
             } finally {
                 _sparseAtomVisuals = prevSparse;
                 historySuppress--;
@@ -10668,10 +10954,14 @@ const fSide = new Set();
         window.__resolveProteinName = resolveProteinName;
         window.__PROTEIN_NAME_LIB = PROTEIN_NAME_LIB;
 
-        // PDB 键级推断（仅 RCSB 路线启用）：PDB 文件不写键级，parsePDB 全按单键建。
-        // 只把「C 的**唯一** O 邻居且 C-O ≤ 1.32 Å」升级为双键 —— 肽键羰基 / 侧链羰基 /
-        // 羧基的 C=O（羧基另一个 O 是单键羟基，oNbs 长度为 2 → 跳过，保持全单键，
-        // 避免把羧酸根画成两个双键）。键数不变，仅影响渲染与后续键长语义。
+        // PDB 键级推断（RCSB 与 ESMFold 路线共用，generateFromPDB 内调用，幂等）：
+        // PDB 文件不写键级，parsePDB 全按单键建。
+        // ① 「C 的**唯一** O 邻居且 C-O ≤ 1.32 Å」→ 双键（肽键羰基 / 侧链羰基）。
+        //    Ser/Thr/Tyr 的 C-O（1.36-1.43 Å）超阈值不受影响。
+        // ② 「C 恰有 2 个 O 邻居（羧基）且两条都是单键」→ 把**较短**的 C-O 升为双键
+        //    （2026-11-27：否则补氢时两个 O 各按「缺 1 H」处理，羧基被画成 C(OH)₂；
+        //    升级后 = O 双键 0 H + O 单键 1 H = 中性 COOH 形态， insulin 少 6 个多余 H）。
+        // 键数不变，仅影响渲染、键长语义与补氢计数。
         function inferPdbCarbonylBonds(struct) {
             let n = 0;
             try {
@@ -10695,9 +10985,26 @@ const fSide = new Set();
                         const other = bb[0] === ci ? bb[1] : bb[0];
                         if (atoms[other].type === 'O') oCount++;
                     }
-                    if (oCount !== 1) continue;
-                    b[2] = 2;
-                    n++;
+                    if (oCount === 1) {
+                        if (b[2] !== 2) { b[2] = 2; n++; }
+                    } else if (oCount === 2) {
+                        // 羧基（Asp/Glu 侧链、C 端、血红素丙酸）：两条 C-O 都是单键时，
+                        // 把较短的一条升为 C=O（中性 COOH 形态），另一条保持 C-OH。
+                        // 幂等：已升级过则另一条仍可能被扫到，但「任一条已非单键」即跳过。
+                        let otherOi = -1;
+                        for (const bi of nbs[ci]) {
+                            const bb = bonds[bi];
+                            const other = bb[0] === ci ? bb[1] : bb[0];
+                            if (atoms[other].type === 'O' && other !== oi) { otherOi = other; break; }
+                        }
+                        if (otherOi < 0) continue;
+                        const ob = bonds.find(x => (x[0] === ci && x[1] === otherOi) || (x[0] === otherOi && x[1] === ci));
+                        if (!ob || b[2] !== 1 || ob[2] !== 1) continue;
+                        const dThis = atoms[ci].pos.distanceTo(atoms[oi].pos);
+                        const dOther = atoms[ci].pos.distanceTo(atoms[otherOi].pos);
+                        const pick = (dThis <= dOther) ? b : ob;
+                        if (pick[2] === 1) { pick[2] = 2; n++; }
+                    }
                 }
             } catch (e) { /* 推断失败不影响主流程 */ }
             return n;
@@ -10718,6 +11025,11 @@ const fSide = new Set();
                 //   的 HEM 是 HETATM，一刀切会把 Fe 和卟啉环整块滤掉 → 蛋白失去辅基）
                 const struct = parsePDB(text, { proteinOnly: true, altLocFirst: true, hetKeep: ['HEM', 'HEC', 'HEA', 'HEB'] });
                 if (!struct) return { error: 'PDB ' + id + ' 无可用原子坐标' };
+                // 大条目保护（2026-11-27）：搜索 API 可能命中核糖体/复合物等巨型装配体，
+                // 补氢后翻倍会直接卡死页面，在解析层就拦下。
+                if (struct.atoms.length > PDB_MAX_ATOMS) {
+                    return { error: `该条目含 ${struct.atoms.length} 个重原子（上限 ${PDB_MAX_ATOMS}），请选择更小的结构` };
+                }
                 const carbonyls = inferPdbCarbonylBonds(struct);
                 return { ok: true, struct, pdbId: id, pdbLen: text.length, carbonyls };
             } catch (e) {
@@ -10737,6 +11049,216 @@ const fSide = new Set();
             return { ok: true, count, pdbId: r.pdbId, carbonyls: r.carbonyls };
         }
         window.__generateFromProteinPDB = generateFromProteinPDB;
+
+        // ============ 扩展在线数据源（2026-11-27）============
+        // 免费开放学术数据库接入（用户需求「看看能不能添加更多的数据来源」）：
+        //   ① RCSB 搜索 API（search.rcsb.org，CORS 开放）：任意蛋白名 → 实验 PDB 条目，
+        //      不再局限于 PROTEIN_NAME_LIB 里人工核对的几条；
+        //   ② UniProt + AlphaFold DB（alphafold.ebi.ac.uk，CC-BY 4.0）：实验结构查不到时
+        //      取 AI 预测模型（2 亿+ 蛋白覆盖），UniProt accession（如 P01308）可直接输入；
+        //   ③ ChEMBL（ebi.ac.uk/chembl）：PubChem/CACTUS 都解析不到的小分子名兜底，
+        //      也支持直接输入 CHEMBLxxx ID（210 万活性分子）。
+        // 未接入：ChemSpider/ZINC（需注册 API key）、COD（需 CIF 解析器）、
+        //   InterPro/Pfam/PROSITE/CDD/MEROPS/STRING/HPA/PRIDE（注释/组学/互作库，
+        //   不提供 3D 坐标，与本应用的展示无关）。
+        const PDB_MAX_ATOMS = 15000;   // 单个 PDB 条目重原子上限（超过会卡死交互）
+        const UNIPROT_ACC_RE = /^([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})$/;
+        // 「名字像蛋白」启发式：命中才在小分子管线之前先查蛋白库（避免 ethanol 等
+        // 小分子名被 RCSB 描述检索误路由到「乙醇脱氢酶」这类复合物）。中文输入会先
+        // 经 translateZhToEn 翻译成英文再匹配；不在表里的蛋白名仍可走 not_found 兜底
+        // 检索或直接输 UniProt accession。
+        const PROTEIN_NAME_HINT_RE = /(protein|proteins|enzyme|\wase\b|receptor|globin|globulin|ubiquitin|collagen|keratin|albumin|antibod|immunoglobulin|peptide|ferritin|transferrin|lactoferrin|myosin|actin|tubulin|histone|interleukin|interferon|cytokine|chemokine|chaperone|lectin|fibrinogen|casein|trypsin|chymotrypsin|pepsin|amylase|lipase|calmodulin|integrin|connexin|claudin|tubule|homolog|domain|motif|hemerythrin|hemocyanin)/i;
+
+        // RCSB 文本检索：pdbx_description（聚合物的官方描述，如 "INSULIN A CHAIN"）。
+        // 注意属性名是 rcsb_polymer_entity.pdbx_description（entity 级；container 级
+        // 未开放检索，实测 400）。命中 ID 形如 "1A7F_1"（实体），取下划线前的 entry ID
+        // 下载整文件。full_text 作为兜底（相关性较泛）。
+        async function searchRcsbPdbByName(nameEn) {
+            const q = String(nameEn || '').trim();
+            if (!q) return null;
+            const mkQuery = (retType, params) => JSON.stringify({
+                query: { type: 'terminal', service: 'text', parameters: params },
+                request_options: { results_content_type: ['experimental'], paginate: { start: 0, rows: 5 } },
+                return_type: retType
+            });
+            const attempts = [
+                { json: mkQuery('polymer_entity', { attribute: 'rcsb_polymer_entity.pdbx_description', operator: 'contains_words', value: q }), stripEntity: true },
+                { json: mkQuery('entry', { attribute: 'rcsb_polymer_entity.pdbx_description', operator: 'contains_words', value: q }), stripEntity: false },
+                { json: mkQuery('entry', { attribute: 'rcsb_polymer_entity.pdbx_description', operator: 'contains_phrase', value: q }), stripEntity: false }
+            ];
+            for (const att of attempts) {
+                try {
+                    const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
+                    const res = await fetch('https://search.rcsb.org/rcsbsearch/v2/query?json=' + encodeURIComponent(att.json), { signal: ctrl });
+                    if (!res.ok) continue;   // 204=无命中 / 400=查询不合法 → 试下一种
+                    const data = await res.json();
+                    const hit = data && data.result_set && data.result_set[0];
+                    if (hit && hit.identifier) {
+                        // "1A7F_1" → "1A7F"（下载按 entry 级取整文件）
+                        const pdbId = att.stripEntity ? String(hit.identifier).split('_')[0] : hit.identifier;
+                        if (pdbId) return { pdbId, rawId: hit.identifier, total: data.total_count };
+                    }
+                } catch (e) { /* 网络失败试下一种 */ }
+            }
+            return null;
+        }
+        window.__searchRcsbPdb = searchRcsbPdbByName;
+
+        // UniProt 检索：名字 → accession（Swiss-Prot 人工审阅优先）。
+        // 检索排序在服务端不稳定（同一查询两次可能返回不同首条：实测 ubiquitin 一次
+        // 命中 red algae 的 Polyubiquitin、一次命中人类 ISG15）→ 取 5 条本地打分：
+        // 蛋白名与查询词精确分词匹配 > 人源 > 原始顺序。
+        async function fetchUniProtAccession(nameEn) {
+            const q = String(nameEn || '').trim().toLowerCase();
+            if (!q) return null;
+            try {
+                const query = encodeURIComponent(`protein_name:${nameEn} AND reviewed:true`);
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
+                const res = await fetch('https://rest.uniprot.org/uniprotkb/search?format=json&fields=accession,id,protein_name,organism_name&size=5&query=' + query, { signal: ctrl });
+                if (!res.ok) return null;
+                const data = await res.json();
+                const results = (data && data.results) || [];
+                if (!results.length) return null;
+                const nameOf = (r) => (r.proteinDescription && r.proteinDescription.recommendedName
+                    && r.proteinDescription.recommendedName.fullName && r.proteinDescription.recommendedName.fullName.value) || '';
+                let best = null, bestScore = -1;
+                results.forEach((r, i) => {
+                    const nm = nameOf(r).toLowerCase();
+                    const words = nm.split(/[^a-z0-9]+/).filter(Boolean);
+                    let score = -i;   // 原始顺序兜底
+                    if (words.includes(q)) score += 10;                       // 名字里有独立的查询词
+                    if ((r.organism && r.organism.scientificName || '').toLowerCase().startsWith('homo sapiens')) score += 3;
+                    if (score > bestScore) { bestScore = score; best = r; }
+                });
+                if (!best || !best.primaryAccession) return null;
+                return {
+                    accession: best.primaryAccession,
+                    proteinName: nameOf(best),
+                    organism: (best.organism && best.organism.scientificName) || ''
+                };
+            } catch (e) { return null; }
+        }
+        window.__fetchUniProtAccession = fetchUniProtAccession;
+
+        // AlphaFold DB 预测模型：accession → 官方 API 拿 pdbUrl（当前 v6；不要硬编码
+        // 文件版本号——v4/v5 直链已 404，API 是唯一稳定入口）→ 下载 PDB → parsePDB。
+        async function fetchAlphaFoldModelPDB(accession) {
+            const acc = String(accession || '').trim().toUpperCase();
+            if (!UNIPROT_ACC_RE.test(acc)) return { error: '无效的 UniProt accession: ' + accession };
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(30000) : undefined;
+                const res = await fetch(`https://alphafold.ebi.ac.uk/api/prediction/${acc}`, { signal: ctrl });
+                if (!res.ok) return { error: `AlphaFold DB 无 ${acc} 的预测模型` };
+                const data = await res.json();
+                const rec = Array.isArray(data) ? data[0] : data;
+                if (!rec || !rec.pdbUrl) return { error: `AlphaFold DB 无 ${acc} 的预测模型` };
+                const res2 = await fetch(rec.pdbUrl, { signal: ctrl });
+                if (!res2.ok) return { error: 'AlphaFold 模型文件下载失败 (HTTP ' + res2.status + ')' };
+                const text = await res2.text();
+                const struct = parsePDB(text, { proteinOnly: true, altLocFirst: true });
+                if (!struct) return { error: 'AlphaFold 模型无可用原子坐标' };
+                if (struct.atoms.length > PDB_MAX_ATOMS) {
+                    return { error: `预测结构过大（${struct.atoms.length} 原子，上限 ${PDB_MAX_ATOMS}），无法展示` };
+                }
+                return {
+                    ok: true, struct, model: rec.modelEntityId || ('AF-' + acc + '-F1'),
+                    plddt: rec.globalMetricValue,
+                    proteinName: rec.uniprotDescription || '',
+                    organism: rec.organismScientificName || ''
+                };
+            } catch (e) {
+                return { error: 'AlphaFold DB 请求失败: ' + (e && e.message ? e.message : String(e)) };
+            }
+        }
+        window.__fetchAlphaFoldPDB = fetchAlphaFoldModelPDB;
+
+        // 名称 → 在线蛋白结构编排：RCSB 搜索 → UniProt + AlphaFold。
+        // 只在 curated 蛋白库与小分子路径都不适用时调用（见 generateFromInput），
+        // 避免小分子名（ethanol 等）被误路由到蛋白。
+        async function generateFromProteinNameSearch(nameEn, label) {
+            const q = String(nameEn || '').trim();
+            if (!q) return { ok: false, error: '空名称' };
+            // ⓪ UniProt accession 直查（P01308 等）：跳过名称检索直接取 AlphaFold 模型
+            if (UNIPROT_ACC_RE.test(q)) {
+                showToast('正在获取 AlphaFold 预测模型 ' + q + '…', 2400);
+                const af = await fetchAlphaFoldModelPDB(q);
+                if (af && af.ok) {
+                    const n = generateFromPDB(af.struct);
+                    setMoleculeName(label || q);
+                    setInputPanelOpen(false);
+                    showToast(`已生成 AlphaFold 预测结构 (${n} 原子 · AF ${q}${af.plddt ? ' · pLDDT ' + af.plddt : ''})`, 3600);
+                    console.log(`[分子来源] AlphaFold DB ${q} · ${af.proteinName || ''} · ${af.organism || ''} · ${n} 原子`);
+                    return { ok: true, source: 'alphafold', accession: q, count: n };
+                }
+                return { ok: false, error: (af && af.error) || '未找到预测模型' };
+            }
+            // ① RCSB 搜索（实验结构优先）
+            showToast('正在搜索 RCSB PDB 数据库…', 2000);
+            const hit = await searchRcsbPdbByName(q);
+            if (hit) {
+                const pr = await generateFromProteinPDB(hit.pdbId, label || q);
+                if (pr.ok) {
+                    console.log(`[分子来源] RCSB 搜索 "${q}" → ${hit.pdbId} · ${pr.count} 原子`);
+                    return { ok: true, source: 'rcsb', pdbId: hit.pdbId, count: pr.count };
+                }
+                console.warn('[RCSB 搜索] 命中但生成失败:', pr.error);
+            }
+            // ② UniProt + AlphaFold（AI 预测）
+            showToast('实验结构未命中，正在查询 UniProt / AlphaFold 预测模型…', 2600);
+            const up = await fetchUniProtAccession(q);
+            if (up && up.accession) {
+                const af = await fetchAlphaFoldModelPDB(up.accession);
+                if (af && af.ok) {
+                    const n = generateFromPDB(af.struct);
+                    setMoleculeName(label || q);
+                    setInputPanelOpen(false);
+                    showToast(`已生成 ${label || q} 的 AlphaFold 预测结构 (${n} 原子 · AF ${up.accession})`, 3600);
+                    console.log(`[分子来源] AlphaFold DB ${up.accession} · ${up.proteinName} · ${up.organism} · ${n} 原子`);
+                    return { ok: true, source: 'alphafold', accession: up.accession, count: n };
+                }
+                console.warn('[AlphaFold] 无预测模型或获取失败:', af && af.error);
+            }
+            return { ok: false, error: '未找到蛋白结构' };
+        }
+        window.__generateFromProteinNameSearch = generateFromProteinNameSearch;
+
+        // ChEMBL 小分子兜底：PubChem/CACTUS 都失败后按名字搜，或直接 CHEMBLxxx ID。
+        // 返回 { smiles, chemblId, prefName } | null（不抛错，失败静默）。
+        // 严格匹配（2026-11-27）：ChEMBL 的 q 检索是自由文本，垃圾输入（如
+        // "不存在的分子xyz123"）会自由匹配到随机分子 → 逐条校验查询词确实出现在
+        // 该记录里才接受；纯非拉丁字符（中文等）无法校验 → 一律拒绝（ChEMBL 本就
+        // 只收英文名）。CHEMBLxxx ID 直查无需校验。
+        async function resolveChEMBLSmiles(input) {
+            const q = String(input || '').trim();
+            if (!q) return null;
+            try {
+                const isId = /^CHEMBL\d+$/i.test(q);
+                const url = isId
+                    ? 'https://www.ebi.ac.uk/chembl/api/data/molecule/' + q.toUpperCase() + '.json'
+                    : 'https://www.ebi.ac.uk/chembl/api/data/molecule/search?q=' + encodeURIComponent(q) + '&format=json&limit=5';
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
+                const res = await fetch(url, { signal: ctrl });
+                if (!res.ok) return null;
+                const data = await res.json();
+                // 单条（CHEMBLxxx ID）响应是对象本身；搜索响应是 { molecules: [...] }
+                const list = Array.isArray(data.molecules) ? data.molecules
+                    : (data.molecules ? [data.molecules] : (data.molecule_structures ? [data] : []));
+                const ql = q.toLowerCase();
+                const words = ql.split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+                for (const m of list) {
+                    const smi = m && m.molecule_structures && m.molecule_structures.canonical_smiles;
+                    if (!smi) continue;
+                    if (!isId) {
+                        if (!words.length) continue;   // 中文等无法校验 → 拒绝
+                        const hay = JSON.stringify(m).toLowerCase();
+                        if (!words.every(w => hay.includes(w))) continue;
+                    }
+                    return { smiles: smi, chemblId: m.molecule_chembl_id, prefName: m.pref_name || '' };
+                }
+            } catch (e) { /* 网络失败静默 */ }
+            return null;
+        }
+        window.__resolveChEMBLSmiles = resolveChEMBLSmiles;
 
         // ============ 天然产物 → RCSB 化学组分理想坐标（2026-10-30 新增）============
         // 背景：叶绿素 / 维生素B12 / 环糊精等天然产物在 PubChem 只有 2D 拓扑（3D 记录 404），
@@ -10933,6 +11455,13 @@ const fSide = new Set();
             if (online.error === 'ambiguous') return { error: 'ambiguous', candidates: online.candidates };
             const cactus = await resolveNameOnlineCactus(onlineName);
             if (cactus.smiles) return { smiles: stripStereoMarkers(cactus.smiles) };
+            // ChEMBL 兜底（2026-11-27 扩展数据源）：PubChem/CACTUS 都没有的活性分子名，
+            // 或直接输入 CHEMBLxxx ID（如 CHEMBL25 = 阿司匹林）。网络错误优先于 not_found。
+            const chembl = await resolveChEMBLSmiles(onlineName);
+            if (chembl && chembl.smiles) {
+                console.log(`[分子来源] ChEMBL ${chembl.chemblId} · ${chembl.prefName || onlineName} · SMILES=${chembl.smiles}`);
+                return { smiles: stripStereoMarkers(chembl.smiles), source: 'chembl', chemblId: chembl.chemblId };
+            }
             if (online.error === 'network' || cactus.error === 'network') return { error: 'network' };
             return { error: 'not_found' };
         }
@@ -12968,8 +13497,12 @@ function smilesToCondensed(smiles) {
                 }
                 // 名称 / SMILES 框里的纯分子式（兼容旧用法）：仍要求"不是合法 SMILES"，
                 // 避免把 CCl4、c1ccccc1 等真正的 SMILES 当分子式枚举。
+                // 数据库 ID 豁免（2026-11-27）：CHEMBL25 / P01308 含数字会被 parseFormula
+                // 误判成分子式（实测 P01308 → "P13O8" 检索 404），在 ID 模式下跳过分子式分流。
                 const formulaLike = formulaCounts ? '' : (name || smiles);
-                if (formulaLike && !/[a-z=#()\[\]\\/@.%]/.test(formulaLike)) {
+                const looksLikeDbId = !!formulaLike
+                    && (UNIPROT_ACC_RE.test(formulaLike.trim()) || /^CHEMBL\d+$/i.test(formulaLike.trim()));
+                if (formulaLike && !looksLikeDbId && !/[a-z=#()\[\]\\/@.%]/.test(formulaLike)) {
                     let isLegitSmiles = false;
                     try {
                         const ps = parseSmiles(formulaLike);
@@ -13037,6 +13570,37 @@ function smilesToCondensed(smiles) {
                         showToast(`已从名称生成: ${name} (${pr.count} 原子 · PDB ${pr.pdbId})`, 3400);
                         return true;
                     }
+                    // 在线蛋白检索（2026-11-27 扩展数据源）：curated 库未命中，但名字
+                    // 「像蛋白」（关键词，或直接是 UniProt accession）→ 先于小分子管线
+                    // 检索 RCSB / UniProt+AlphaFold。必须在 PubChem 之前：PubChem 对
+                    // 蛋白名经常返回无关小分子（实测 "ubiquitin" → C6H8O7 柠檬酸），
+                    // 若等小分子管线跑完就永远轮不到蛋白路由。中文先翻译成英文再匹配。
+                    let proteinQuery = name;
+                    try {
+                        if (/[\u4e00-\u9fff]/.test(name)) {
+                            const en0 = await translateZhToEn(name);
+                            if (en0) proteinQuery = en0;
+                        }
+                    } catch (e) {}
+                    if (UNIPROT_ACC_RE.test(name.trim()) || PROTEIN_NAME_HINT_RE.test(proteinQuery)) {
+                        const onlineProt = await generateFromProteinNameSearch(proteinQuery, name);
+                        if (onlineProt && onlineProt.ok) {
+                            if (smilesInput) smilesInput.value = '';
+                            const _pf2 = document.getElementById('formula-input');
+                            if (_pf2) _pf2.value = '';
+                            syncInputClearButtons();
+                            setInputPanelOpen(false);
+                            setMoleculeName(name);
+                            showToast(onlineProt.source === 'alphafold'
+                                ? `已生成: ${name} (${onlineProt.count} 原子 · AlphaFold ${onlineProt.accession})`
+                                : `已从名称生成: ${name} (${onlineProt.count} 原子 · PDB ${onlineProt.pdbId})`, 3600);
+                            return true;
+                        }
+                        // 检索失败不中断：继续走小分子流程（accession 直查失败时提示更明确）
+                        if (UNIPROT_ACC_RE.test(name.trim())) {
+                            showToast(`UniProt ${name.trim()} 无预测模型或获取失败，已按小分子名称重试`, 3200);
+                        }
+                    }
                     usedName = true;
                     // 天然产物优先（叶绿素/维生素B12/环糊精）：PubChem 无 3D 记录，
                     // 直接取 RCSB 化学组分理想坐标（带全部氢），避免回退本地粗坐标塌缩。
@@ -13063,7 +13627,27 @@ function smilesToCondensed(smiles) {
                     showToast('正在解析名称…', 1500);
                     const r = await window.__resolveNameToSmiles(name);
                     if (r && r.error === 'ambiguous') { showAmbiguousCandidates(r.candidates, name); return false; }
-                    if (r && r.error === 'not_found') { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
+                    if (r && r.error === 'not_found') {
+                        // 在线蛋白检索（2026-11-27 扩展数据源）：PubChem 里查不到的名字
+                        // 很可能是蛋白（ubiquitin 等）——RCSB 搜索 → UniProt/AlphaFold。
+                        try {
+                            const onlineProt = await generateFromProteinNameSearch(name, name);
+                            if (onlineProt && onlineProt.ok) {
+                                if (smilesInput) smilesInput.value = '';
+                                const _pf = document.getElementById('formula-input');
+                                if (_pf) _pf.value = '';
+                                syncInputClearButtons();
+                                setInputPanelOpen(false);
+                                setMoleculeName(name);
+                                showToast(onlineProt.source === 'alphafold'
+                                    ? `已生成: ${name} (${onlineProt.count} 原子 · AlphaFold ${onlineProt.accession})`
+                                    : `已从名称生成: ${name} (${onlineProt.count} 原子 · PDB ${onlineProt.pdbId})`, 3600);
+                                return true;
+                            }
+                        } catch (e) { console.warn('[在线蛋白检索] 失败', e); }
+                        showToast('未找到该分子，请检查名称或尝试 SMILES', 2800);
+                        return false;
+                    }
                     if (r && r.error === 'network') { showToast('网络错误，已尝试内置库，请检查连接后重试', 2800); return false; }
                     if (!r || !r.smiles) { showToast('未找到该分子，请检查名称或尝试 SMILES', 2800); return false; }
                     smilesToUse = r.smiles;
@@ -13088,6 +13672,26 @@ function smilesToCondensed(smiles) {
                             used3D = true;
                         }
                     } catch (e) { used3D = false; }
+                }
+                // 名称解析到了 PubChem CID 但全库都无 3D 记录（2026-11-27 扩展数据源）：
+                // 这正是蛋白/多肽类条目的典型特征（如 glucagon 只在 PubChem 有 2D 拓扑），
+                // 本地粗坐标管线必然塌缩 → 先试在线蛋白检索（RCSB 搜索 / AlphaFold）。
+                if (!used3D && usedName && resolvedCid) {
+                    try {
+                        const onlineProt = await generateFromProteinNameSearch(name, name);
+                        if (onlineProt && onlineProt.ok) {
+                            if (smilesInput) smilesInput.value = '';
+                            const _pf = document.getElementById('formula-input');
+                            if (_pf) _pf.value = '';
+                            syncInputClearButtons();
+                            setInputPanelOpen(false);
+                            setMoleculeName(name);
+                            showToast(onlineProt.source === 'alphafold'
+                                ? `已生成: ${name} (${onlineProt.count} 原子 · AlphaFold ${onlineProt.accession})`
+                                : `已从名称生成: ${name} (${onlineProt.count} 原子 · PDB ${onlineProt.pdbId})`, 3600);
+                            return true;
+                        }
+                    } catch (e) { console.warn('[在线蛋白检索] 失败', e); }
                 }
                 if (!used3D) {
                     // 本地解析器不支持立体标记（@/@@/顺反 / \），剥除后重试；
