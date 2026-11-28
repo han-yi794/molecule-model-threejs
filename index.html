@@ -2584,6 +2584,9 @@
         const _vs0 = viewSize();
 
         const camera = new THREE.PerspectiveCamera(45, _vs0.w / _vs0.h, 0.1, 1000);
+        // InstancedMesh 双镜像（2026-11-28）：池网格在 layer 2，相机 0+2 都渲染；
+        // 原子/键壳在大分子时切到 layer 1（相机不渲染，子对象光晕/标签不受影响）
+        camera.layers.enable(2);
         camera.position.set(8, 6, 12);
         camera.lookAt(0, 0, 0);
 
@@ -2913,6 +2916,7 @@
         // 改为惰性重建的 Map<atom, bond[]>，键表结构变化时 markBondsChanged() 置脏。
         let _bondAdjCache = null;
         function markBondsChanged() {
+            _bondPoolDirty = true;   // 键表变化 → InstancedMesh 键池下次帧重建
             _bondAdjCache = null;
             // 键表变化（含键级变化，如 1→1.5）→ 环枚举缓存失效。
             // 注意：几何更新（updateBonds(true) 每帧）不调用本函数，环缓存得以保留。
@@ -5675,6 +5679,8 @@ isOptimizing = false;
         let dragPlane = new THREE.Plane();
         let referencePoint = new THREE.Vector3();
         const raycaster = new THREE.Raycaster();
+        // 拾取需命中 layer 1 的大分子原子/键壳（ InstancedMesh 双镜像模式下壳在 layer 1）
+        raycaster.layers.enable(1);
         const canvas = renderer.domElement;
         const sidebar = document.getElementById('sidebar');
         const groupSidebar = document.getElementById('group-sidebar');
@@ -5992,11 +5998,190 @@ isOptimizing = false;
         }
         window.__bestFreeDirectionFor = bestFreeDirectionFor;
 
+        // ===== 共享原子几何/材质（2026-11-28 性能，Step 2）=====
+        // 每种「视觉半径」只建一份 SphereGeometry、每种「元素×风格」只建一份材质：
+        // 10000 原子从 10000 份独立几何（各 ~25KB，合计 250MB+ GPU 内存）降到
+        // ~10 份（~250KB），材质从 10000 份降到 ~40 份。材质为只读共享——
+        // 全代码库无任何 atom.material 属性修改（选中态用独立 glow 球），
+        // removeAtom/clearMolecule 均不 dispose 原子几何（只有孤对云/π overlay dispose）。
+        const _geoCache = new Map();      // radiusKey → SphereGeometry
+        const _matCache = new Map();      // "type|style" → Material
+        function getSharedAtomGeometry(radius) {
+            const key = Math.round(radius * 1000);
+            let g = _geoCache.get(key);
+            if (!g) { g = new THREE.SphereGeometry(radius, 32, 16); _geoCache.set(key, g); }
+            return g;
+        }
+        function getSharedAtomMaterial(type, style) {
+            const key = type + "|" + (style || ATOM_STYLE);
+            let m = _matCache.get(key);
+            if (!m) { m = createAtomMaterial(type, style || ATOM_STYLE); _matCache.set(key, m); }
+            return m;
+        }
+
+        // ===== InstancedMesh 双镜像渲染（2026-11-28 性能，Step 3）=====
+        // 原子数 > INSTANCING_ATOM_THRESHOLD 时：
+        //  - 原子 Mesh 留在 atomsGroup（契约不变：拾取/标签/光晕/拖拽/删除图标），
+        //    但切到渲染隐藏层 1（相机只渲 0+2 层 → 壳零 draw call；
+        //    three r148 projectObject 的层测试只门控自身渲染项，不阻断子对象遍历，
+        //    故子对象光晕球/CSS2D 标签照常渲染——已用独立探针实证）。
+        //  - 实际渲染由按元素 InstancedMesh 池（layer 2）承担；每帧只把位置
+        //    变了的原子写入实例矩阵（pool.lp 记上次写入坐标，NaN 初始必写）。
+        //  - 键圆柱按键级分池（1/1.5/2/3/配位），几何=共享单位圆柱；槽位在
+        //    markBondsChanged 触发的重建时分配，几何同步挂 updateBondGeometry。
+        //  - 射线拾取不打池（池 layer 2，raycaster 开 0+1 层）。
+        const INSTANCING_ATOM_THRESHOLD = 800;
+        let _instModeActive = false;
+        let _instForce = false;          // 调试/测试：低于阈值也强制开启
+        let _bondPoolDirty = true;
+        let _bondInstActive = false;
+        const _atomPools = new Map();    // type → {type,mesh,cap,used,lp,dirty}
+        const _bondPools = new Map();    // kind → {kind,mesh,cap,used}
+        let _bondGeoShared = null;
+        const _instM4 = new THREE.Matrix4();
+        function _bondUnitGeo() {
+            if (!_bondGeoShared) _bondGeoShared = new THREE.CylinderGeometry(BOND_RADIUS, BOND_RADIUS, 1, 6);
+            return _bondGeoShared;
+        }
+        function _setupPoolMesh(mesh, cap) {
+            mesh.layers.set(2);
+            mesh.frustumCulled = false;   // 实例包围球不自动算，避免整池消失
+            mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            mesh.count = 0;
+            mesh.visible = false;
+            scene.add(mesh);
+            return cap;
+        }
+        function _atomPoolEnsure(type) {
+            let p = _atomPools.get(type);
+            if (!p) { p = { type, mesh: null, cap: 0, used: 0, lp: null, dirty: false }; _atomPools.set(type, p); }
+            if (!p.mesh) {
+                const cap = 1024;
+                p.mesh = new THREE.InstancedMesh(getSharedAtomGeometry(getVisualRadiusForType(type, null)), getSharedAtomMaterial(type), cap);
+                _setupPoolMesh(p.mesh, cap);
+                p.cap = cap; p.used = 0; p.lp = new Float32Array(cap * 3).fill(NaN);
+            }
+            return p;
+        }
+        function _growAtomPool(p, need) {
+            const cap = Math.max(64, Math.ceil(need * 1.3));
+            try { scene.remove(p.mesh); p.mesh.dispose(); } catch (e) {}
+            p.mesh = new THREE.InstancedMesh(getSharedAtomGeometry(getVisualRadiusForType(p.type, null)), getSharedAtomMaterial(p.type), cap);
+            _setupPoolMesh(p.mesh, cap);
+            p.cap = cap; p.used = 0; p.lp = new Float32Array(cap * 3).fill(NaN);
+        }
+        function _bondKindOf(bond) {
+            if (bond.coordination) return 'c';
+            const t = bond.type;
+            if (t === 1) return '1';
+            if (t === 1.5) return '15';
+            if (t === 2) return '2';
+            return '3';
+        }
+        function _bondMatFor(kind) {
+            const mat = makeBondMaterial();
+            if (kind === 'c') { mat.color.setHex(COORD_BOND_COLOR); mat.transparent = true; mat.opacity = COORD_BOND_OPACITY; }
+            return mat;
+        }
+        function _bondPoolEnsure(kind) {
+            let p = _bondPools.get(kind);
+            if (!p) { p = { kind, mesh: null, cap: 0, used: 0 }; _bondPools.set(kind, p); }
+            if (!p.mesh) {
+                const cap = 2048;
+                p.mesh = new THREE.InstancedMesh(_bondUnitGeo(), _bondMatFor(kind), cap);
+                _setupPoolMesh(p.mesh, cap);
+                p.cap = cap; p.used = 0;
+            }
+            return p;
+        }
+        function _growBondPool(p, need) {
+            const cap = Math.max(64, Math.ceil(need * 1.3));
+            try { scene.remove(p.mesh); p.mesh.dispose(); } catch (e) {}
+            p.mesh = new THREE.InstancedMesh(_bondUnitGeo(), _bondMatFor(p.kind), cap);
+            _setupPoolMesh(p.mesh, cap);
+            p.cap = cap; p.used = 0;
+        }
+        function rebuildBondPools() {
+            _bondPoolDirty = false;
+            if (!_instModeActive) { _bondInstActive = false; return; }
+            _bondInstActive = true;
+            for (const p of _bondPools.values()) p.used = 0;
+            for (const bond of bonds) {
+                const kind = _bondKindOf(bond);
+                bond._bpValid = false;
+                const p = _bondPoolEnsure(kind);
+                for (const cyl of bond.cylinders) {
+                    cyl.layers.set(1);
+                    if (p.used + 1 > p.cap) { _growBondPool(p, bonds.length * 2 + 16); }
+                    const slot = p.used++;
+                    if (!cyl.userData) cyl.userData = {};
+                    cyl.userData._bpKind = kind; cyl.userData._bpSlot = slot;
+                    _instM4.compose(cyl.position, cyl.quaternion, cyl.scale);
+                    p.mesh.setMatrixAt(slot, _instM4);
+                }
+                bond._bpValid = true;
+            }
+            for (const p of _bondPools.values()) {
+                p.mesh.count = p.used;
+                p.mesh.visible = p.used > 0;
+                p.mesh.instanceMatrix.needsUpdate = true;
+            }
+        }
+        function deactivateAtomInstancing() {
+            _instModeActive = false;
+            _bondInstActive = false;
+            for (const p of _atomPools.values()) { if (p.mesh) p.mesh.visible = false; }
+            for (const p of _bondPools.values()) { if (p.mesh) p.mesh.visible = false; }
+            for (const a of atomsGroup.children) { if (a.userData && a.userData.isAtom) a.layers.set(0); }
+            for (const bd of bonds) for (const cyl of bd.cylinders) cyl.layers.set(0);
+        }
+        function syncAtomInstancing() {
+            const children = atomsGroup.children;
+            let n = 0;
+            for (let i2 = 0; i2 < children.length; i2++) { const u = children[i2].userData; if (u && u.isAtom) n++; }
+            const want = _instForce || n > INSTANCING_ATOM_THRESHOLD;
+            if (!want) {
+                if (_instModeActive) deactivateAtomInstancing();
+                _bondPoolDirty = true;
+                return;
+            }
+            _instModeActive = true;
+            for (const p of _atomPools.values()) p.used = 0;
+            for (let i2 = 0; i2 < children.length; i2++) {
+                const a = children[i2];
+                const u = a.userData;
+                if (!u || !u.isAtom) continue;
+                if (a.layers.mask !== 2) a.layers.set(1);   // 模式内新建原子的兜底
+                const p = _atomPoolEnsure(u.atomType);
+                if (p.used >= p.cap) _growAtomPool(p, n);
+                const slot = p.used++;
+                const pos = a.position;
+                const k = slot * 3;
+                if (p.lp[k] !== pos.x || p.lp[k + 1] !== pos.y || p.lp[k + 2] !== pos.z) {
+                    _instM4.makeTranslation(pos.x, pos.y, pos.z);
+                    p.mesh.setMatrixAt(slot, _instM4);
+                    p.lp[k] = pos.x; p.lp[k + 1] = pos.y; p.lp[k + 2] = pos.z;
+                    p.dirty = true;
+                }
+            }
+            for (const p of _atomPools.values()) {
+                p.mesh.count = p.used;
+                p.mesh.visible = p.used > 0;
+                if (p.dirty) { p.mesh.instanceMatrix.needsUpdate = true; p.dirty = false; }
+            }
+            if (_bondPoolDirty) rebuildBondPools();
+        }
+        window.__instancing = {
+            state: () => ({ active: _instModeActive, bondActive: _bondInstActive, threshold: INSTANCING_ATOM_THRESHOLD,
+                atomPools: [..._atomPools.values()].map(p => ({ type: p.type, cap: p.cap, used: p.used })),
+                bondPools: [..._bondPools.values()].map(p => ({ kind: p.kind, cap: p.cap, used: p.used })) }),
+            force: (on) => { _instForce = !!on; },
+        };
         function createAtomMesh(type, position) {
             const info = atomTypes[type];
             const vr = getVisualRadiusForType(type, null);
-            const geometry = new THREE.SphereGeometry(vr, 32, 16);
-            const material = createAtomMaterial(type);
+            const geometry = getSharedAtomGeometry(vr);   // 共享（2026-11-28）
+            const material = getSharedAtomMaterial(type);   // 共享（2026-11-28）
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.copy(position);
             mesh.userData = { atomType: type, isAtom: true, hybridization: null }; // 添加杂化属性，默认 null（自动）
@@ -6048,14 +6233,13 @@ isOptimizing = false;
             if (chk) chk.checked = ATOM_STYLE === 'glow';
         }
         function applyAtomStyle() {
-            // 存量原子：按当前风格重建材质
+            // 存量原子：从共享缓存取新风格材质（缓存按 type|style 有界，无需清理）
+            // 存量原子：从重建后的共享缓存取材质
             for (const mesh of atomsGroup.children) {
                 if (!mesh.userData || !mesh.userData.isAtom) continue;
-                const old = mesh.material;
-                mesh.material = createAtomMaterial(mesh.userData.atomType);
-                try { old.dispose(); } catch (e) {}
+                mesh.material = getSharedAtomMaterial(mesh.userData.atomType, ATOM_STYLE);
                 const gl = mesh.children.find(c => c.isGlowSphere);
-                if (gl) { const og = gl.material; gl.material = makeGlowMaterial(); try { og.dispose(); } catch (e) {} }
+                if (gl) { gl.material = makeGlowMaterial(); }
             }
             // 存量键：重建 cylinder 材质（显式替换，不重建网格以保几何）
             for (const bd of bonds) {
@@ -6065,6 +6249,11 @@ isOptimizing = false;
                     try { old.dispose(); } catch (e) {}
                     styleCoordinationBond(bd, cyl);   // 配位键保持青蓝色（makeBondMaterial 会重置颜色）
                 }
+            }
+            // InstancedMesh 池材质跟随风格切换（原子按元素、键按键级）
+            if (_instModeActive) {
+                for (const p of _atomPools.values()) { if (p.mesh) p.mesh.material = getSharedAtomMaterial(p.type, ATOM_STYLE); }
+                for (const p of _bondPools.values()) { if (p.mesh) p.mesh.material = _bondMatFor(p.kind); }
             }
             updateStyleUI();
         }
@@ -6170,7 +6359,7 @@ isOptimizing = false;
             atom.userData.atomType = newType;
             markBondsChanged();   // 元素类型变化会改变环枚举的重原子集合/半径
             // 更新材质颜色
-            try { if (atom.material && atomTypes[newType]) atom.material.color.set(atomTypes[newType].color); } catch (e) {}
+            try { if (atom.material && atomTypes[newType]) atom.material = getSharedAtomMaterial(newType, ATOM_STYLE); } catch (e) {}
             // 更新标签位置与文本
             try {
                 if (atom.userData && atom.userData.label) {
@@ -6450,7 +6639,7 @@ isOptimizing = false;
         function createPreviewSphere(type) {
             const info = atomTypes[type];
             const vr = getVisualRadiusForType(type, null);
-            const geometry = new THREE.SphereGeometry(vr, 32, 16);
+            const geometry = getSharedAtomGeometry(vr);   // 共享（2026-11-28）
             const color = new THREE.Color(info.color);
             const material = ATOM_STYLE === 'glow'
                 ? new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 })
@@ -6953,8 +7142,15 @@ isOptimizing = false;
         window.__createCompleteGroup = createCompleteGroup;
         window.__GROUP_SPECS = GROUP_SPECS;
 
+        // 键几何更新用的临时对象（避免每帧每键 new Vector3/Quaternion → GC 压力）
+        const _tmpDir = new THREE.Vector3();
+        const _tmpPerp = new THREE.Vector3();
+        const _tmpMid = new THREE.Vector3();
+        const _tmpQuat = new THREE.Quaternion();
+        const _upY = new THREE.Vector3(0, 1, 0);
+        const _upX = new THREE.Vector3(1, 0, 0);
         function createBondCylinder() {
-            const geometry = new THREE.CylinderGeometry(BOND_RADIUS, BOND_RADIUS, 1, 6);
+            const geometry = _bondUnitGeo();   // 共享单位圆柱（2026-11-28）
             const material = makeBondMaterial();
             const cylinder = new THREE.Mesh(geometry, material);
             cylinder.userData.isBond = true;
@@ -6981,10 +7177,18 @@ isOptimizing = false;
             const { atomA, atomB, cylinders, type } = bond;
             const posA = atomA.position;
             const posB = atomB.position;
-            const dir = new THREE.Vector3().subVectors(posB, posA).normalize();
+            // 脏标记（2026-11-28 性能）：端点位置没变就不重算几何——
+            // 9000 键的分子每帧全量重算 updateBondGeometry 是 O(m) 白算 90%+。
+            const ax = posA.x, ay = posA.y, az = posA.z, bx = posB.x, by = posB.y, bz = posB.z;
+            if (bond._lax === ax && bond._lay === ay && bond._laz === az
+                && bond._lbx === bx && bond._lby === by && bond._lbz === bz
+                && bond._ltype === type && cylinders.length > 0) return;
+            bond._lax = ax; bond._lay = ay; bond._laz = az;
+            bond._lbx = bx; bond._lby = by; bond._lbz = bz; bond._ltype = type;
+            const dir = _tmpDir.subVectors(posB, posA).normalize();
             const length = posA.distanceTo(posB);
-            let perp = new THREE.Vector3(0, 1, 0).cross(dir);
-            if (perp.length() < 0.1) perp = new THREE.Vector3(1, 0, 0).cross(dir);
+            let perp = _tmpPerp.set(0, 1, 0).cross(dir);
+            if (perp.length() < 0.1) perp = _tmpPerp.set(1, 0, 0).cross(dir);
             perp.normalize();
 
             let offsets = [];
@@ -7003,20 +7207,33 @@ isOptimizing = false;
             while (cylinders.length > offsets.length) {
                 const cyl = cylinders.pop();
                 scene.remove(cyl);
+            // InstancedMesh 双镜像：把壳变换写进对应键级池（仅大分子镜像模式）
+            if (_bondInstActive && bond._bpValid) {
+                const kind = _bondKindOf(bond);
+                const bp = _bondPools.get(kind);
+                for (let ci = 0; ci < cylinders.length; ci++) {
+                    const cyl = cylinders[ci];
+                    const uk = cyl.userData;
+                    if (!bp || !uk || uk._bpKind === undefined || uk._bpKind !== kind) { _bondPoolDirty = true; continue; }
+                    _instM4.compose(cyl.position, cyl.quaternion, cyl.scale);
+                    bp.mesh.setMatrixAt(uk._bpSlot, _instM4);
+                    bp.mesh.instanceMatrix.needsUpdate = true;
+                }
+            }
             }
 
-            const quaternion = new THREE.Quaternion();
-            quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+            _tmpQuat.setFromUnitVectors(_upY, dir);
             for (let i = 0; i < cylinders.length; i++) {
                 const cyl = cylinders[i];
-                const mid = new THREE.Vector3().addVectors(posA, posB).multiplyScalar(0.5);
-                mid.addScaledVector(perp, offsets[i]);
-                cyl.position.copy(mid);
+                _tmpMid.addVectors(posA, posB).multiplyScalar(0.5);
+                _tmpMid.addScaledVector(perp, offsets[i]);
+                cyl.position.copy(_tmpMid);
                 cyl.scale.set(radius / BOND_RADIUS, length, radius / BOND_RADIUS);
-                cyl.quaternion.copy(quaternion);
+                cyl.quaternion.copy(_tmpQuat);
                 styleCoordinationBond(bond, cyl);
             }
         }
+
 
         function updateBonds(noAdd) {
             // 键表可能变化：环枚举缓存失效由 markBondsChanged() 在真正变化时处理
@@ -7056,6 +7273,45 @@ isOptimizing = false;
             // 省掉 getTargetBondLength 的半径表查询（最大 C-I 单键 2.10Å × 1.24 ≈ 2.60Å，
             // 取 3.6Å 留足余量；既有键无论拉多长都必须处理，用于断键判定）。
             const PAIR_SKIP_SQ = 3.6 * 3.6;
+            // ── noAdd 快速路径（2026-11-28 性能）──
+            // 渲染循环每帧调 updateBonds(true)：noAdd 模式下不新建键，
+            // 只需要维护已有键（伸长检查 + 几何更新）。直接遍历 bonds 数组
+            // O(m)，完全跳过 O(n²) pair 扫描——9000 原子 41M 对/帧的纯浪费。
+            if (noAdd) {
+                const toRemove = [];
+                for (const bond of bonds) {
+                    if (bond.coordination) { updateBondGeometry(bond); continue; }
+                    const posA = bond.atomA.position, posB = bond.atomB.position;
+                    const dist = posA.distanceTo(posB);
+                    const targetLen = getTargetBondLength(bond.atomA, bond.atomB, bond);
+                    const removeThreshold = targetLen * BOND_REMOVE_FACTOR;
+                    if (dist > removeThreshold) {
+                        if (now - lastOptimizationEndTime < cooldownMs) {
+                            bond._overStretchCount = 0; bond._lastStableAt = now;
+                            updateBondGeometry(bond);
+                        } else {
+                            bond._overStretchCount = (bond._overStretchCount || 0) + 1;
+                            if (dist / Math.max(1e-6, targetLen) > maxStretchFactor) {
+                                bond._overStretchCount = Math.max(bond._overStretchCount, framesThreshold);
+                            }
+                            if (bond._overStretchCount >= framesThreshold) {
+                                toRemove.push(bond);
+                            } else {
+                                updateBondGeometry(bond);
+                            }
+                        }
+                    } else {
+                        bond._overStretchCount = 0; bond._lastStableAt = now;
+                        updateBondGeometry(bond);
+                    }
+                }
+                for (const bond of toRemove) {
+                    try { bond.cylinders.forEach(cyl => scene.remove(cyl)); } catch (e) {}
+                    const bi = bonds.indexOf(bond);
+                    if (bi >= 0) { bonds.splice(bi, 1); markBondsChanged(); }
+                }
+                return;   // noAdd 完成，跳过 O(n²) pair 扫描
+            }
             for (let i = 0; i < nAtom; i++) {
                 const a = atoms[i];
                 for (let j = i + 1; j < nAtom; j++) {
@@ -17820,7 +18076,10 @@ if (smilesInput) smilesInput.value = smilesToUse;
             // 键距阈值，下一帧就会把虚假对角键固化下来，如 benzoicAcid 4-11、
             // pyrrole 1-3/1-4、furan 1-3）；键的创建只应发生在生成器/显式交互里
             updateBonds(true);
+            // InstancedMesh 双镜像（大分子）：壳层切换 + 实例矩阵同步，须在渲染前
+            syncAtomInstancing();
             renderer.render(scene, camera);
+            if (window.__renderPerf) window.__renderPerf.calls = renderer.info.render.calls;   // 调试：每帧 draw call 数
             updateAtomLabelOcclusion(now);   // 标签被前方原子挡住时隐藏（透视遮挡）
             labelRenderer.render(scene, camera);
         }
