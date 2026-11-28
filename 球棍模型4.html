@@ -6953,6 +6953,13 @@ isOptimizing = false;
         window.__createCompleteGroup = createCompleteGroup;
         window.__GROUP_SPECS = GROUP_SPECS;
 
+        // 键几何更新用的临时对象（避免每帧每键 new Vector3/Quaternion → GC 压力）
+        const _tmpDir = new THREE.Vector3();
+        const _tmpPerp = new THREE.Vector3();
+        const _tmpMid = new THREE.Vector3();
+        const _tmpQuat = new THREE.Quaternion();
+        const _upY = new THREE.Vector3(0, 1, 0);
+        const _upX = new THREE.Vector3(1, 0, 0);
         function createBondCylinder() {
             const geometry = new THREE.CylinderGeometry(BOND_RADIUS, BOND_RADIUS, 1, 6);
             const material = makeBondMaterial();
@@ -6981,10 +6988,18 @@ isOptimizing = false;
             const { atomA, atomB, cylinders, type } = bond;
             const posA = atomA.position;
             const posB = atomB.position;
-            const dir = new THREE.Vector3().subVectors(posB, posA).normalize();
+            // 脏标记（2026-11-28 性能）：端点位置没变就不重算几何——
+            // 9000 键的分子每帧全量重算 updateBondGeometry 是 O(m) 白算 90%+。
+            const ax = posA.x, ay = posA.y, az = posA.z, bx = posB.x, by = posB.y, bz = posB.z;
+            if (bond._lax === ax && bond._lay === ay && bond._laz === az
+                && bond._lbx === bx && bond._lby === by && bond._lbz === bz
+                && bond._ltype === type && cylinders.length > 0) return;
+            bond._lax = ax; bond._lay = ay; bond._laz = az;
+            bond._lbx = bx; bond._lby = by; bond._lbz = bz; bond._ltype = type;
+            const dir = _tmpDir.subVectors(posB, posA).normalize();
             const length = posA.distanceTo(posB);
-            let perp = new THREE.Vector3(0, 1, 0).cross(dir);
-            if (perp.length() < 0.1) perp = new THREE.Vector3(1, 0, 0).cross(dir);
+            let perp = _tmpPerp.set(0, 1, 0).cross(dir);
+            if (perp.length() < 0.1) perp = _tmpPerp.set(1, 0, 0).cross(dir);
             perp.normalize();
 
             let offsets = [];
@@ -7005,18 +7020,18 @@ isOptimizing = false;
                 scene.remove(cyl);
             }
 
-            const quaternion = new THREE.Quaternion();
-            quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+            _tmpQuat.setFromUnitVectors(_upY, dir);
             for (let i = 0; i < cylinders.length; i++) {
                 const cyl = cylinders[i];
-                const mid = new THREE.Vector3().addVectors(posA, posB).multiplyScalar(0.5);
-                mid.addScaledVector(perp, offsets[i]);
-                cyl.position.copy(mid);
+                _tmpMid.addVectors(posA, posB).multiplyScalar(0.5);
+                _tmpMid.addScaledVector(perp, offsets[i]);
+                cyl.position.copy(_tmpMid);
                 cyl.scale.set(radius / BOND_RADIUS, length, radius / BOND_RADIUS);
-                cyl.quaternion.copy(quaternion);
+                cyl.quaternion.copy(_tmpQuat);
                 styleCoordinationBond(bond, cyl);
             }
         }
+
 
         function updateBonds(noAdd) {
             // 键表可能变化：环枚举缓存失效由 markBondsChanged() 在真正变化时处理
@@ -7056,6 +7071,45 @@ isOptimizing = false;
             // 省掉 getTargetBondLength 的半径表查询（最大 C-I 单键 2.10Å × 1.24 ≈ 2.60Å，
             // 取 3.6Å 留足余量；既有键无论拉多长都必须处理，用于断键判定）。
             const PAIR_SKIP_SQ = 3.6 * 3.6;
+            // ── noAdd 快速路径（2026-11-28 性能）──
+            // 渲染循环每帧调 updateBonds(true)：noAdd 模式下不新建键，
+            // 只需要维护已有键（伸长检查 + 几何更新）。直接遍历 bonds 数组
+            // O(m)，完全跳过 O(n²) pair 扫描——9000 原子 41M 对/帧的纯浪费。
+            if (noAdd) {
+                const toRemove = [];
+                for (const bond of bonds) {
+                    if (bond.coordination) { updateBondGeometry(bond); continue; }
+                    const posA = bond.atomA.position, posB = bond.atomB.position;
+                    const dist = posA.distanceTo(posB);
+                    const targetLen = getTargetBondLength(bond.atomA, bond.atomB, bond);
+                    const removeThreshold = targetLen * BOND_REMOVE_FACTOR;
+                    if (dist > removeThreshold) {
+                        if (now - lastOptimizationEndTime < cooldownMs) {
+                            bond._overStretchCount = 0; bond._lastStableAt = now;
+                            updateBondGeometry(bond);
+                        } else {
+                            bond._overStretchCount = (bond._overStretchCount || 0) + 1;
+                            if (dist / Math.max(1e-6, targetLen) > maxStretchFactor) {
+                                bond._overStretchCount = Math.max(bond._overStretchCount, framesThreshold);
+                            }
+                            if (bond._overStretchCount >= framesThreshold) {
+                                toRemove.push(bond);
+                            } else {
+                                updateBondGeometry(bond);
+                            }
+                        }
+                    } else {
+                        bond._overStretchCount = 0; bond._lastStableAt = now;
+                        updateBondGeometry(bond);
+                    }
+                }
+                for (const bond of toRemove) {
+                    try { bond.cylinders.forEach(cyl => scene.remove(cyl)); } catch (e) {}
+                    const bi = bonds.indexOf(bond);
+                    if (bi >= 0) { bonds.splice(bi, 1); markBondsChanged(); }
+                }
+                return;   // noAdd 完成，跳过 O(n²) pair 扫描
+            }
             for (let i = 0; i < nAtom; i++) {
                 const a = atoms[i];
                 for (let j = i + 1; j < nAtom; j++) {
