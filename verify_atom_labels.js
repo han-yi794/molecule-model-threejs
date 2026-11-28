@@ -131,7 +131,18 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
         const frame2 = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         const domCount = () => {
             const all = [...document.querySelectorAll('#canvas-host div[data-role="atom-label"]')];
-            return { total: all.length, shown: all.filter(d => d.style.display !== 'none').length };
+            return { total: all.length, shown: all.filter(d => d.style.display !== 'none').length, texts: [...new Set(all.filter(d => d.style.display !== 'none').map(d => d.textContent.trim()))] };
+        };
+        // 轮询等待渲染循环把标签 DOM 刷到位（8fps 限帧下固定 150ms 不可靠）
+        const waitDom = async (pred, maxMs = 2500) => {
+            const t0 = performance.now();
+            let d = domCount();
+            while (performance.now() - t0 < maxMs) {
+                d = domCount();
+                if (pred(d)) break;
+                await new Promise(r => setTimeout(r, 60));
+            }
+            return d;
         };
         const anchorOf = (atom) => {
             const lp = atom.userData.label ? atom.userData.label.position : { x: 0, y: 0.6, z: 0 };
@@ -155,8 +166,11 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
         window.__atomLabelOcclusion.update(true);
         const withMask = window.__atomLabelOcclusion.stats();
         const stateMask = window.__atomLabels.state();
-        await new Promise(r => setTimeout(r, 150));
-        const domMask = domCount();
+        // 2026-11-28 性能改造后渲染更快：CSS2D 在下一渲染帧就会把 display:none 的
+        // 标签移出 DOM（AGENTS.md「原子标签」条目明确记载的行为），因此「被挡住」
+        // 以可见文本判定——C 标签不在任何可见标签里（被移除或 display:none 均算隐藏），
+        // 碘标签（掩体自身的）正常可见。
+        const domMask = await waitDom(d => d.total >= 1 && !d.texts.includes('C'));
 
         document.getElementById('btn-clear-molecule').click();
         window.__createHeavyAtom('C', { x: 0, y: 0, z: 0 });
@@ -164,15 +178,14 @@ const URL = 'http://127.0.0.1:8000/%E7%90%83%E6%A3%8D%E6%A8%A1%E5%9E%8B4.html?no
         window.__atomLabelOcclusion.update(true);
         const noMask = window.__atomLabelOcclusion.stats();
         const stateNo = window.__atomLabels.state();
-        await new Promise(r => setTimeout(r, 150));
-        const domNo = domCount();
+        const domNo = await waitDom(d => d.total >= 1 && d.texts.includes('C') && d.shown === d.total);
         return { withMask, stateMask, domMask, noMask, stateNo, domNo };
     });
     ok('L5 标签被更靠近相机的原子挡住时隐藏、移开后恢复',
         l5.withMask.hidden >= 1 && l5.withMask.labels >= 2 && l5.stateMask.hiddenLabels >= 1
-        && l5.domMask.shown < l5.domMask.total
+        && !l5.domMask.texts.includes('C')
         && l5.noMask.hidden === 0 && l5.stateNo.hiddenLabels === 0 && l5.stateNo.visibleLabels === 1
-        && l5.domNo.shown === l5.domNo.total, l5);
+        && l5.domNo.texts.includes('C') && l5.domNo.shown === l5.domNo.total, l5);
 
     // ---------------- L6 持久化 ----------------
     await page.evaluate(() => window.__atomLabels.set(false));

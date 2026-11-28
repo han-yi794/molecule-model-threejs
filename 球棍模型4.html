@@ -5992,11 +5992,31 @@ isOptimizing = false;
         }
         window.__bestFreeDirectionFor = bestFreeDirectionFor;
 
+        // ===== 共享原子几何/材质（2026-11-28 性能，Step 2）=====
+        // 每种「视觉半径」只建一份 SphereGeometry、每种「元素×风格」只建一份材质：
+        // 10000 原子从 10000 份独立几何（各 ~25KB，合计 250MB+ GPU 内存）降到
+        // ~10 份（~250KB），材质从 10000 份降到 ~40 份。材质为只读共享——
+        // 全代码库无任何 atom.material 属性修改（选中态用独立 glow 球），
+        // removeAtom/clearMolecule 均不 dispose 原子几何（只有孤对云/π overlay dispose）。
+        const _geoCache = new Map();      // radiusKey → SphereGeometry
+        const _matCache = new Map();      // "type|style" → Material
+        function getSharedAtomGeometry(radius) {
+            const key = Math.round(radius * 1000);
+            let g = _geoCache.get(key);
+            if (!g) { g = new THREE.SphereGeometry(radius, 32, 16); _geoCache.set(key, g); }
+            return g;
+        }
+        function getSharedAtomMaterial(type, style) {
+            const key = type + "|" + (style || ATOM_STYLE);
+            let m = _matCache.get(key);
+            if (!m) { m = createAtomMaterial(type, style || ATOM_STYLE); _matCache.set(key, m); }
+            return m;
+        }
         function createAtomMesh(type, position) {
             const info = atomTypes[type];
             const vr = getVisualRadiusForType(type, null);
-            const geometry = new THREE.SphereGeometry(vr, 32, 16);
-            const material = createAtomMaterial(type);
+            const geometry = getSharedAtomGeometry(vr);   // 共享（2026-11-28）
+            const material = getSharedAtomMaterial(type);   // 共享（2026-11-28）
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.copy(position);
             mesh.userData = { atomType: type, isAtom: true, hybridization: null }; // 添加杂化属性，默认 null（自动）
@@ -6048,7 +6068,7 @@ isOptimizing = false;
             if (chk) chk.checked = ATOM_STYLE === 'glow';
         }
         function applyAtomStyle() {
-            // 风格切换：清材质缓存使 getSharedAtomMaterial 重建
+            // 存量原子：从共享缓存取新风格材质（缓存按 type|style 有界，无需清理）
             // 存量原子：从重建后的共享缓存取材质
             for (const mesh of atomsGroup.children) {
                 if (!mesh.userData || !mesh.userData.isAtom) continue;
@@ -6449,7 +6469,7 @@ isOptimizing = false;
         function createPreviewSphere(type) {
             const info = atomTypes[type];
             const vr = getVisualRadiusForType(type, null);
-            const geometry = new THREE.SphereGeometry(vr, 32, 16);
+            const geometry = getSharedAtomGeometry(vr);   // 共享（2026-11-28）
             const color = new THREE.Color(info.color);
             const material = ATOM_STYLE === 'glow'
                 ? new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 })
