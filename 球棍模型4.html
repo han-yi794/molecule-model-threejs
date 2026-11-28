@@ -1201,6 +1201,17 @@
             overflow: hidden;
         }
         #isomer-pre-panel { width: min(760px, calc(100vw - 32px)); z-index: 1150; overflow-y: auto; }
+    /* 超大分子确认弹窗（2026-11-28） */
+    #oversize-confirm { position: fixed; inset: 0; z-index: 1230; display: none; align-items: center; justify-content: center; background: rgba(4, 5, 8, 0.62); }
+    #oversize-confirm .oc-card { width: min(430px, calc(100vw - 40px)); background: var(--raised); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
+    #oversize-confirm .oc-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+    #oversize-confirm .oc-text { font-size: 12px; line-height: 1.7; color: var(--muted); margin-bottom: 14px; }
+    #oversize-confirm .oc-text b { color: var(--accent); font-weight: 600; }
+    #oversize-confirm .oc-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    #oversize-confirm .oc-actions button { height: 30px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--active); color: var(--text); font-size: 12px; cursor: pointer; }
+    #oversize-confirm .oc-actions button:hover { border-color: var(--control); }
+    #oversize-confirm .oc-actions #oversize-confirm-go { background: var(--accent); border-color: var(--accent); color: #20160a; font-weight: 600; }
+    #oversize-confirm .oc-actions #oversize-confirm-go:hover { filter: brightness(1.08); }
 
         .dlg-head {
             flex: 0 0 auto;
@@ -2024,6 +2035,17 @@
     </div>
 
     <!-- 检索前筛选弹窗（候选 > 400 时先收窄再检索） -->
+    <!-- 超大分子确认弹窗（2026-11-28，用户需求「超大分子改为像用户弹出提示框，询问是否生成」） -->
+    <div id="oversize-confirm" role="dialog" aria-label="大分子确认" style="display:none;">
+        <div class="oc-card">
+            <div class="oc-title">大分子提示</div>
+            <div class="oc-text" id="oversize-confirm-text"></div>
+            <div class="oc-actions">
+                <button id="oversize-confirm-cancel">取消</button>
+                <button id="oversize-confirm-go">仍要生成</button>
+            </div>
+        </div>
+    </div>
     <div id="isomer-pre-panel" role="dialog" aria-label="检索前筛选">
         <div class="dlg-head">
             <span class="dlg-title" id="isomer-pre-title">检索前筛选</span>
@@ -10628,8 +10650,11 @@ const fSide = new Set();
                 const x = parseFloat(ln.slice(0, 10));
                 const y = parseFloat(ln.slice(10, 20));
                 const z = parseFloat(ln.slice(20, 30));
-                const type = ln.slice(31, 34).trim();
+                let type = ln.slice(31, 34).trim();
                 if (!type || isNaN(x) || isNaN(y) || isNaN(z)) return null;
+                // 元素大小写归一（2026-11-28）：RCSB 组分 SDF 对金属写全大写
+                //（HEM 的 "FE"、CLA 的 "MG"），不归一会让 atomTypes 查不到而变默认灰
+                type = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
                 atoms.push({ type, pos: new THREE.Vector3(x, y, z) });
             }
             const bonds = [];
@@ -10677,7 +10702,13 @@ const fSide = new Set();
             } catch (e) { return null; }
         }
         async function fetchCactus3D(smiles) {
-            const s = String(smiles || '').trim().replace(/[\\/]/g, '');
+            const s0 = String(smiles || '').trim();
+            // 过渡金属不交 CORINA（2026-11-28，用户报告「血红素的铁原子都跑了」）：
+            // CORINA 对金属配位几何不可靠，实测血红素候选经 CACTUS 生成后 Fe 偏离
+            // 卟啉 N4 中心。含金属的 SMILES 返回 null → 落到本地管线（血红素有已验证
+            // 的卟啉刚性模板：Fe–N 2.05×4 + 配位键语义）。
+            if (/\\\[(Fe|Cu|Zn|Mg|Mn|Co|Ni|Ca|Na|K|Fe2|Hg|Cd)\b/i.test(s0)) return null;
+            const s = s0.replace(/[\\/]/g, '');
             if (!s) return null;
             try {
                 const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(45000) : undefined;
@@ -10782,6 +10813,11 @@ const fSide = new Set();
         // opts.altLocFirst：交替构象只保留 altLoc 为空或 A 的原子（3I40 有 16 个 B 构象原子，
         //   两条都留会在同一位置出现双份原子、距离阈值建键混乱）。
         // 默认三项都关闭 → ESMFold 序列路线行为完全不变。
+        // PDB 金属元素（2026-11-28）：HETATM 的金属原子按元素保留——血蓝蛋白的 Cu 在
+        // 修饰残基 CUO 里（resName 不是 CU，白名单拦不住），按元素列识别才能保住
+        // 活性中心金属；水/糖/普通配体（C/N/O/S）不受影响。
+        const PDB_METAL_ELEMENTS = new Set(['Mg', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn',
+            'Mo', 'Ru', 'Ag', 'Cd', 'Pt', 'Au', 'Hg', 'Al', 'Sn', 'Pb', 'Ca']);
         function parsePDB(text, opts) {
             const o = opts || {};
             const proteinOnly = !!o.proteinOnly;
@@ -10795,9 +10831,18 @@ const fSide = new Set();
                 const isAtomRecord = ln.startsWith('ATOM  ');
                 if (!(isAtomRecord || ln.startsWith('HETATM'))) continue;
                 if (proteinOnly && !isAtomRecord) {
-                    // 白名单里的辅基（HEM 等）保留，其余水/离子/配体丢弃
+                    // 白名单里的辅基（HEM 等）保留；金属元素的 HETATM 原子
+                    //（独立离子 CU/ZN/… 或金属修饰残基 CUO 里的金属原子）也保留；
+                    // 其余水/糖/普通配体丢弃
                     const resName = ln.slice(17, 20).trim().toUpperCase();
-                    if (!hetKeep || !hetKeep.has(resName)) continue;
+                    if (!hetKeep || !hetKeep.has(resName)) {
+                        let mel = ln.slice(76, 78).trim();
+                        if (!mel) mel = ln.slice(12, 16).trim().replace(/[0-9]/g, '').trim().slice(0, 2);
+                        if (mel) {
+                            mel = mel.charAt(0).toUpperCase() + mel.slice(1).toLowerCase();
+                            if (!PDB_METAL_ELEMENTS.has(mel)) continue;
+                        } else continue;
+                    }
                 }
                 if (altLocFirst) {
                     const alt = ln.charAt(16);
@@ -11046,11 +11091,75 @@ const fSide = new Set();
         }
         window.__inferPdbCarbonylBonds = inferPdbCarbonylBonds;
 
+        // 超大分子确认弹窗（2026-11-28，用户需求「超大分子改为像用户弹出提示框，
+        // 询问是否生成，如果同意就生成」）：替代 15000 原子硬拦截。Promise<bool>，
+        // 同意=true / 取消或 Escape=false。 Escape/点遮罩/取消按钮均可关闭。
+        let _oversizeResolve = null;
+        function confirmOversizedMolecule(label, atomCount, cap) {
+            return new Promise((resolve) => {
+                const wrap = document.getElementById('oversize-confirm');
+                if (!wrap) { resolve(false); return; }
+                const nTxt = atomCount.toLocaleString('en-US');
+                const strong = atomCount > 60000;
+                document.getElementById('oversize-confirm-text').innerHTML =
+                    (label ? '「<b>' + label + '</b>」' : '该结构') +
+                    '约 <b>' + nTxt + '</b> 个原子（含结晶水），超过建议上限 <b>' + cap.toLocaleString('en-US') + '</b>。' +
+                    (strong ? '<br><br>这个规模<b>远超常规结构</b>：下载与解析需要较长时间，生成后可能明显卡顿甚至失去响应。' : '<br><br>生成与交互可能比常规结构明显卡顿。');
+                wrap.style.display = 'flex';
+                const done = (v) => {
+                    wrap.style.display = 'none';
+                    window.removeEventListener('keydown', onKey, true);
+                    _oversizeResolve = null;
+                    resolve(!!v);
+                };
+                const onKey = (e) => {
+                    if (wrap.style.display !== 'flex') return;
+                    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
+                };
+                window.addEventListener('keydown', onKey, true);
+                document.getElementById('oversize-confirm-cancel').onclick = () => done(false);
+                document.getElementById('oversize-confirm-go').onclick = () => done(true);
+                wrap.onclick = (e) => { if (e.target === wrap) done(false); };
+                _oversizeResolve = done;
+            });
+        }
+        window.__oversizeConfirm = {
+            ask: (label, n, cap) => confirmOversizedMolecule(label, n, cap),
+            visible: () => { const w = document.getElementById('oversize-confirm'); return !!w && w.style.display === 'flex'; },
+            resolve: (v) => { if (_oversizeResolve) _oversizeResolve(v); }
+        };
+
+        // RCSB data API：条目沉积原子数（下载 PDB 前可廉价得知规模，
+        // 避免为确认弹窗去解析 26 万原子——parsePDB 建键是 O(n²)）。失败返回 null。
+        async function fetchRcsbAtomCount(pdbId) {
+            try {
+                const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(10000) : undefined;
+                const res = await fetch('https://data.rcsb.org/rest/v1/core/entry/' + pdbId, { signal: ctrl });
+                if (!res.ok) return null;
+                const j = await res.json();
+                const n = j && j.rcsb_entry_info && j.rcsb_entry_info.deposited_atom_count;
+                return (typeof n === 'number' && n > 0) ? n : null;
+            } catch (e) { return null; }
+        }
         // 按 PDB ID 拉取实验结构（RCSB files.rcsb.org，4 字符 ID，如 3I40）。
-        async function fetchProteinPDBById(pdbId) {
+        async function fetchProteinPDBById(pdbId, opts) {
+            const o = opts || {};
             const id = String(pdbId || '').trim().toUpperCase();
             if (!/^[0-9][A-Z0-9]{3}$/.test(id)) return { error: '无效的 PDB ID: ' + pdbId };
             try {
+                // 大条目预检（2026-11-28）：先经 data API 查沉积原子数（下载前廉价得知
+                // 规模——parsePDB 建键是 O(n²)，26 万原子会冻结数分钟，必须在下载前问）。
+                // 超限且调用方给了 onOversized → 弹确认；同意才继续下载。
+                if (!o.skipSizeProbe) {
+                    const dep = await fetchRcsbAtomCount(id);
+                    if (dep != null && dep > PDB_MAX_ATOMS) {
+                        if (typeof o.onOversized !== 'function') {
+                            return { error: '该条目约 ' + dep.toLocaleString('en-US') + ' 个原子（上限 ' + PDB_MAX_ATOMS.toLocaleString('en-US') + '），请选择更小的结构', oversize: dep };
+                        }
+                        const go = await o.onOversized(dep);
+                        if (!go) return { error: '已取消', cancelled: true };
+                    }
+                }
                 const ctrl = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(60000) : undefined;
                 const res = await fetch('https://files.rcsb.org/download/' + id + '.pdb', { signal: ctrl });
                 if (!res.ok) return { error: 'RCSB PDB 返回 HTTP ' + res.status };
@@ -11058,11 +11167,16 @@ const fSide = new Set();
                 // proteinOnly/altLocFirst：跳过水分子与 B 构象，保证单连通（3I40 → 403 原子）
                 // hetKeep：保留血红素辅基（细胞色素 c 1HRC / 肌红蛋白 1MBO / 血红蛋白 2HHB
                 //   的 HEM 是 HETATM，一刀切会把 Fe 和卟啉环整块滤掉 → 蛋白失去辅基）
-                const struct = parsePDB(text, { proteinOnly: true, altLocFirst: true, hetKeep: ['HEM', 'HEC', 'HEA', 'HEB'] });
+                const struct = parsePDB(text, {
+                    proteinOnly: true, altLocFirst: true,
+                    // HEM 系：血红素辅基（ATOMIC 记录里没有 Fe）；金属离子：血蓝蛋白 CU、
+                    // 锌指 ZN、锰/镍/钴/钙等催化金属是 HETATM，一刀切会把活性中心滤掉
+                    hetKeep: ['HEM', 'HEC', 'HEA', 'HEB', 'CU', 'FE', 'ZN', 'MG', 'MN', 'NI', 'CO', 'CA']
+                });
                 if (!struct) return { error: 'PDB ' + id + ' 无可用原子坐标' };
                 // 大条目保护（2026-11-27）：搜索 API 可能命中核糖体/复合物等巨型装配体，
                 // 补氢后翻倍会直接卡死页面，在解析层就拦下。
-                if (struct.atoms.length > PDB_MAX_ATOMS) {
+                if (struct.atoms.length > PDB_MAX_ATOMS && typeof o.onOversized !== 'function') {
                     return { error: `该条目含 ${struct.atoms.length} 个重原子（上限 ${PDB_MAX_ATOMS}），请选择更小的结构` };
                 }
                 const carbonyls = inferPdbCarbonylBonds(struct);
@@ -11073,8 +11187,9 @@ const fSide = new Set();
         }
         window.__fetchProteinPDBById = fetchProteinPDBById;
 
-        async function generateFromProteinPDB(pdbId, label) {
-            const r = await fetchProteinPDBById(pdbId);
+        async function generateFromProteinPDB(pdbId, label, opts) {
+            const r = await fetchProteinPDBById(pdbId, opts);
+            if (r.cancelled) return { ok: false, error: r.error || '已取消', cancelled: true };
             if (!r.ok) {
                 // 蛋白名称路线不做本地管线回退：粗坐标生成的多肽链必然是垃圾
                 return { ok: false, error: r.error || '未知错误', pdbId: String(pdbId || '').toUpperCase() };
@@ -11127,11 +11242,18 @@ const fSide = new Set();
                     const res = await fetch('https://search.rcsb.org/rcsbsearch/v2/query?json=' + encodeURIComponent(att.json), { signal: ctrl });
                     if (!res.ok) continue;   // 204=无命中 / 400=查询不合法 → 试下一种
                     const data = await res.json();
-                    const hit = data && data.result_set && data.result_set[0];
-                    if (hit && hit.identifier) {
-                        // "1A7F_1" → "1A7F"（下载按 entry 级取整文件）
-                        const pdbId = att.stripEntity ? String(hit.identifier).split('_')[0] : hit.identifier;
-                        if (pdbId) return { pdbId, rawId: hit.identifier, total: data.total_count };
+                    const rs = (data && data.result_set) || [];
+                    if (rs.length) {
+                        // 多候选（2026-11-28）：超大装配体（如 4YD9 血蓝蛋白 26 万原子）会撞
+                        // PDB_MAX_ATOMS 守卫 → 返回全部候选（去重），由调用方逐个尝试
+                        const hits = [];
+                        const seen = new Set();
+                        for (const h of rs) {
+                            if (!h.identifier) continue;
+                            const pdbId = att.stripEntity ? String(h.identifier).split('_')[0] : h.identifier;
+                            if (pdbId && !seen.has(pdbId)) { seen.add(pdbId); hits.push(pdbId); }
+                        }
+                        if (hits.length) return { pdbId: hits[0], hits, total: data.total_count };
                     }
                 } catch (e) { /* 网络失败试下一种 */ }
             }
@@ -11227,22 +11349,35 @@ const fSide = new Set();
                 }
                 return { ok: false, error: (af && af.error) || '未找到预测模型' };
             }
-            // ① RCSB 搜索（实验结构优先）
+            // ① RCSB 搜索（实验结构优先）。多候选逐个尝试（2026-11-28）：超大装配体
+            //（如 4YD9 血蓝蛋白 26 万原子）撞 PDB_MAX_ATOMS 守卫后自动换下一个命中。
             showToast('正在搜索 RCSB PDB 数据库…', 2000);
             const hit = await searchRcsbPdbByName(q);
             if (hit) {
-                const pr = await generateFromProteinPDB(hit.pdbId, label || q);
-                if (pr.ok) {
-                    console.log(`[分子来源] RCSB 搜索 "${q}" → ${hit.pdbId} · ${pr.count} 原子`);
-                    return { ok: true, source: 'rcsb', pdbId: hit.pdbId, count: pr.count };
+                const tried = [];
+                for (const pdbId of (hit.hits || [hit.pdbId])) {
+                    const pr = await generateFromProteinPDB(pdbId, label || q, { onOversized: (n) => confirmOversizedMolecule(label || q, n, PDB_MAX_ATOMS) });
+                    if (pr.ok) {
+                        console.log(`[分子来源] RCSB 搜索 "${q}" → ${pdbId} · ${pr.count} 原子`);
+                        return { ok: true, source: 'rcsb', pdbId, count: pr.count };
+                    }
+                    tried.push(pdbId + '（' + (pr.error || '?') + '）');
+                    console.warn('[RCSB 搜索] 候选 ' + pdbId + ' 失败，试下一个:', pr.error);
                 }
-                console.warn('[RCSB 搜索] 命中但生成失败:', pr.error);
+                if (tried.length) console.warn('[RCSB 搜索] 全部候选失败:', tried.join(' / '));
             }
             // ② UniProt + AlphaFold（AI 预测）
             showToast('实验结构未命中，正在查询 UniProt / AlphaFold 预测模型…', 2600);
             const up = await fetchUniProtAccession(q);
             if (up && up.accession) {
                 const af = await fetchAlphaFoldModelPDB(up.accession);
+                if (af && af.oversize) {
+                    const go = await confirmOversizedMolecule(label || q, af.oversize, PDB_MAX_ATOMS);
+                    if (go) {
+                        const n = generateFromPDB(af.struct);
+                        return { ok: true, source: 'alphafold', accession: up.accession, count: n };
+                    }
+                }
                 if (af && af.ok) {
                     const n = generateFromPDB(af.struct);
                     setMoleculeName(label || q);
@@ -11317,6 +11452,12 @@ const fSide = new Set();
             'α-环糊精': 'ACX', 'α环糊精': 'ACX', 'alpha-cyclodextrin': 'ACX',
             // 注意：α-环糊精的组分 ID 是 ACX（C36H60O30, 126 原子），ACD 是另一个
             // 组分（C20H32O2, 54 原子）——映射错了会生成完全无关的小分子。
+            // 血红素 HEM（C34H32FeN4O4, 75 原子 / 82 键，FE(二价) 在卟啉 N4 中心）：
+            // 2026-11-28 从「本地卟啉模板」改走 RCSB 理想坐标——PubChem 的 heme 条目
+            // 全是 [Fe+2]+[N-] 的配位前形态且无 3D，本地管线对其取代基会摆出 0.22Å
+            // 级重叠被质量闸门拦下；ideal SDF 一次给出理想几何（Fe–N ≈2.0Å、全平面）。
+            '血红素': 'HEM', '血色素': 'HEM', 'heme': 'HEM', 'haem': 'HEM', 'hemin': 'HEM',
+            '氯高铁血红素': 'HEM', '正铁血红素': 'HEM', 'protoheme': 'HEM', '原血红素': 'HEM', 'ferroheme': 'HEM',
         };
         const _LIGAND_INDEX = {};
         for (const k in RCSB_LIGAND_LIB) _LIGAND_INDEX[normalizeProteinKey(k)] = RCSB_LIGAND_LIB[k];
@@ -13579,7 +13720,7 @@ function smilesToCondensed(smiles) {
                     const seqProt = resolveProteinName(seq);
                     if (seqProt) {
                         showToast('正在从 RCSB PDB 获取 ' + seqProt.label + ' 结构…', 2200);
-                        const pr = await generateFromProteinPDB(seqProt.pdbId, seqProt.label);
+                        const pr = await generateFromProteinPDB(seqProt.pdbId, seqProt.label, { onOversized: (n) => confirmOversizedMolecule(seqProt.label, n, PDB_MAX_ATOMS) });
                         if (!pr.ok) {
                             showToast('蛋白质结构获取失败：' + pr.error + '（可改用氨基酸序列，由 ESMFold 预测）', 4600);
                             return false;
@@ -13676,7 +13817,7 @@ function smilesToCondensed(smiles) {
                     const protEntry = resolveProteinName(name);
                     if (protEntry) {
                         showToast('正在从 RCSB PDB 获取 ' + (protEntry.label || name) + ' 结构…', 2200);
-                        const pr = await generateFromProteinPDB(protEntry.pdbId, protEntry.label || name);
+                        const pr = await generateFromProteinPDB(protEntry.pdbId, protEntry.label || name, { onOversized: (n) => confirmOversizedMolecule(protEntry.label || name, n, PDB_MAX_ATOMS) });
                         if (!pr.ok) {
                             showToast('蛋白质结构获取失败：' + pr.error + '（可改用氨基酸序列框，由 ESMFold 预测）', 4600);
                             return false;
