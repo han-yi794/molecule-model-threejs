@@ -6048,14 +6048,13 @@ isOptimizing = false;
             if (chk) chk.checked = ATOM_STYLE === 'glow';
         }
         function applyAtomStyle() {
-            // 存量原子：按当前风格重建材质
+            // 风格切换：清材质缓存使 getSharedAtomMaterial 重建
+            // 存量原子：从重建后的共享缓存取材质
             for (const mesh of atomsGroup.children) {
                 if (!mesh.userData || !mesh.userData.isAtom) continue;
-                const old = mesh.material;
-                mesh.material = createAtomMaterial(mesh.userData.atomType);
-                try { old.dispose(); } catch (e) {}
+                mesh.material = getSharedAtomMaterial(mesh.userData.atomType, ATOM_STYLE);
                 const gl = mesh.children.find(c => c.isGlowSphere);
-                if (gl) { const og = gl.material; gl.material = makeGlowMaterial(); try { og.dispose(); } catch (e) {} }
+                if (gl) { gl.material = makeGlowMaterial(); }
             }
             // 存量键：重建 cylinder 材质（显式替换，不重建网格以保几何）
             for (const bd of bonds) {
@@ -6170,7 +6169,7 @@ isOptimizing = false;
             atom.userData.atomType = newType;
             markBondsChanged();   // 元素类型变化会改变环枚举的重原子集合/半径
             // 更新材质颜色
-            try { if (atom.material && atomTypes[newType]) atom.material.color.set(atomTypes[newType].color); } catch (e) {}
+            try { if (atom.material && atomTypes[newType]) atom.material = getSharedAtomMaterial(newType, ATOM_STYLE); } catch (e) {}
             // 更新标签位置与文本
             try {
                 if (atom.userData && atom.userData.label) {
